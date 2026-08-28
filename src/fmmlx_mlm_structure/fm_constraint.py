@@ -1,4 +1,4 @@
-from fmmlx_mlm_structure.model_property import ModelProperty
+from src.fmmlx_mlm_structure.model_property import ModelProperty
 
 
 class FmmlxConstraint(ModelProperty):

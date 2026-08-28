@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ElementTree
 
-from fmmlx_mlm_structure.model_element import ModelElement
-from fmmlx_mlm_structure.model_entity import ModelEntity
+from src.fmmlx_mlm_structure.model_element import ModelElement
+from src.fmmlx_mlm_structure.model_entity import ModelEntity
 
 
 class FmmlxEnumType(ModelEntity):

@@ -1,7 +1,7 @@
 from xml.etree.ElementTree import ElementTree
 
-from fmmlx_mlm_structure.model_element import ModelElement
-from fmmlx_mlm_structure.model_connection import ModelConnection
+from src.fmmlx_mlm_structure.model_element import ModelElement
+from src.fmmlx_mlm_structure.model_connection import ModelConnection
 from src.fmmlx_mlm_structure.fm_association import FmmlxAssociation
 from src.fmmlx_mlm_structure.fm_object import FmmlxObject
 
