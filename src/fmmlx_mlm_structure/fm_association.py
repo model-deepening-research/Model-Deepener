@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from xml.etree.ElementTree import ElementTree
+import xml.etree.ElementTree as ElementTree
 
 from src.fmmlx_mlm_structure.model_connection import ModelConnection
 from src.fmmlx_mlm_structure.fm_object import FmmlxObject
@@ -11,6 +11,7 @@ from src.fmmlx_mlm_structure.multiplicity import Multiplicity
 class FmmlxAssociation(ModelConnection):
     def __init__(self, name: str, source_inst_level: int, target_inst_level: int, source_access_name: str,
                  target_access_name: str):
+        """Creates an association and retains all XModeler settings needed for re-import."""
         super().__init__(source_object=None, target_object=None, name=name, print_name=f"<{name}> ASSOC")
         self.source_inst_level = source_inst_level
         self.target_inst_level = target_inst_level
@@ -20,6 +21,7 @@ class FmmlxAssociation(ModelConnection):
         self.target_access_name = target_access_name
         self.source_association_end = None
         self.target_association_end = None
+        self.xml_attributes = None
 
     def set_source_association_end(self, association_end):
         self.source_association_end = association_end
@@ -78,6 +80,12 @@ class FmmlxAssociation(ModelConnection):
         # f" {self.name} {self.target_class.name}")
 
     def export(self, root: ElementTree.Element):
+        """
+        Adds the association with its original ends and access names to XML.
+
+        Object names are combined with the export project so the references
+        point to classes that exist in the newly written model.
+        """
         projectName = root.attrib['path']
         model = root.find('Model')
 
@@ -91,19 +99,25 @@ class FmmlxAssociation(ModelConnection):
             self.source_multiplicity.is_unbounded).lower() + ',false}'
 
         # adapt class names to new projectname
-        classSourceName = projectName + "::" + self.source_class.name
-        targetSourceName = projectName + "::" + self.target_class.name
+        classSourceName = projectName + "::" + self.source_object.name
+        classTargetName = projectName + "::" + self.target_object.name
 
-        # associations use always the class name as an access name at the moment, this leads to a problem when more than one association exists between the same two classes, as the access name is no longer unique
-        # TODO think about fix
-        addAssoc = ElementTree.SubElement(model, 'addAssociation',
-                                          accessSourceFromTargetName=self.source_class.name.lower(),
-                                          accessTargetFromSourceName=self.target_class.name.lower(),
-                                          associationType='Root::Associations::DefaultAssociation',
-                                          classSource=classSourceName, classTarget=targetSourceName, fwName=self.name,
-                                          instLevelSource=str(self.source_inst_level),
-                                          instLevelTarget=str(self.target_inst_level),
-                                          multSourceToTarget=multSourceToTarget, multTargetToSource=multTargetToSource,
-                                          package=projectName, reverseName='-1', sourceVisibleFromTarget='false',
-                                          targetVisibleFromSource='true')
+        attributes = dict(self.xml_attributes or {})
+        attributes.update({
+            'accessSourceFromTargetName': self.target_access_name,
+            'accessTargetFromSourceName': self.source_access_name,
+            'associationType': attributes.get('associationType', 'Root::Associations::DefaultAssociation'),
+            'classSource': classSourceName,
+            'classTarget': classTargetName,
+            'fwName': self.name,
+            'instLevelSource': str(self.source_inst_level),
+            'instLevelTarget': str(self.target_inst_level),
+            'multSourceToTarget': attributes.get('multSourceToTarget', multSourceToTarget),
+            'multTargetToSource': attributes.get('multTargetToSource', multTargetToSource),
+            'package': projectName,
+            'reverseName': attributes.get('reverseName', '-1'),
+            'sourceVisibleFromTarget': attributes.get('sourceVisibleFromTarget', 'false'),
+            'targetVisibleFromSource': attributes.get('targetVisibleFromSource', 'true'),
+        })
+        ElementTree.SubElement(model, 'addAssociation', **attributes)
         return root
