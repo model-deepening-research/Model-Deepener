@@ -1,7 +1,7 @@
 import xml.etree.ElementTree as ElementTree
 from typing import List
 
-from fmmlx_mlm_structure.model_entity import ModelEntity
+from src.fmmlx_mlm_structure.model_entity import ModelEntity
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
 from src.fmmlx_mlm_structure.fm_attr import FmmlxAttribute
 from src.fmmlx_mlm_structure.fm_constraint import FmmlxConstraint

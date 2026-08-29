@@ -90,13 +90,27 @@ class ModelDeepenerApp(ctk.CTk):
     }
 
     def __init__(self):
+        """
+        Prepares the main window and all data needed by the interface.
+
+        The window stays hidden while its layout, taskbar entry, and icon are
+        prepared. It is shown in a maximized state when setup is complete.
+        """
         super().__init__()
+        # The hidden setup prevents an empty icon from flashing in the taskbar.
+        self.withdraw()
         ctk.set_appearance_mode("light")
         ctk.set_default_color_theme("blue")
 
         self.title("Model Deepener")
         self.geometry("1500x900")
         self.minsize(1220, 760)
+        # The standard Windows frame is hidden because the tool draws its own
+        # top row with its logo and window-control buttons.
+        self.overrideredirect(True)
+        # Operating-system close requests use the same complete shutdown as
+        # the visible X button.
+        self.protocol("WM_DELETE_WINDOW", self._close_application)
 
         self.colors = {
             "app_bg": "#f5f7fb",
@@ -134,6 +148,14 @@ class ModelDeepenerApp(ctk.CTk):
         self.active_top_tab = "new"
         self.model_tab = None
         self.logo_image = None
+        self.titlebar_logo_image = None
+        # These values remember how the user moves and resizes the window.
+        self._window_drag_offset = (0, 0)
+        self._window_restore_geometry = None
+        self._window_maximized = False
+        self._window_restore_binding_id = None
+        # This flag prevents the close procedure from running twice.
+        self._is_closing = False
         self._detail_load_token = 0
         self._detail_batch_after_id = None
         self._detail_loading_overlay = None
@@ -144,8 +166,7 @@ class ModelDeepenerApp(ctk.CTk):
         self._configure_ttk_style()
         self._build_layout()
         self._show_import_page()
-        self._apply_windows_icons()
-        self.after(250, self._apply_windows_icons)
+        self.after_idle(self._show_configured_window)
 
     def _configure_ttk_style(self):
         """
@@ -194,9 +215,267 @@ class ModelDeepenerApp(ctk.CTk):
             [("Treeview.treearea", {"sticky": "nswe"})],
         )
 
+    def _build_custom_title_bar(self):
+        """
+        Creates the narrow row at the very top of the application window.
+
+        The row contains Logo.png, the text "Model Deepener", and the three
+        buttons on the right that minimize, resize, or close the window.
+        """
+        self.title_bar = ctk.CTkFrame(
+            self,
+            height=38,
+            corner_radius=0,
+            fg_color="#ffffff",
+        )
+        self.title_bar.grid(row=0, column=0, sticky="ew")
+        self.title_bar.grid_propagate(False)
+        self.title_bar.grid_columnconfigure(2, weight=1)
+
+        logo_path = os.path.join(os.path.dirname(__file__), "Logo.png")
+        if os.path.exists(logo_path):
+            try:
+                source_image = Image.open(logo_path)
+                self.titlebar_logo_image = ctk.CTkImage(
+                    light_image=source_image,
+                    dark_image=source_image,
+                    size=(24, 24),
+                )
+            except (OSError, ValueError):
+                self.titlebar_logo_image = None
+
+        logo_label = ctk.CTkLabel(
+            self.title_bar,
+            text="",
+            image=self.titlebar_logo_image,
+            width=28,
+        )
+        logo_label.grid(row=0, column=0, padx=(10, 4), pady=5)
+
+        title_label = ctk.CTkLabel(
+            self.title_bar,
+            text="Model Deepener",
+            text_color="#5f6368",
+            font=ctk.CTkFont(size=13),
+        )
+        title_label.grid(row=0, column=1, sticky="w")
+
+        minimize_button = self._title_bar_button("—", self._minimize_window)
+        minimize_button.grid(row=0, column=3, sticky="nsew")
+        maximize_button = self._title_bar_button("□", self._toggle_maximize_window)
+        maximize_button.grid(row=0, column=4, sticky="nsew")
+        close_button = self._title_bar_button("×", self._close_application, hover_color="#e81123")
+        close_button.grid(row=0, column=5, sticky="nsew")
+
+        for widget in (self.title_bar, logo_label, title_label):
+            widget.bind("<ButtonPress-1>", self._start_window_drag)
+            widget.bind("<B1-Motion>", self._drag_window)
+            widget.bind("<Double-Button-1>", lambda _event: self._toggle_maximize_window())
+
+    def _title_bar_button(self, text: str, command, hover_color: str = "#e5e7eb"):
+        """Creates one of the three matching buttons in the top window row."""
+        return ctk.CTkButton(
+            self.title_bar,
+            text=text,
+            command=command,
+            width=46,
+            height=38,
+            corner_radius=0,
+            border_width=0,
+            fg_color="transparent",
+            hover_color=hover_color,
+            text_color="#334155",
+            font=ctk.CTkFont(size=16),
+        )
+
+    def _start_window_drag(self, event):
+        """Remembers where the user grabbed the top row to move the window."""
+        if self._window_maximized:
+            return
+        self._window_drag_offset = (event.x_root - self.winfo_x(), event.y_root - self.winfo_y())
+
+    def _drag_window(self, event):
+        """Moves the window while the user drags its top row with the mouse."""
+        if self._window_maximized:
+            return
+        offset_x, offset_y = self._window_drag_offset
+        self.geometry(f"+{event.x_root - offset_x}+{event.y_root - offset_y}")
+
+    def _toggle_maximize_window(self):
+        """
+        Switches between the maximized and normal window sizes.
+
+        The maximized size uses the available area of the current monitor, so
+        the window fits different screens and leaves the Windows taskbar free.
+        """
+        if self._window_maximized:
+            if self._window_restore_geometry:
+                tk.Tk.geometry(self, self._window_restore_geometry)
+            self._window_maximized = False
+            return
+
+        self._window_restore_geometry = tk.Tk.geometry(self)
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            class MonitorInfo(ctypes.Structure):
+                """Stores the full and usable monitor areas reported by Windows."""
+
+                _fields_ = [
+                    ("cbSize", wintypes.DWORD),
+                    ("rcMonitor", wintypes.RECT),
+                    ("rcWork", wintypes.RECT),
+                    ("dwFlags", wintypes.DWORD),
+                ]
+
+            # Windows identifies each open window by a number called a handle.
+            # The handle lets the tool ask which monitor contains this window.
+            hwnd = int(self.frame(), 0)
+            monitor_default_to_nearest = 2
+            monitor = ctypes.windll.user32.MonitorFromWindow(hwnd, monitor_default_to_nearest)
+            monitor_info = MonitorInfo()
+            monitor_info.cbSize = ctypes.sizeof(MonitorInfo)
+            if not ctypes.windll.user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
+                raise OSError("Could not determine the monitor work area")
+
+            # The work area is the part of the monitor not occupied by the
+            # taskbar. The window fills exactly this area.
+            work_area = monitor_info.rcWork
+            width = work_area.right - work_area.left
+            height = work_area.bottom - work_area.top
+            swp_no_zorder = 0x0004
+            swp_show_window = 0x0040
+            ctypes.windll.user32.SetWindowPos(
+                hwnd,
+                None,
+                work_area.left,
+                work_area.top,
+                width,
+                height,
+                swp_no_zorder | swp_show_window,
+            )
+            self._window_maximized = True
+        except (AttributeError, OSError):
+            # Tk's normal maximize mode is used if Windows cannot provide the
+            # monitor information.
+            self.state("zoomed")
+
+    def _minimize_window(self):
+        """Minimizes the application and keeps it available in the taskbar."""
+        self.overrideredirect(False)
+        self.iconify()
+        # The Map event occurs when the minimized window becomes visible again.
+        if self._window_restore_binding_id is None:
+            self._window_restore_binding_id = self.bind(
+                "<Map>",
+                self._restore_custom_window,
+                add="+",
+            )
+
+    def _close_application(self):
+        """
+        Closes the complete application when the user selects the X button.
+
+        Scheduled interface tasks are cancelled before the window and its
+        event loop are stopped, so the application does not remain active in
+        the background.
+        """
+        if self._is_closing:
+            return
+        self._is_closing = True
+        try:
+            for after_id in self.tk.call("after", "info"):
+                try:
+                    self.after_cancel(after_id)
+                except tk.TclError:
+                    pass
+        except tk.TclError:
+            pass
+        self.quit()
+        self.destroy()
+
+    def _restore_custom_window(self, _event=None):
+        """Restores the tool's own top row after the window was minimized."""
+        if self._window_restore_binding_id is not None:
+            self.unbind("<Map>", self._window_restore_binding_id)
+            self._window_restore_binding_id = None
+
+        def restore():
+            """Shows the tool's own top row when the window becomes visible again."""
+            self.overrideredirect(True)
+            self._configure_custom_window()
+
+        self.after_idle(restore)
+
+    def _show_configured_window(self):
+        """
+        Displays the finished application window in its maximized size.
+
+        The taskbar entry and icon are prepared while the window is hidden.
+        They are checked again after it becomes visible because Windows creates
+        the final taskbar entry at that point.
+        """
+        self.update_idletasks()
+        self._apply_windows_icons()
+        self._configure_custom_window()
+        self.deiconify()
+        self.update_idletasks()
+        if not self._window_maximized:
+            self._toggle_maximize_window()
+        self._configure_custom_window()
+        self._apply_windows_icons()
+        self.lift()
+
+    def _configure_custom_window(self):
+        """
+        Tells Windows to show Model Deepener as a normal taskbar application.
+
+        The tool hides the standard Windows frame because it draws its own top
+        row. These Windows settings make sure the open tool still receives its
+        own entry in the taskbar.
+        """
+        try:
+            import ctypes
+            # This is the hidden Windows wrapper around the visible Tk window.
+            hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
+            # These values remove the "small utility window" marker and add
+            # the "normal application" marker used by the Windows taskbar.
+            gwl_exstyle = -20
+            ws_ex_toolwindow = 0x00000080
+            ws_ex_appwindow = 0x00040000
+            style = ctypes.windll.user32.GetWindowLongW(hwnd, gwl_exstyle)
+            style = (style & ~ws_ex_toolwindow) | ws_ex_appwindow
+            ctypes.windll.user32.SetWindowLongW(hwnd, gwl_exstyle, style)
+            # Windows refreshes only the window type. Size, position, and the
+            # order among other open windows stay unchanged.
+            swp_no_size = 0x0001
+            swp_no_move = 0x0002
+            swp_no_zorder = 0x0004
+            swp_frame_changed = 0x0020
+            ctypes.windll.user32.SetWindowPos(
+                hwnd,
+                None,
+                0,
+                0,
+                0,
+                0,
+                swp_no_size | swp_no_move | swp_no_zorder | swp_frame_changed,
+            )
+        except (AttributeError, OSError):
+            pass
+
     def _build_layout(self):
+        """
+        Places the main visible sections inside the application window.
+
+        From top to bottom these are the tool's own top row, the navigation
+        header, and the workspace containing the sidebar and page content.
+        """
         self.grid_columnconfigure(0, weight=1)
-        self.grid_rowconfigure(1, weight=1)
+        self.grid_rowconfigure(2, weight=1)
+
+        self._build_custom_title_bar()
 
         self.header = ctk.CTkFrame(
             self,
@@ -204,7 +483,7 @@ class ModelDeepenerApp(ctk.CTk):
             corner_radius=0,
             height=82,
         )
-        self.header.grid(row=0, column=0, sticky="ew")
+        self.header.grid(row=1, column=0, sticky="ew")
         self.header.grid_propagate(False)
         self.header.grid_columnconfigure(3, weight=1)
 
@@ -260,7 +539,7 @@ class ModelDeepenerApp(ctk.CTk):
             fg_color=self.colors["app_bg"],
             corner_radius=0,
         )
-        self.shell.grid(row=1, column=0, sticky="nsew")
+        self.shell.grid(row=2, column=0, sticky="nsew")
         self.shell.grid_columnconfigure(1, weight=1)
         self.shell.grid_rowconfigure(0, weight=1)
 
@@ -328,12 +607,8 @@ class ModelDeepenerApp(ctk.CTk):
         loaded separately.
         """
         gui_dir = os.path.dirname(__file__)
-        logo_candidates = [
-            os.path.join(gui_dir, "md_logo_full.png"),
-            os.path.join(gui_dir, "assets", "logo.png"),
-        ]
-        logo_path = next((path for path in logo_candidates if os.path.exists(path)), None)
-        if logo_path is None:
+        logo_path = os.path.join(gui_dir, "Logo und Name (+ Kontur).png")
+        if not os.path.exists(logo_path):
             return
         try:
             source_image = Image.open(logo_path)
@@ -351,23 +626,27 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _apply_windows_icons(self):
         """
-        Sets the app icon for Tk and the Windows taskbar.
+        Uses Logo + Kontur.ico as the Windows icon for Model Deepener.
 
-        Both Tk and Windows get the same icon so the taskbar does not show the
-        default Python icon.
+        An ICO is a Windows icon file that contains several display sizes. The
+        file is assigned to every icon slot so the taskbar does not show a
+        generic Python or empty application symbol.
         """
         gui_dir = os.path.dirname(__file__)
-        taskbar_icon_path = os.path.join(gui_dir, "md_app_icon.ico")
-        icon_png_path = os.path.join(gui_dir, "md_app_icon.png")
-        if not os.path.exists(taskbar_icon_path) or not os.path.exists(icon_png_path):
+        taskbar_icon_path = os.path.join(gui_dir, "Logo + Kontur.ico")
+        if not os.path.exists(taskbar_icon_path):
             return
         try:
             import ctypes
             self.update_idletasks()
             try:
+                # The outer Windows handle owns the taskbar entry. The visible
+                # Tk handle is used only if that outer handle is unavailable.
                 hwnd = int(self.frame(), 0)
             except (tk.TclError, TypeError, ValueError):
                 hwnd = self.winfo_id()
+            # These values tell Windows to load an icon file and assign it to
+            # every icon size it may request for the open application.
             image_icon = 1
             lr_load_from_file = 0x00000010
             wm_seticon = 0x0080
@@ -391,9 +670,9 @@ class ModelDeepenerApp(ctk.CTk):
                 ctypes.c_void_p,
                 ctypes.c_void_p,
             ]
+            # Tk receives the icon first; Windows then receives the same file
+            # for its large and small taskbar representations.
             self.iconbitmap(taskbar_icon_path)
-            self.window_icon = tk.PhotoImage(file=icon_png_path)
-            self.iconphoto(True, self.window_icon)
             taskbar_icon = user32.LoadImageW(None, taskbar_icon_path, image_icon, 0, 0, lr_load_from_file)
             if taskbar_icon:
                 user32.SendMessageW(hwnd, wm_seticon, icon_big, taskbar_icon)
@@ -4950,9 +5229,6 @@ class ModelDeepenerApp(ctk.CTk):
         self._highlight_models_canvas_row(index)
         self._render_overview_details(loaded)
 
-    def _show_model_overview_detail_from_table(self, index: int):
-        self._select_model_from_overview_index(index)
-
     def _highlight_models_canvas_row(self, index: int):
         for row_items in getattr(self, "_models_canvas_rows", {}).values():
             for item in row_items:
@@ -5352,6 +5628,7 @@ class ModelDeepenerApp(ctk.CTk):
 
 
 def run():
+    """Starts Model Deepener and keeps its interface active until it is closed."""
     ModelDeepenerApp._set_windows_app_id()
     app = ModelDeepenerApp()
     app.mainloop()

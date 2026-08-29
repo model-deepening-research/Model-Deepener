@@ -1,6 +1,6 @@
 import os.path
 
-from fmmlx_mlm_structure.fm_multi_level_model import FmmlxModel
+from src.fmmlx_mlm_structure.fm_multi_level_model import FmmlxModel
 from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
 
 #pa_tester = PrecedenceAnalysisTester(variant=2,

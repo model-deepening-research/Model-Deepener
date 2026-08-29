@@ -1,4 +1,4 @@
-from fmmlx_mlm_structure.model_element import ModelElement
+from src.fmmlx_mlm_structure.model_element import ModelElement
 
 
 class ChangeSuggestion:
@@ -14,4 +14,3 @@ class ChangeSuggestion:
 
     def get_changed_model_element(self) -> ModelElement:
         return self.changed_model_element
-

@@ -1,6 +1,6 @@
 from abc import ABCMeta
 
-from fmmlx_mlm_structure.model_element import ModelElement
+from src.fmmlx_mlm_structure.model_element import ModelElement
 
 
 class ModelEntity(ModelElement, metaclass=ABCMeta):
