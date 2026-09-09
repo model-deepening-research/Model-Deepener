@@ -5723,6 +5723,33 @@ class ModelDeepenerApp(ctk.CTk):
     def _model_last_action_label(loaded: LoadedModel) -> str:
         return loaded.last_action or "Imported"
 
+    def _select_model_from_overview_index(self, index: int):
+        self._highlight_models_canvas_row(index)
+        loaded = self.loaded_models[index]
+        self.current_model = loaded.model
+        self.current_file_path = loaded.source_path
+        self.current_file_type = loaded.file_type
+        self.current_selected_columns = list(loaded.selected_columns)
+        self.last_action_label = loaded.last_action or "Imported"
+        self._touch_loaded_model(loaded.model)
+        self._populate_models_table()
+        self._highlight_models_canvas_row(index)
+        self._render_overview_details(loaded)
+
+    def _highlight_models_canvas_row(self, index: int):
+        for row_items in getattr(self, "_models_canvas_rows", {}).values():
+            for item in row_items:
+                try:
+                    self.models_canvas.itemconfigure(item, width=1)
+                except tk.TclError:
+                    pass
+        for item in getattr(self, "_models_canvas_rows", {}).get(index, []):
+            try:
+                if self.models_canvas.type(item) == "rectangle":
+                    self.models_canvas.itemconfigure(item, outline="#AFCBFF", width=2)
+            except tk.TclError:
+                pass
+
     def _bind_models_scroll_events(self, _event=None):
         self.bind_all("<MouseWheel>", self._on_models_mousewheel)
 
