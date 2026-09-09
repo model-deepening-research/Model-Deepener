@@ -185,28 +185,39 @@ class FmmlxObject(ModelEntity):
             attr.set_inst_level_to_proposed()
 
     def export(self, root):
+        """
+        Adds this object's classes, attributes, slots, and rules to the XML.
+
+        A slot keeps its saved name even if its attribute could not be resolved
+        during import, so the original slot does not make the export fail.
+        Starting diagram coordinates are replaced by the later layout step.
+        MetaClass elements become classes; other elements become instances.
+        Association ends and slot links are exported by their relationship
+        commands instead of being duplicated as attributes or ordinary slots.
+        Empty slot expressions are omitted because XModeler cannot parse them.
+        """
         projectName = root.attrib['path']
         diagrams = root.find('Diagrams')
         diagram = diagrams.find('Diagram')
         instances = diagram.find('Instances')
-        # TODO good placement
-        instance = ElementTree.SubElement(instances, 'Instance', hidden='false', path=projectName + "::" + self.name,
-                                          xCoordinate='0', yCoordinate='0')
+        ElementTree.SubElement(instances, 'Instance', hidden='false', path=projectName + "::" + self.name,
+                               xCoordinate='0', yCoordinate='0')
 
         model = root.find('Model')
 
-        if self.class_of_object == None or self.class_of_object.name == 'MetaClass':
-            metaClass = ElementTree.SubElement(model, 'addMetaClass', abstract='false', level=str(self.level),
-                                               maxLevel=str(self.level), name=self.name, package=projectName,
-                                               singleton='false')
+        if self.class_of_object is None or self.class_of_object.name == 'MetaClass':
+            ElementTree.SubElement(model, 'addMetaClass', abstract='false', level=str(self.level),
+                                   maxLevel=str(self.level), name=self.name, package=projectName,
+                                   singleton='false')
         else:
-            # adapt ofname to new projectName
-            ofName = projectName + "::" + self.class_of_object.full_name.split("::")[2]
-            instance = ElementTree.SubElement(model, 'addInstance', abstract='false', level=str(self.level),
-                                              maxLevel=str(self.level), name=self.name, of=ofName, package=projectName,
-                                              singleton='false')
+            class_path = projectName + "::" + self.class_of_object.full_name.split("::")[2]
+            ElementTree.SubElement(model, 'addInstance', abstract='false', level=str(self.level),
+                                   maxLevel=str(self.level), name=self.name, of=class_path,
+                                   package=projectName, singleton='false')
 
         for attr in self.attr_list:
+            if attr.attr_category == "ASSOC-END":
+                continue
             attribute = ElementTree.SubElement(model, 'addAttribute', level=str(attr.inst_level),
                                                multiplicity='Seq{1,1,true,false}', name=attr.name,
                                                package=projectName, type=attr.attr_type)
@@ -214,26 +225,28 @@ class FmmlxObject(ModelEntity):
             attribute.set('class', projectName + "::" + self.name)
 
         for slot in self.slot_list:
-            # Beim Schreiben in XML muss jeder Wert als Text übergeben werden.
-            slot = ElementTree.SubElement(model, 'changeSlotValue', package=projectName,
-                                          slotName=slot.attribute.name, valueToBeParsed=str(slot.value))
+            if slot.slot_category == "SLOT-LINK":
+                continue
+            if slot.value == "":
+                continue
+            slot_element = ElementTree.SubElement(model, 'changeSlotValue', package=projectName,
+                                                  slotName=slot.name, valueToBeParsed=slot.value_for_xml())
             # this attr has to be set separetly because of the keyword class and cannot be used in the prior operation
-            slot.set('class', projectName + self.name)
+            slot_element.set('class', projectName + "::" + self.name)
 
         for constraint in self.constraints_list:
-            constraint = ElementTree.SubElement(model, 'addConstraint', body='true',
-                                                constName=constraint.constraint_name,
-                                                instLevel=str(constraint.inst_level), package=projectName,
-                                                reason='"This constraint fails"')
-            constraint.set('class', projectName + "::" + self.name)
+            ElementTree.SubElement(
+                model,
+                'addConstraint',
+                **constraint.attributes_for_xml(projectName, self.name),
+            )
 
         for operation in self.operations_list:
-            operation = ElementTree.SubElement(model, 'addOperation',
-                                               body='@Operation ' + operation.operation_name + ' [monitor=false,delToClassAllowed=false]():XCore::' + operation.return_type + ' null end',
-                                               level=str(operation.inst_level), monitored='false',
-                                               name=operation.operation_name, package=projectName, paramNames='',
-                                               paramTypes='', type=operation.return_type)
-            operation.set('class', projectName + "::" + self.name)
+            ElementTree.SubElement(
+                model,
+                'addOperation',
+                **operation.attributes_for_xml(projectName, self.name),
+            )
 
         for parent in self.parent_classes:
             parent = ElementTree.SubElement(model, 'changeParent', new=projectName + "::" + parent.name, old="",

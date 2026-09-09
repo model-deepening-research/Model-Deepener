@@ -91,8 +91,10 @@ class ModelDeepenerApp(ctk.CTk):
 
     def __init__(self):
         """
-        Prepares the main window and all data needed by the interface.
+        Builds the application window and initializes its complete GUI state.
 
+        Native minimization is tracked until Windows restores the window, and
+        closing is guarded so the shutdown procedure cannot run twice.
         The window stays hidden while its layout, taskbar entry, and icon are
         prepared. It is shown in a maximized state when setup is complete.
         """
@@ -104,7 +106,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         self.title("Model Deepener")
         self.geometry("1500x900")
-        self.minsize(1220, 760)
+        self.minsize(800, 500)
         # The standard Windows frame is hidden because the tool draws its own
         # top row with its logo and window-control buttons.
         self.overrideredirect(True)
@@ -151,9 +153,9 @@ class ModelDeepenerApp(ctk.CTk):
         self.titlebar_logo_image = None
         # These values remember how the user moves and resizes the window.
         self._window_drag_offset = (0, 0)
-        self._window_restore_geometry = None
         self._window_maximized = False
         self._window_restore_binding_id = None
+        self._window_is_minimized = False
         # This flag prevents the close procedure from running twice.
         self._is_closing = False
         self._detail_load_token = 0
@@ -301,6 +303,45 @@ class ModelDeepenerApp(ctk.CTk):
         offset_x, offset_y = self._window_drag_offset
         self.geometry(f"+{event.x_root - offset_x}+{event.y_root - offset_y}")
 
+    def _current_monitor_work_area(self):
+        """
+        Returns the usable size and position of the window's current monitor.
+
+        The returned area leaves out space occupied by the Windows taskbar.
+        It is used to size the window correctly on different screens.
+        """
+        import ctypes
+        from ctypes import wintypes
+
+        class MonitorInfo(ctypes.Structure):
+            """Stores the full and usable monitor areas reported by Windows."""
+
+            _fields_ = [
+                ("cbSize", wintypes.DWORD),
+                ("rcMonitor", wintypes.RECT),
+                ("rcWork", wintypes.RECT),
+                ("dwFlags", wintypes.DWORD),
+            ]
+
+        # Windows identifies each open window by a number called a handle.
+        # The handle lets the tool ask which monitor contains this window.
+        hwnd = int(self.frame(), 0)
+        monitor_default_to_nearest = 2
+        monitor = ctypes.windll.user32.MonitorFromWindow(hwnd, monitor_default_to_nearest)
+        monitor_info = MonitorInfo()
+        monitor_info.cbSize = ctypes.sizeof(MonitorInfo)
+        if not ctypes.windll.user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
+            raise OSError("Could not determine the monitor work area")
+
+        work_area = monitor_info.rcWork
+        return (
+            hwnd,
+            work_area.left,
+            work_area.top,
+            work_area.right - work_area.left,
+            work_area.bottom - work_area.top,
+        )
+
     def _toggle_maximize_window(self):
         """
         Switches between the maximized and normal window sizes.
@@ -309,69 +350,102 @@ class ModelDeepenerApp(ctk.CTk):
         the window fits different screens and leaves the Windows taskbar free.
         """
         if self._window_maximized:
-            if self._window_restore_geometry:
-                tk.Tk.geometry(self, self._window_restore_geometry)
-            self._window_maximized = False
+            self._shrink_window()
             return
 
-        self._window_restore_geometry = tk.Tk.geometry(self)
         try:
             import ctypes
-            from ctypes import wintypes
-
-            class MonitorInfo(ctypes.Structure):
-                """Stores the full and usable monitor areas reported by Windows."""
-
-                _fields_ = [
-                    ("cbSize", wintypes.DWORD),
-                    ("rcMonitor", wintypes.RECT),
-                    ("rcWork", wintypes.RECT),
-                    ("dwFlags", wintypes.DWORD),
-                ]
-
-            # Windows identifies each open window by a number called a handle.
-            # The handle lets the tool ask which monitor contains this window.
-            hwnd = int(self.frame(), 0)
-            monitor_default_to_nearest = 2
-            monitor = ctypes.windll.user32.MonitorFromWindow(hwnd, monitor_default_to_nearest)
-            monitor_info = MonitorInfo()
-            monitor_info.cbSize = ctypes.sizeof(MonitorInfo)
-            if not ctypes.windll.user32.GetMonitorInfoW(monitor, ctypes.byref(monitor_info)):
-                raise OSError("Could not determine the monitor work area")
-
-            # The work area is the part of the monitor not occupied by the
-            # taskbar. The window fills exactly this area.
-            work_area = monitor_info.rcWork
-            width = work_area.right - work_area.left
-            height = work_area.bottom - work_area.top
-            swp_no_zorder = 0x0004
-            swp_show_window = 0x0040
+            hwnd, left, top, width, height = self._current_monitor_work_area()
+            keep_window_order = 0x0004
+            show_window = 0x0040
             ctypes.windll.user32.SetWindowPos(
                 hwnd,
                 None,
-                work_area.left,
-                work_area.top,
+                left,
+                top,
                 width,
                 height,
-                swp_no_zorder | swp_show_window,
+                keep_window_order | show_window,
             )
             self._window_maximized = True
         except (AttributeError, OSError):
             # Tk's normal maximize mode is used if Windows cannot provide the
             # monitor information.
             self.state("zoomed")
+            self._window_maximized = True
 
     def _minimize_window(self):
-        """Minimizes the application and keeps it available in the taskbar."""
-        self.overrideredirect(False)
-        self.iconify()
-        # The Map event occurs when the minimized window becomes visible again.
+        """
+        Hides the application window and keeps it available in the taskbar.
+
+        Restoring the minimized window turns the tool's own top row back on,
+        because Windows temporarily needs its standard frame for minimizing.
+        """
+        self._window_is_minimized = True
         if self._window_restore_binding_id is None:
             self._window_restore_binding_id = self.bind(
                 "<Map>",
-                self._restore_custom_window,
+                self._restore_custom_window_after_minimize,
                 add="+",
             )
+        self.overrideredirect(False)
+        self.update_idletasks()
+        self.after_idle(self.iconify)
+
+    def _restore_custom_window_after_minimize(self, _event=None):
+        """Restores the custom frame after Windows leaves the minimized state."""
+        def restore_when_visible():
+            """Waits for native restoration before replacing the Windows frame."""
+            if not self._window_is_minimized or self.state() == "iconic":
+                return
+            self._window_is_minimized = False
+            if self._window_restore_binding_id is not None:
+                self.unbind("<Map>", self._window_restore_binding_id)
+                self._window_restore_binding_id = None
+            self.overrideredirect(True)
+            self._configure_custom_window()
+
+        self.after(100, restore_when_visible)
+
+    def _shrink_window(self):
+        """
+        Reduces the window to 60 percent and centers it on its current monitor.
+
+        The available area excludes the Windows taskbar, so the smaller window
+        remains fully visible on laptops and external monitors.
+        """
+        self.state("normal")
+        try:
+            import ctypes
+            hwnd, left, top, width, height = self._current_monitor_work_area()
+            target_width = round(width * 0.60)
+            target_height = round(height * 0.60)
+            target_left = left + ((width - target_width) // 2)
+            target_top = top + ((height - target_height) // 2)
+            keep_window_order = 0x0004
+            show_window = 0x0040
+            ctypes.windll.user32.SetWindowPos(
+                hwnd,
+                None,
+                target_left,
+                target_top,
+                target_width,
+                target_height,
+                keep_window_order | show_window,
+            )
+            self._window_maximized = False
+        except (AttributeError, OSError):
+            screen_width = self.winfo_screenwidth()
+            screen_height = self.winfo_screenheight()
+            target_width = round(screen_width * 0.60)
+            target_height = round(screen_height * 0.60)
+            target_left = (screen_width - target_width) // 2
+            target_top = (screen_height - target_height) // 2
+            tk.Tk.geometry(
+                self,
+                f"{target_width}x{target_height}+{target_left}+{target_top}",
+            )
+            self._window_maximized = False
 
     def _close_application(self):
         """
@@ -394,19 +468,6 @@ class ModelDeepenerApp(ctk.CTk):
             pass
         self.quit()
         self.destroy()
-
-    def _restore_custom_window(self, _event=None):
-        """Restores the tool's own top row after the window was minimized."""
-        if self._window_restore_binding_id is not None:
-            self.unbind("<Map>", self._window_restore_binding_id)
-            self._window_restore_binding_id = None
-
-        def restore():
-            """Shows the tool's own top row when the window becomes visible again."""
-            self.overrideredirect(True)
-            self._configure_custom_window()
-
-        self.after_idle(restore)
 
     def _show_configured_window(self):
         """
@@ -1478,7 +1539,7 @@ class ModelDeepenerApp(ctk.CTk):
         )
 
         self._populate_model_tree(model)
-        self._render_model_structure_overview(model)
+        self._show_model_overview_load_options(model)
 
     def _bind_detail_scroll_events(self, _event=None):
         """
@@ -1666,9 +1727,19 @@ class ModelDeepenerApp(ctk.CTk):
             messagebox.showerror("Export Model", "Only CSV and XML models can be exported.")
 
     def _export_current_xml_model(self):
+        """
+        Saves the currently loaded model as a newly generated XML file.
+
+        The model's existing project path is kept so classes, slots, links,
+        and diagram references continue to point to the correct elements.
+        """
         if not self.current_file_path or not os.path.exists(self.current_file_path):
             messagebox.showerror("Export Model", "The source XML file is missing.")
             return
+        export_options = self._ask_instances_per_class()
+        if export_options is None:
+            return
+        instances_per_class, diagram_mode = export_options
         source_name = os.path.basename(self.current_file_path)
         target_path = filedialog.asksaveasfilename(
             title="Export Model",
@@ -1679,14 +1750,373 @@ class ModelDeepenerApp(ctk.CTk):
         if not target_path:
             return
         try:
-            shutil.copyfile(self.current_file_path, target_path)
-            os.utime(target_path, None)
-        except OSError as exc:
+            self.current_model.export_xml(
+                target_path,
+                project_name=self.current_model.path_name,
+                max_instances_per_class=instances_per_class,
+                diagram_mode=diagram_mode,
+            )
+        except (AttributeError, OSError, TypeError, ValueError) as exc:
             messagebox.showerror("Export Model", f"Could not export XML: {exc}")
             return
         messagebox.showinfo("Export Model", f"Model exported to:\n{target_path}")
 
+    def _ask_instances_per_class(self):
+        """
+        Shows the instance-limit question in the same style as the main tool.
+
+        The dialog accepts whole numbers from zero upward. Closing it or using
+        Cancel returns no value and stops the export without creating a file.
+        The completed dialog is centered inside the current application window.
+        """
+        result = {"value": None}
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Export Model")
+        dialog.geometry("500x410")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.configure(fg_color=self.colors["app_bg"])
+        dialog.grid_columnconfigure(0, weight=1)
+        self._apply_logo_to_export_dialog(dialog)
+
+        ctk.CTkLabel(
+            dialog,
+            text="Export Model",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+        ).grid(row=0, column=0, sticky="ew", padx=28, pady=(26, 8))
+        ctk.CTkLabel(
+            dialog,
+            text="Choose the diagram type and how many Level 0 instances\nshould be exported per class.",
+            anchor="w",
+            justify="left",
+            text_color=self.colors["muted"],
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+        ).grid(row=1, column=0, sticky="ew", padx=28, pady=(0, 14))
+
+        ctk.CTkLabel(
+            dialog,
+            text="Diagram type",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        ).grid(row=2, column=0, sticky="ew", padx=28, pady=(0, 6))
+        diagram_var = tk.StringVar(value="both")
+        diagram_row = ctk.CTkFrame(dialog, fg_color="transparent")
+        diagram_row.grid(row=3, column=0, sticky="ew", padx=28)
+        diagram_row.grid_columnconfigure((0, 1, 2), weight=1)
+        diagram_buttons = {}
+
+        def select_diagram_mode(value):
+            """Highlights the diagram type that will be included in the XML."""
+            diagram_var.set(value)
+            for button_value, button in diagram_buttons.items():
+                selected = button_value == value
+                button.configure(
+                    fg_color=self.colors["primary"] if selected else "#FFFFFF",
+                    hover_color=self.colors["primary_hover"] if selected else self.colors["surface_alt"],
+                    text_color="#FFFFFF" if selected else self.colors["text"],
+                    border_color=self.colors["primary"] if selected else self.colors["border"],
+                )
+
+        for column, (label, value) in enumerate((("FMMLx", "fmmlx"), ("UML++", "uml"), ("Both", "both"))):
+            button = ctk.CTkButton(
+                diagram_row, text=label, height=40, corner_radius=8, border_width=1,
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                command=lambda selected_value=value: select_diagram_mode(selected_value),
+            )
+            button.grid(row=0, column=column, sticky="ew", padx=4)
+            diagram_buttons[value] = button
+        select_diagram_mode("both")
+
+        ctk.CTkLabel(
+            dialog,
+            text="Instances per class (0 exports classes only)",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        ).grid(row=4, column=0, sticky="ew", padx=28, pady=(18, 6))
+        value_var = tk.StringVar(value="0")
+        value_entry = ctk.CTkEntry(
+            dialog,
+            textvariable=value_var,
+            height=42,
+            corner_radius=8,
+            border_color=self.colors["border"],
+            fg_color="#FFFFFF",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+        )
+        value_entry.grid(row=5, column=0, sticky="ew", padx=28)
+        error_label = ctk.CTkLabel(
+            dialog,
+            text="",
+            anchor="w",
+            text_color="#dc2626",
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+        )
+        error_label.grid(row=6, column=0, sticky="ew", padx=28, pady=(4, 0))
+
+        button_row = ctk.CTkFrame(dialog, fg_color="transparent")
+        button_row.grid(row=7, column=0, sticky="e", padx=28, pady=(14, 24))
+
+        def confirm():
+            """Accepts the entry only when it is a whole number of zero or more."""
+            try:
+                value = int(value_var.get().strip())
+            except ValueError:
+                error_label.configure(text="Please enter a whole number.")
+                return
+            if value < 0:
+                error_label.configure(text="The number cannot be negative.")
+                return
+            result["value"] = value, diagram_var.get()
+            dialog.destroy()
+
+        ctk.CTkButton(
+            button_row,
+            text="Cancel",
+            width=105,
+            height=38,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color=self.colors["surface_alt"],
+            border_width=1,
+            border_color=self.colors["border"],
+            text_color=self.colors["text"],
+            command=dialog.destroy,
+        ).grid(row=0, column=0, padx=(0, 10))
+        ctk.CTkButton(
+            button_row,
+            text="Continue",
+            width=115,
+            height=38,
+            corner_radius=8,
+            fg_color=self.colors["primary"],
+            hover_color=self.colors["primary_hover"],
+            text_color="#FFFFFF",
+            command=confirm,
+        ).grid(row=0, column=1)
+
+        dialog.bind("<Return>", lambda _event: confirm())
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.update_idletasks()
+        dialog_left = self.winfo_rootx() + max(0, (self.winfo_width() - 500) // 2)
+        dialog_top = self.winfo_rooty() + max(0, (self.winfo_height() - 410) // 2)
+        dialog.geometry(f"500x410+{dialog_left}+{dialog_top}")
+        dialog.after(100, value_entry.focus_set)
+        self.wait_window(dialog)
+        return result["value"]
+
+    def _apply_logo_to_export_dialog(self, dialog):
+        """Uses Logo.png after CustomTkinter has finished creating a dialog."""
+        logo_path = os.path.join(os.path.dirname(__file__), "Logo.png")
+        if not os.path.exists(logo_path):
+            return
+        try:
+            dialog.logo_icon_image = tk.PhotoImage(file=logo_path)
+            dialog.iconphoto(False, dialog.logo_icon_image)
+            dialog.after(
+                300,
+                lambda: dialog.iconphoto(False, dialog.logo_icon_image)
+                if dialog.winfo_exists() else None,
+            )
+        except tk.TclError:
+            dialog.logo_icon_image = None
+
+    def _ask_csv_export_options(self):
+        """
+        Asks for the CSV model's target format and number of instances.
+
+        CSV keeps the selected columns and limits its data rows. XML uses the
+        same complete model exporter as an imported XML model. Zero produces
+        either a header-only CSV or an XML containing only its model class.
+        The completed dialog is centered inside the current tool window.
+        """
+        result = {"value": None}
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Export Model")
+        dialog.geometry("500x500")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grab_set()
+        dialog.configure(fg_color=self.colors["app_bg"])
+        dialog.grid_columnconfigure(0, weight=1)
+        self._apply_logo_to_export_dialog(dialog)
+
+        ctk.CTkLabel(
+            dialog,
+            text="Export Model",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=20, weight="bold"),
+        ).grid(row=0, column=0, sticky="ew", padx=28, pady=(26, 8))
+        ctk.CTkLabel(
+            dialog,
+            text="Choose the file format and the maximum number of Level 0\ninstances exported from the CSV model.",
+            anchor="w",
+            justify="left",
+            text_color=self.colors["muted"],
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+        ).grid(row=1, column=0, sticky="ew", padx=28, pady=(0, 18))
+
+        ctk.CTkLabel(
+            dialog,
+            text="File format",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        ).grid(row=2, column=0, sticky="ew", padx=28, pady=(0, 6))
+        format_var = tk.StringVar(value="CSV")
+        format_row = ctk.CTkFrame(dialog, fg_color="transparent")
+        format_row.grid(row=3, column=0, sticky="ew", padx=28)
+        format_row.grid_columnconfigure((0, 1), weight=1)
+        format_buttons = {}
+
+        def select_format(value):
+            """Highlights the selected format with readable white text."""
+            format_var.set(value)
+            for button_value, button in format_buttons.items():
+                selected = button_value == value
+                button.configure(
+                    fg_color=self.colors["primary"] if selected else "#FFFFFF",
+                    hover_color=self.colors["primary_hover"] if selected else self.colors["surface_alt"],
+                    text_color="#FFFFFF" if selected else self.colors["text"],
+                    border_color=self.colors["primary"] if selected else self.colors["border"],
+                )
+
+        for column, value in enumerate(("CSV", "XML")):
+            button = ctk.CTkButton(
+                format_row,
+                text=value,
+                height=42,
+                corner_radius=8,
+                border_width=1,
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                command=lambda selected_value=value: select_format(selected_value),
+            )
+            button.grid(row=0, column=column, sticky="ew", padx=(0, 4) if column == 0 else (4, 0))
+            format_buttons[value] = button
+        select_format("CSV")
+
+        ctk.CTkLabel(
+            dialog,
+            text="XML diagram type",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        ).grid(row=4, column=0, sticky="ew", padx=28, pady=(18, 6))
+        diagram_var = tk.StringVar(value="both")
+        diagram_row = ctk.CTkFrame(dialog, fg_color="transparent")
+        diagram_row.grid(row=5, column=0, sticky="ew", padx=28)
+        diagram_row.grid_columnconfigure((0, 1, 2), weight=1)
+        diagram_buttons = {}
+
+        def select_diagram_mode(value):
+            """Highlights the diagram type used when XML is selected."""
+            diagram_var.set(value)
+            for button_value, button in diagram_buttons.items():
+                selected = button_value == value
+                button.configure(
+                    fg_color=self.colors["primary"] if selected else "#FFFFFF",
+                    hover_color=self.colors["primary_hover"] if selected else self.colors["surface_alt"],
+                    text_color="#FFFFFF" if selected else self.colors["text"],
+                    border_color=self.colors["primary"] if selected else self.colors["border"],
+                )
+
+        for column, (label, value) in enumerate((("FMMLx", "fmmlx"), ("UML++", "uml"), ("Both", "both"))):
+            button = ctk.CTkButton(
+                diagram_row, text=label, height=40, corner_radius=8, border_width=1,
+                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                command=lambda selected_value=value: select_diagram_mode(selected_value),
+            )
+            button.grid(row=0, column=column, sticky="ew", padx=4)
+            diagram_buttons[value] = button
+        select_diagram_mode("both")
+
+        ctk.CTkLabel(
+            dialog,
+            text="Instances per class",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+        ).grid(row=6, column=0, sticky="ew", padx=28, pady=(18, 6))
+        value_var = tk.StringVar(value="0")
+        value_entry = ctk.CTkEntry(
+            dialog,
+            textvariable=value_var,
+            height=42,
+            corner_radius=8,
+            border_color=self.colors["border"],
+            fg_color="#FFFFFF",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=14),
+        )
+        value_entry.grid(row=7, column=0, sticky="ew", padx=28)
+        error_label = ctk.CTkLabel(
+            dialog,
+            text="",
+            anchor="w",
+            text_color=self.colors["danger"],
+            font=ctk.CTkFont(family="Segoe UI", size=12),
+        )
+        error_label.grid(row=8, column=0, sticky="ew", padx=28, pady=(4, 0))
+
+        button_row = ctk.CTkFrame(dialog, fg_color="transparent")
+        button_row.grid(row=9, column=0, sticky="e", padx=28, pady=(12, 24))
+
+        def confirm():
+            """Accepts a supported format and a non-negative whole number."""
+            try:
+                instance_limit = int(value_var.get().strip())
+            except ValueError:
+                error_label.configure(text="Please enter a whole number.")
+                return
+            if instance_limit < 0:
+                error_label.configure(text="The number cannot be negative.")
+                return
+            result["value"] = format_var.get(), instance_limit, diagram_var.get()
+            dialog.destroy()
+
+        ctk.CTkButton(
+            button_row,
+            text="Cancel",
+            width=105,
+            height=38,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color=self.colors["surface_alt"],
+            border_width=1,
+            border_color=self.colors["border"],
+            text_color=self.colors["text"],
+            command=dialog.destroy,
+        ).grid(row=0, column=0, padx=(0, 10))
+        ctk.CTkButton(
+            button_row,
+            text="Continue",
+            width=115,
+            height=38,
+            corner_radius=8,
+            fg_color=self.colors["primary"],
+            hover_color=self.colors["primary_hover"],
+            text_color="#FFFFFF",
+            command=confirm,
+        ).grid(row=0, column=1)
+
+        dialog.bind("<Return>", lambda _event: confirm())
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        dialog.update_idletasks()
+        dialog_left = self.winfo_rootx() + max(0, (self.winfo_width() - 500) // 2)
+        dialog_top = self.winfo_rooty() + max(0, (self.winfo_height() - 500) // 2)
+        dialog.geometry(f"500x500+{dialog_left}+{dialog_top}")
+        dialog.after(100, value_entry.focus_set)
+        self.wait_window(dialog)
+        return result["value"]
+
     def _export_current_csv_model(self):
+        """Exports an imported CSV model as a limited CSV or XML document."""
         if not self.current_file_path or not os.path.exists(self.current_file_path):
             messagebox.showerror("Export Model", "The source CSV file is missing.")
             return
@@ -1698,23 +2128,43 @@ class ModelDeepenerApp(ctk.CTk):
         if not selected_columns:
             messagebox.showerror("Export Model", "No CSV columns were selected.")
             return
-        source_name = os.path.basename(self.current_file_path)
+        export_options = self._ask_csv_export_options()
+        if export_options is None:
+            return
+        export_format, instances_per_class, diagram_mode = export_options
+        extension = export_format.lower()
+        source_name = os.path.splitext(os.path.basename(self.current_file_path))[0] + f".{extension}"
         target_path = filedialog.asksaveasfilename(
             title="Export Model",
             initialfile=source_name,
-            defaultextension=".csv",
-            filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+            defaultextension=f".{extension}",
+            filetypes=[(f"{export_format} files", f"*.{extension}"), ("All files", "*.*")],
         )
         if not target_path:
             return
         try:
-            self._write_selected_csv_columns(self.current_file_path, target_path, selected_columns)
-        except (OSError, csv.Error, ValueError) as exc:
-            messagebox.showerror("Export Model", f"Could not export CSV: {exc}")
+            if export_format == "XML":
+                self.current_model.export_xml(
+                    target_path,
+                    project_name=self.current_model.path_name,
+                    max_instances_per_class=instances_per_class,
+                    diagram_mode=diagram_mode,
+                )
+            else:
+                self._write_selected_csv_columns(
+                    self.current_file_path,
+                    target_path,
+                    selected_columns,
+                    max_instances=instances_per_class,
+                )
+        except (AttributeError, OSError, TypeError, csv.Error, ValueError) as exc:
+            messagebox.showerror("Export Model", f"Could not export {export_format}: {exc}")
             return
         messagebox.showinfo("Export Model", f"Model exported to:\n{target_path}")
 
-    def _write_selected_csv_columns(self, source_path: str, target_path: str, selected_columns: List[str]):
+    def _write_selected_csv_columns(self, source_path: str, target_path: str,
+                                    selected_columns: List[str], max_instances: Optional[int] = None):
+        """Writes selected columns and at most the requested number of data rows."""
         with open(source_path, "r", newline="", encoding="utf-8-sig") as source_file:
             dialect = self._detect_csv_dialect(source_file)
             reader = csv.reader(source_file, dialect, skipinitialspace=True)
@@ -1733,7 +2183,8 @@ class ModelDeepenerApp(ctk.CTk):
             raise ValueError(f"Selected columns were not found: {missing_columns}")
         with open(target_path, "w", newline="", encoding="utf-8-sig") as target_file:
             writer = csv.writer(target_file, dialect)
-            for row in rows:
+            rows_to_write = rows if max_instances is None else rows[:max_instances + 1]
+            for row in rows_to_write:
                 writer.writerow([
                     row[index] if index < len(row) else ""
                     for index in selected_indexes
@@ -3294,25 +3745,78 @@ class ModelDeepenerApp(ctk.CTk):
             self.tree_item_payload[level_id] = None
             self.tree_item_view[level_id] = "group"
 
-            for obj in sorted(
-                    level_objects,
-                    key=lambda item: self._natural_sort_key(item.name),
-            ):
-                obj_id = self.model_tree.insert(
-                    level_id,
-                    "end",
-                    text=obj.name,
-                    open=bool(normalized_query),
-                    tags=("object_item" if level == 0 else "class_item",),
+            sorted_objects = sorted(
+                level_objects,
+                key=lambda item: self._natural_sort_key(item.name),
+            )
+            visible_objects = sorted_objects
+            if level == 0 and not normalized_query:
+                visible_objects = sorted_objects[:100]
+            for obj in visible_objects:
+                self._insert_model_tree_object(
+                    parent_id=level_id,
+                    model=model,
+                    obj=obj,
+                    query=normalized_query,
                 )
-                self.tree_item_payload[obj_id] = obj
-                self.tree_item_view[obj_id] = "object" if level == 0 else "class"
-                self._insert_object_search_hits(obj_id, model, obj, normalized_query)
+            if len(visible_objects) < len(sorted_objects):
+                self._insert_model_tree_load_more(
+                    parent_id=level_id,
+                    model=model,
+                    objects=sorted_objects,
+                    next_index=len(visible_objects),
+                )
 
         self.model_tree.selection_remove(
             self.model_tree.selection()
         )
         self.model_tree.yview_moveto(0)
+
+    def _insert_model_tree_object(self, parent_id: str, model: FmmlxModel,
+                                  obj: FmmlxObject, query: str):
+        """Adds one class or object to the structure tree with its search hits."""
+        obj_id = self.model_tree.insert(
+            parent_id,
+            "end",
+            text=obj.name,
+            open=bool(query),
+            tags=("object_item" if obj.level == 0 else "class_item",),
+        )
+        self.tree_item_payload[obj_id] = obj
+        self.tree_item_view[obj_id] = "object" if obj.level == 0 else "class"
+        self._insert_object_search_hits(obj_id, model, obj, query)
+
+    def _insert_model_tree_load_more(self, parent_id: str, model: FmmlxModel,
+                                     objects: List[FmmlxObject], next_index: int):
+        """Adds a tree entry that loads the next 100 Level 0 objects on demand."""
+        remaining = len(objects) - next_index
+        item_id = self.model_tree.insert(
+            parent_id,
+            "end",
+            text=f"Load 100 more objects... ({remaining} remaining)",
+            tags=("enum_group",),
+        )
+        self.tree_item_payload[item_id] = (
+            "load_more_objects",
+            model,
+            objects,
+            next_index,
+            parent_id,
+        )
+        self.tree_item_view[item_id] = "load_more"
+
+    def _load_more_model_tree_objects(self, item_id: str, payload: tuple):
+        """Replaces the load-more entry with the next object batch and a new entry."""
+        _, model, objects, start_index, parent_id = payload
+        self.model_tree.delete(item_id)
+        self.tree_item_payload.pop(item_id, None)
+        self.tree_item_view.pop(item_id, None)
+        end_index = min(start_index + 100, len(objects))
+        for obj in objects[start_index:end_index]:
+            self._insert_model_tree_object(parent_id, model, obj, "")
+        if end_index < len(objects):
+            self._insert_model_tree_load_more(parent_id, model, objects, end_index)
+        self.model_tree.item(parent_id, open=True)
 
     def _object_matches_search(self, model: FmmlxModel, obj: FmmlxObject, query: str) -> bool:
         if not query:
@@ -3475,7 +3979,10 @@ class ModelDeepenerApp(ctk.CTk):
         selected_view = self.tree_item_view.get(selected[0], "")
         self._cancel_detail_loading()
 
-        if isinstance(payload, FmmlxModel):
+        if isinstance(payload, tuple) and payload and payload[0] == "load_more_objects":
+            self._load_more_model_tree_objects(selected[0], payload)
+            self._render_empty_detail_state()
+        elif isinstance(payload, FmmlxModel):
             self._start_model_overview_loading(payload)
         elif isinstance(payload, FmmlxObject):
             if selected_view == "class":
@@ -3634,7 +4141,7 @@ class ModelDeepenerApp(ctk.CTk):
         This block asks how many objects should be shown, prepares the values,
         shows progress, and draws the large object/value table in batches.
         """
-        self._render_model_structure_overview(model)
+        self._show_model_overview_load_options(model)
 
     @staticmethod
     def _attach_active_model_reference(model: FmmlxModel):

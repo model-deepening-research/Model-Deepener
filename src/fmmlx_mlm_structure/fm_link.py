@@ -1,4 +1,4 @@
-from xml.etree.ElementTree import ElementTree
+import xml.etree.ElementTree as ElementTree
 
 from src.fmmlx_mlm_structure.model_element import ModelElement
 from src.fmmlx_mlm_structure.model_connection import ModelConnection
@@ -12,10 +12,13 @@ class FmmlxLink(ModelConnection):
         self.association: FmmlxAssociation = None
 
     def export(self, root):
+        """Adds a link whose object paths match the selected export project."""
         projectName = root.attrib['path']
         model = root.find('Model')
-        addLink = ElementTree.SubElement(model, 'addLink', classSource=self.source_object.full_name,
-                                         classTarget=self.target_object.full_name, name=self.name, package=projectName)
+        addLink = ElementTree.SubElement(model, 'addLink',
+                                         classSource=projectName + "::" + self.source_object.name,
+                                         classTarget=projectName + "::" + self.target_object.name,
+                                         name=self.name, package=projectName)
         return root
 
     def get_association(self) -> FmmlxAssociation:
