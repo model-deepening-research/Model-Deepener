@@ -52,10 +52,19 @@ class FmmlxSlot(ModelProperty):
             self.attribute = attribute
             return
 
-        # Beim XML-Import wird das passende Attribut gesucht.
-        for attr in self.owner.class_of_object.get_all_attributes():
-            if attr.name == self.name:
-                self.attribute = attr
+        # Beim XML-Import wird das passende Attribut auch in den Ancestors gesucht.
+        pending = [self.owner.class_of_object]
+        visited = set()
+        while pending and self.attribute is None:
+            current = pending.pop(0)
+            if current is None or id(current) in visited:
+                continue
+            visited.add(id(current))
+            for attr in current.get_all_attributes():
+                if attr.name == self.name:
+                    self.attribute = attr
+                    return
+            pending.extend(getattr(current, "parent_classes", []))
 
     def get_attribute(self):
         return self.attribute

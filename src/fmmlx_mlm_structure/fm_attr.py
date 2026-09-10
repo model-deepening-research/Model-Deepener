@@ -4,7 +4,8 @@ from src.fmmlx_mlm_structure.model_property import ModelProperty
 
 class FmmlxAttribute(ModelProperty):
     def __init__(self, attr_name: str, attr_type: str, inst_level: int,
-                 uses_enum: bool = False, uses_domain_specific_type: bool = False):
+                 uses_enum: bool = False, uses_domain_specific_type: bool = False,
+                 multiplicity=None):
         super().__init__(name=attr_name, print_name=attr_name)
         self.attr_type = attr_type
         self.attr_type_short = attr_type.split("::")[2]
@@ -15,6 +16,7 @@ class FmmlxAttribute(ModelProperty):
         self.owner = None  # Owner of attribute is instance of FmmlxObject, not specified here to avoid circular imports
         self.slot_collectives: [] = []  # used for property precedence analysis, types may not be used (circ imports)
         self.proposed_inst_level: int = 0
+        self.multiplicity = multiplicity
 
     def set_enum_type(self, enum_type: FmmlxEnumType):
         self.attr_type_short = enum_type.name
