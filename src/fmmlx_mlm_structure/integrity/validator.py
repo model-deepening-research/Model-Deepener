@@ -1,7 +1,6 @@
 from collections import defaultdict
 from typing import List
 
-from .helpers import get_ancestors, get_descendants
 from .violations import ConstraintViolation
 
 
@@ -63,7 +62,7 @@ class BaseMLMValidator:
         for obj in self.model.mlm_objects:
             attributes = []
             seen = set()
-            for candidate in [obj, *get_ancestors(obj)]:
+            for candidate in [obj, *self._get_ancestors(obj)]:
                 for attribute in getattr(candidate, "attr_list", []):
                     marker = id(attribute)
                     if marker not in seen:
@@ -156,7 +155,7 @@ class BaseMLMValidator:
         """Check C-10: generalization and instance-of relationships must not cycle."""
         violations = []
         for obj in self.model.mlm_objects:
-            if obj in get_ancestors(obj):
+            if obj in self._get_ancestors(obj):
                 violations.append(ConstraintViolation(
                     "C-10",
                     "An object must not occur among its own ancestors",
@@ -197,18 +196,18 @@ class BaseMLMValidator:
         return violations
 
     def validate_c15_necessary_slots_provided(self) -> List[ConstraintViolation]:
-        """Check C-15: each required descendant must provide a slot for an attribute."""
+        """Check C-15: matching descendants must provide the required slots."""
         violations = []
         for owner in self.model.mlm_objects:
             for attribute in getattr(owner, "attr_list", []):
+                if self._is_association_end(attribute):
+                    continue
                 inst_level = self._as_int(getattr(attribute, "inst_level", None))
                 if inst_level is None:
                     continue
-                descendants = [
-                    descendant for descendant in get_descendants(self.model, owner)
-                    if descendant.level == inst_level
-                ]
-                for descendant in descendants:
+                for descendant in self._get_descendants(owner):
+                    if descendant.level != inst_level:
+                        continue
                     if not any(
                         self._slot_matches_attribute(slot, attribute)
                         for slot in getattr(descendant, "slot_list", [])
@@ -309,3 +308,61 @@ class BaseMLMValidator:
             slot_attribute is None
             and self._element_name(slot) == self._element_name(attribute)
         )
+
+    @staticmethod
+    def _is_association_end(attribute) -> bool:
+        """Return whether an attribute is an association end."""
+        if hasattr(attribute, "association") and hasattr(attribute, "is_source_end"):
+            return True
+        get_category = getattr(attribute, "get_attr_category", None)
+        if get_category is not None:
+            return get_category() == "ASSOC-END"
+        return getattr(attribute, "attr_category", "") == "ASSOC-END"
+
+    def _get_ancestors(self, obj):
+        """Return all generalization and instance-of ancestors of an object."""
+        ancestors = []
+        visited = set()
+        pending = list(getattr(obj, "parent_classes", []))
+        class_of_object = getattr(obj, "class_of_object", None)
+        if class_of_object is not None:
+            pending.append(class_of_object)
+
+        while pending:
+            ancestor = pending.pop(0)
+            marker = id(ancestor)
+            if ancestor is None or marker in visited:
+                continue
+            visited.add(marker)
+            ancestors.append(ancestor)
+            pending.extend(getattr(ancestor, "parent_classes", []))
+            ancestor_class = getattr(ancestor, "class_of_object", None)
+            if ancestor_class is not None:
+                pending.append(ancestor_class)
+        return ancestors
+
+    def _get_descendants(self, obj):
+        """Return all generalization children and instances below an object."""
+        descendants = []
+        visited = set()
+        pending = list(getattr(obj, "instances", []))
+        pending.extend(
+            candidate
+            for candidate in self.model.mlm_objects
+            if obj in getattr(candidate, "parent_classes", [])
+        )
+
+        while pending:
+            descendant = pending.pop(0)
+            marker = id(descendant)
+            if descendant is None or marker in visited:
+                continue
+            visited.add(marker)
+            descendants.append(descendant)
+            pending.extend(getattr(descendant, "instances", []))
+            pending.extend(
+                candidate
+                for candidate in self.model.mlm_objects
+                if descendant in getattr(candidate, "parent_classes", [])
+            )
+        return descendants
