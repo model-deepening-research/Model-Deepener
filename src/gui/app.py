@@ -1523,6 +1523,26 @@ class ModelDeepenerApp(ctk.CTk):
 
         ctk.CTkButton(
             actions,
+            text="Check Constraints",
+            width=180,
+            height=42,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color=self.colors["primary_soft"],
+            border_width=1,
+            border_color="#C7D2E3",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            command=self._check_current_constraints,
+        ).grid(
+            row=0,
+            column=2,
+            sticky="e",
+            padx=(0, 10),
+        )
+
+        ctk.CTkButton(
+            actions,
             text="Export Model",
             width=170,
             height=42,
@@ -1534,7 +1554,7 @@ class ModelDeepenerApp(ctk.CTk):
             command=self._export_current_model_placeholder,
         ).grid(
             row=0,
-            column=2,
+            column=3,
             sticky="e",
         )
 
@@ -1703,6 +1723,21 @@ class ModelDeepenerApp(ctk.CTk):
             ).grid(row=0, column=1, sticky="e", padx=(0, 10))
         ctk.CTkButton(
             actions,
+            text="Check Constraints",
+            width=180,
+            height=42,
+            corner_radius=8,
+            fg_color="#FFFFFF",
+            hover_color=self.colors["primary_soft"],
+            border_width=1,
+            border_color="#C7D2E3",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            command=self._check_current_constraints,
+        ).grid(row=0, column=2, sticky="e", padx=(0, 10))
+
+        ctk.CTkButton(
+            actions,
             text="Export Model",
             width=170,
             height=42,
@@ -1712,12 +1747,48 @@ class ModelDeepenerApp(ctk.CTk):
             text_color="#FFFFFF",
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             command=self._export_current_model_placeholder,
-        ).grid(row=0, column=2, sticky="e")
+        ).grid(row=0, column=3, sticky="e")
+
+    def _check_current_constraints(self):
+        """Check the current model and show whether BaseMLM constraints are valid."""
+        if self.current_model is None:
+            messagebox.showinfo(
+                "Check Constraints",
+                "Create or open a model before checking constraints.",
+            )
+            return
+
+        violations = self.current_model.validate_basemlm_integrity()
+        if not violations:
+            messagebox.showinfo(
+                "Check Constraints",
+                "The model is valid according to the constraints.",
+            )
+            return
+
+        details = "\n".join(f"- {violation}" for violation in violations)
+        messagebox.showwarning(
+            "Check Constraints",
+            "The model is not valid. The following constraints are violated:\n\n"
+            + details,
+        )
 
     def _export_current_model_placeholder(self):
+        """Export the current model only when all constraints are satisfied."""
         if self.current_model is None:
             messagebox.showinfo("Export Model", "Create or open a model before exporting.")
             return
+
+        violations = self.current_model.validate_basemlm_integrity()
+        if violations:
+            details = "\n".join(f"- {violation}" for violation in violations)
+            messagebox.showwarning(
+                "Export Model",
+                "The model cannot be exported because it is not valid.\n\n"
+                + details,
+            )
+            return
+
         file_type = (self.current_file_type or os.path.splitext(self.current_file_path or "")[1].lstrip(".")).upper()
         if file_type == "XML":
             self._export_current_xml_model()
