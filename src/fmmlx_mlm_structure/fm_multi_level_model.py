@@ -72,6 +72,12 @@ class FmmlxModel:
     def get_model_name(self):
         return self.model_name
 
+    def validate_basemlm_integrity(self):
+        """Return all implemented BaseMLM integrity violations for this model."""
+        from src.fmmlx_mlm_structure.integrity import BaseMLMValidator
+
+        return BaseMLMValidator(self).validate()
+
     def _import_csv(self, csv_file_path: str, selected_csv_columns: Optional[List[str]] = None):
         """
         Imports a CSV file as one class with one instance per data row.
@@ -1310,8 +1316,10 @@ class FmmlxModel:
         """
         mlm_objects = self._retrieve_metaclass_objects()
         for instance_object in self._retrieve_instance_objects():
+            declared_level = instance_object.level
             instance_object.set_class_of_object(self._get_class_of_mlm_object(instance_object.class_of_object.full_name,
                                                                               mlm_objects))
+            instance_object.level = declared_level
             if self.print_progress:
                 print(f"Object {instance_object.name} extracted.")
             mlm_objects.append(instance_object)
@@ -1332,7 +1340,8 @@ class FmmlxModel:
         mlm_objects = []
         for object_element in self.parsed_xml.getElementsByTagName("addInstance"):
             mlm_object_long = object_element.getAttribute("package") + "::" + object_element.getAttribute("name")
-            mlm_object = FmmlxObject(mlm_object_long, object_element.getAttribute("name"), "99",
+            declared_level = object_element.getAttribute("level") or "99"
+            mlm_object = FmmlxObject(mlm_object_long, object_element.getAttribute("name"), declared_level,
                                      FmmlxObject(object_element.getAttribute("of"),
                                              "", "99", None, "false", self),
                                      object_element.getAttribute("abstract"), self)
@@ -1364,7 +1373,9 @@ class FmmlxModel:
     def retrieve_all_attributes(self):
         for attribute_element in self.parsed_xml.getElementsByTagName("addAttribute"):
             new_attr = FmmlxAttribute(attribute_element.getAttribute("name"), attribute_element.getAttribute("type"),
-                                      attribute_element.getAttribute("level"))
+                                      attribute_element.getAttribute("level"),
+                                      multiplicity=self._parse_attribute_multiplicity(
+                                          attribute_element.getAttribute("multiplicity")))
             # need to look for custom attr data types: enums or custom class types
             if new_attr.attr_type.split("::")[1] != "XCore" and new_attr.attr_type.split("::")[1] != "Auxiliary":
                 if not self._is_custom_attribute_type_an_enum(new_attr):
@@ -1373,6 +1384,20 @@ class FmmlxModel:
             if owner_object is not None:
                 owner_object.add_attr(new_attr)
                 new_attr.set_owner(owner_object)
+
+    @staticmethod
+    def _parse_attribute_multiplicity(multiplicity_value: str):
+        """Read an XModeler ``Seq`` multiplicity used by an attribute."""
+        if not multiplicity_value:
+            return None
+        match = re.search(r"Seq\{\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(true|false)",
+                          multiplicity_value, re.IGNORECASE)
+        if match is None:
+            return None
+        lower_bound = int(match.group(1))
+        upper_bound = int(match.group(2))
+        is_unbounded = match.group(3).lower() == "true"
+        return Multiplicity(lower_bound, upper_bound, is_unbounded=is_unbounded)
 
     def _find_object_named_in_xml(self, xml_object_name: str):
         # XML files sometimes use the full model path and sometimes only the final class name.
