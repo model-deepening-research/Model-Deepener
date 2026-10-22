@@ -2,7 +2,6 @@
 # Keeping one shared environment makes the GUI use the same library versions on every start.
 # noinspection PyPackageRequirements
 import csv
-import json
 import os
 import random
 import re
@@ -21,6 +20,9 @@ from src.fmmlx_mlm_structure.fm_enum_type import FmmlxEnumType
 from src.fmmlx_mlm_structure.fm_multi_level_model import FmmlxModel
 from src.fmmlx_mlm_structure.fm_object import FmmlxObject
 from src.fmmlx_mlm_structure.fm_slot import FmmlxSlot
+from src.object_database.database import Database
+from src.object_database.persistent import Persistent
+from src.object_database.storage import FileStorage
 
 
 @dataclass
@@ -45,7 +47,7 @@ class XmlImportPreview:
 
 
 @dataclass
-class LoadedModel:
+class LoadedModel(Persistent):
     name: str
     source_file: str
     file_type: str
@@ -55,6 +57,14 @@ class LoadedModel:
     uploaded: str = ""
     last_worked_on: str = ""
     last_action: str = "Imported"
+
+    def __post_init__(self):
+        """Give the model an empty OID.
+
+        The __init__ that the dataclass creates does not call Persistent.__init__, so it is
+        called here.
+        """
+        Persistent.__init__(self)
 
 
 # noinspection PyAttributeOutsideInit,PyUnresolvedReferences,PyTypeChecker,SpellCheckingInspection
@@ -143,7 +153,7 @@ class ModelDeepenerApp(ctk.CTk):
         self.tree_item_payload: Dict[str, object] = {}
         self.tree_item_view: Dict[str, str] = {}
         self.loaded_models: List[LoadedModel] = []
-        self.loaded_models_store_path = os.path.join(os.getcwd(), "example_models", "loaded_models.json")
+        self.database_path = os.path.join(os.getcwd(), "example_models", "models.pkl")
         self.action_unlocked = {1: True, 2: False, 3: False}
         self.action_completed = {1: False, 2: False, 3: False}
         self.current_action = 1
@@ -3541,8 +3551,8 @@ class ModelDeepenerApp(ctk.CTk):
         Creates the model after validation succeeds.
 
         This block turns the selected CSV/XML file into the current model,
-        stores the imported source file, updates Models Overview, and reloads
-        saved models from loaded_models.json.
+        stores the imported source file, updates Models Overview, and saves
+        the model in the object database.
         """
         if not self.current_file_path:
             messagebox.showerror("Import blocked", "Select a file first.")
@@ -3653,69 +3663,40 @@ class ModelDeepenerApp(ctk.CTk):
         self._save_loaded_models()
 
     def _save_loaded_models(self):
-        # The overview needs a small address book of imported files.
-        # The real model data stays in the copied CSV or XML files.
-        os.makedirs(os.path.dirname(self.loaded_models_store_path), exist_ok=True)
-        records = []
+        """Store every loaded model in the object database and commit.
+
+        Each model is stored under its source file name, which is unique.
+        """
         for loaded in self.loaded_models:
-            records.append(
-                {
-                    "name": loaded.name,
-                    "source_file": loaded.source_file,
-                    "source_path": loaded.source_path,
-                    "file_type": loaded.file_type,
-                    "selected_columns": loaded.selected_columns,
-                    "uploaded": loaded.uploaded,
-                    "last_worked_on": loaded.last_worked_on,
-                    "last_action": loaded.last_action,
-                }
-            )
-        with open(self.loaded_models_store_path, "w", encoding="utf-8") as file:
-            json.dump(records, file, indent=2)
+            self.database.store(loaded.source_file, loaded)
+        self.database.commit()
 
     def _load_saved_models(self):
-        # On startup, rebuild the overview from files that were imported earlier.
-        if not os.path.exists(self.loaded_models_store_path):
-            return
-        try:
-            with open(self.loaded_models_store_path, "r", encoding="utf-8") as file:
-                records = json.load(file)
-        except (OSError, json.JSONDecodeError):
-            return
+        """Read all models that were saved in the object database.
 
-        for record in records:
-            source_path = record.get("source_path") or record.get("source_file", "")
-            if source_path and not os.path.isabs(source_path):
-                source_path = os.path.join(os.getcwd(), source_path)
-            if not source_path or not os.path.exists(source_path):
-                continue
-            file_type = record.get("file_type", "").upper()
-            selected_columns = record.get("selected_columns") or []
-            try:
-                if file_type == "CSV":
-                    model = FmmlxModel(
-                        file_path=source_path,
-                        selected_csv_columns=selected_columns or None,
-                    )
-                elif file_type == "XML":
-                    model = FmmlxModel(file_path=source_path)
-                else:
-                    continue
-            except Exception:
-                continue
-            self.loaded_models.append(
-                LoadedModel(
-                    name=record.get("name") or self._model_overview_display_name(model),
-                    source_file=record.get("source_file") or os.path.basename(source_path),
-                    file_type=file_type,
-                    model=model,
-                    source_path=source_path,
-                    selected_columns=selected_columns,
-                    uploaded=record.get("uploaded", ""),
-                    last_worked_on=record.get("last_worked_on", ""),
-                    last_action=record.get("last_action", "Imported"),
-                )
+        If the data file cannot be loaded, it is moved to a backup file, a message tells the user
+        to import the models again, and the app starts with an empty database.
+
+        except Exception is used because the reasons are very different: a wrong format version
+        raises a ValueError, a broken file an UnpicklingError or EOFError, and a missing or
+        renamed class an AttributeError or ModuleNotFoundError. An error from move_to_backup()
+        is not caught and stops the app, because otherwise the next commit() would overwrite
+        the unreadable file and its data would be lost.
+        """
+        os.makedirs(os.path.dirname(self.database_path), exist_ok=True)
+        storage = FileStorage(self.database_path)
+        try:
+            self.database = Database(storage)
+        except Exception:
+            backup_name = storage.move_to_backup()
+            messagebox.showwarning(
+                "Saved models could not be loaded",
+                "The saved models could not be loaded.\n\n"
+                f"The old file was kept as a backup:\n{backup_name}\n\n"
+                "Please import the models again.",
             )
+            self.database = Database(storage)
+        self.loaded_models = list(self.database.get_root().values())
 
     @staticmethod
     def _current_timestamp_text() -> str:
@@ -5649,8 +5630,9 @@ class ModelDeepenerApp(ctk.CTk):
         """
         Draws the table on the Models Overview page.
 
-        This block applies the filters, draws one row per stored model, handles
-        row selection, and updates the detail panel with Open Model and Delete Model.
+        This block applies the filters and draws one row per stored model.
+        The first column shows "Delete" in every row. A click on it deletes the model after a
+        question, and a click anywhere else in the row opens the model.
         """
         if not hasattr(self, "models_canvas"):
             return
@@ -5659,6 +5641,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         canvas_width = max(self.models_canvas.winfo_width(), 900)
         column_specs = [
+            ("delete", " ", 0.06),
             ("name", "Model Name", 0.13),
             ("source", "Source File", 0.16),
             ("type", "Type", 0.06),
@@ -5666,8 +5649,8 @@ class ModelDeepenerApp(ctk.CTk):
             ("classes", "Classes", 0.07),
             ("attributes", "Attributes", 0.09),
             ("objects", "Objects", 0.08),
-            ("status", "Last Action", 0.12),
-            ("worked", "Last worked on", 0.12),
+            ("status", "Last Action", 0.09),
+            ("worked", "Last worked on", 0.09),
             ("open", "Open Model", 0.08),
         ]
         columns = [
@@ -5702,6 +5685,7 @@ class ModelDeepenerApp(ctk.CTk):
             y = header_height + ((row_index - 1) * row_height)
             row_bg = "#FFFFFF" if row_index % 2 else "#F3F7FD"
             values = [
+                "Delete",
                 loaded.name,
                 loaded.source_file,
                 loaded.file_type,
@@ -5715,8 +5699,12 @@ class ModelDeepenerApp(ctk.CTk):
             ]
             x = 0
             row_items = []
+            delete_items = []
             for _column_index, ((key, _label, width), value) in enumerate(zip(columns, values)):
-                if key == "status":
+                if key == "delete":
+                    foreground = self.colors["danger"]
+                    font = ("Segoe UI", 12, "bold underline")
+                elif key == "status":
                     foreground = self.colors["danger"] if "fail" in str(value).lower() else self.colors["success"]
                     font = ("Segoe UI", 12, "bold")
                 elif key == "open":
@@ -5735,14 +5723,16 @@ class ModelDeepenerApp(ctk.CTk):
                     foreground=foreground,
                     font=font,
                 )
+                if key == "delete":
+                    delete_items.extend(items)
                 row_items.extend(items)
                 x += width
             for item in row_items:
-                self.models_canvas.tag_bind(
-                    item,
-                    "<Button-1>",
-                    lambda _event, target=loaded: self._open_loaded_model(target),
-                )
+                if item in delete_items:
+                    command = lambda _event, target=loaded: self._delete_loaded_model(target)
+                else:
+                    command = lambda _event, target=loaded: self._open_loaded_model(target)
+                self.models_canvas.tag_bind(item, "<Button-1>", command)
                 self.models_canvas.tag_bind(item, "<Enter>", lambda _event: self.models_canvas.configure(cursor="hand2"))
                 self.models_canvas.tag_bind(item, "<Leave>", lambda _event: self.models_canvas.configure(cursor=""))
             self._models_canvas_rows[model_index] = row_items
@@ -5928,15 +5918,102 @@ class ModelDeepenerApp(ctk.CTk):
         self._touch_loaded_model(loaded.model)
         self._show_model_page()
 
+    def _ask_delete_confirmation(self, model_name: str) -> bool:
+        """Ask in a modal dialog whether the model should really be deleted.
+
+        The dialog has the same look as the Select Example dialog and is centered on the main
+        window. Enter, Escape and closing the window mean "No". Returns True only if the user
+        clicks "Yes".
+
+        CTkToplevel shows the window again after coloring the title bar, so the dialog is
+        centered each time it is mapped, using its outer size with frame and title bar.
+        """
+        answer = {"delete": False}
+        dialog = ctk.CTkToplevel(self)
+        dialog.title("Delete model")
+        dialog.resizable(False, False)
+        dialog.transient(self)
+        dialog.grid_columnconfigure(0, weight=1)
+
+        ctk.CTkLabel(
+            dialog,
+            text="Delete this model?",
+            anchor="w",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
+        ).grid(row=0, column=0, sticky="ew", padx=18, pady=(18, 6))
+        ctk.CTkLabel(
+            dialog,
+            text=f"Do you really want to delete '{model_name}'?\nThis cannot be undone.",
+            anchor="w",
+            justify="left",
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+        ).grid(row=1, column=0, sticky="ew", padx=18, pady=(0, 18))
+
+        def close(delete: bool):
+            answer["delete"] = delete
+            dialog.grab_release()
+            dialog.destroy()
+
+        actions = ctk.CTkFrame(dialog, fg_color="transparent")
+        actions.grid(row=2, column=0, sticky="ew", padx=18, pady=(0, 18))
+        actions.grid_columnconfigure(0, weight=1)
+        ctk.CTkButton(
+            actions,
+            text="No",
+            width=100,
+            height=36,
+            fg_color="#FFFFFF",
+            hover_color="#EEF2F7",
+            border_width=1,
+            border_color=self.colors["border"],
+            text_color=self.colors["text"],
+            command=lambda: close(False),
+        ).grid(row=0, column=1, padx=(0, 8))
+        ctk.CTkButton(
+            actions,
+            text="Yes",
+            width=100,
+            height=36,
+            fg_color=self.colors["danger"],
+            hover_color="#b91c1c",
+            text_color="#FFFFFF",
+            command=lambda: close(True),
+        ).grid(row=0, column=2)
+
+        def center(event):
+            if event.widget is not dialog:
+                return
+            dialog.update_idletasks()
+            border = dialog.winfo_rootx() - dialog.winfo_x()
+            title_bar = dialog.winfo_rooty() - dialog.winfo_y()
+            width = dialog.winfo_width() + 2 * border
+            height = dialog.winfo_height() + title_bar + border
+            x = self.winfo_rootx() + (self.winfo_width() - width) // 2
+            y = self.winfo_rooty() + (self.winfo_height() - height) // 2
+            dialog.geometry(f"+{x}+{y}")
+
+        dialog.bind("<Map>", center)
+        dialog.protocol("WM_DELETE_WINDOW", lambda: close(False))
+        dialog.bind("<Escape>", lambda _event: close(False))
+        dialog.bind("<Return>", lambda _event: close(False))
+        dialog.grab_set()
+        dialog.wait_window()
+        return answer["delete"]
+
     def _delete_loaded_model(self, loaded: LoadedModel):
-        if not messagebox.askyesno(
-                "Delete model",
-                f"Remove '{loaded.name}' from the models overview?",
-        ):
+        """Ask the user and delete the model from the overview and from the object database.
+
+        The question is asked by _ask_delete_confirmation(). On "Yes" the deletion is saved at
+        once with commit(). On "No" nothing is changed.
+        """
+        if not self._ask_delete_confirmation(loaded.name):
             return
         if loaded in self.loaded_models:
+            self.database.delete(loaded.source_file)
+            self.database.commit()
             self.loaded_models.remove(loaded)
-            self._save_loaded_models()
         if self.current_model is loaded.model:
             self.current_model = self.loaded_models[-1].model if self.loaded_models else None
         self._populate_models_table()

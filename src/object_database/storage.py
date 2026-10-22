@@ -4,6 +4,7 @@ The file also stores a format version, so a file in an unknown format is not loa
 """
 import os
 import pickle
+from datetime import datetime
 
 FORMAT_VERSION = 1
 
@@ -46,3 +47,17 @@ class FileStorage:
         with open(temporary_name, "wb") as file:
             pickle.dump(content, file)
         os.replace(temporary_name, self._file_name)
+
+    def move_to_backup(self):
+        """Rename the data file to <name>_unreadable_<date-time> and return the new file name.
+
+        The backup stays in the same folder. This is meant for a data file that cannot be loaded.
+        The old data is kept, and a new Database starts empty because the data file no longer
+        exists. The date and time contain no colons, because Windows does not allow them in file
+        names. Raises an OSError if renaming fails, so the data file is never lost.
+        """
+        name, extension = os.path.splitext(self._file_name)
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        backup_name = f"{name}_unreadable_{timestamp}{extension}"
+        os.rename(self._file_name, backup_name)
+        return backup_name

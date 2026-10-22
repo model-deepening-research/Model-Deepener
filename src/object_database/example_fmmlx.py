@@ -269,6 +269,29 @@ def test_level_check_on_any_level():
     print("myCar.instances:", len(my_car.get_instances()), "(expected: 0)")
 
 
+def test_move_to_backup():
+    """Test that an unreadable data file is moved to a backup and a new Database starts empty.
+
+    The file is filled by hand with bytes that are no pickle data, as a broken file would be.
+    The backup is deleted at the end.
+    """
+    print("--- (8) move_to_backup() for an unreadable file ---")
+    remove_data_file()
+    with open(FILE_NAME, "wb") as file:
+        file.write(b"this is no pickle data")
+    try:
+        open_database()
+        print("The file was loaded (expected: an error)")
+    except Exception as error:
+        print("Loading raised:", type(error).__name__)
+    backup_name = FileStorage(FILE_NAME).move_to_backup()
+    print("Does the backup exist?", os.path.exists(backup_name), "(expected: True)")
+    print("Does the data file still exist?", os.path.exists(FILE_NAME), "(expected: False)")
+    db = open_database()
+    print("Number of objects in the new database:", len(db.get_root()), "(expected: 0)")
+    os.remove(backup_name)
+
+
 if __name__ == "__main__":
     test_circular_reference()
     test_delete()
@@ -277,4 +300,5 @@ if __name__ == "__main__":
     test_format_version()
     test_wrong_instance_level()
     test_level_check_on_any_level()
+    test_move_to_backup()
     remove_data_file()
