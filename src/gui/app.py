@@ -20,9 +20,12 @@ from src.fmmlx_mlm_structure.fm_enum_type import FmmlxEnumType
 from src.fmmlx_mlm_structure.fm_multi_level_model import FmmlxModel
 from src.fmmlx_mlm_structure.fm_object import FmmlxObject
 from src.fmmlx_mlm_structure.fm_slot import FmmlxSlot
+from src.gui.database_dialog import ask_for_database
 from src.object_database.database import Database
+from src.object_database.database_folder import DatabaseFolder
 from src.object_database.persistent import Persistent
-from src.object_database.storage import FileStorage
+
+DATABASE_FOLDER_PATH = os.path.join("example_models", "databases")
 
 
 @dataclass
@@ -153,7 +156,10 @@ class ModelDeepenerApp(ctk.CTk):
         self.tree_item_payload: Dict[str, object] = {}
         self.tree_item_view: Dict[str, str] = {}
         self.loaded_models: List[LoadedModel] = []
-        self.database_path = os.path.join(os.getcwd(), "example_models", "models.pkl")
+        self.database: Database | None = None
+        self._database_folder = DatabaseFolder(DATABASE_FOLDER_PATH)
+        self._database_name = ""
+        self._database_name_label: ctk.CTkLabel | None = None
         self.action_unlocked = {1: True, 2: False, 3: False}
         self.action_completed = {1: False, 2: False, 3: False}
         self.current_action = 1
@@ -174,7 +180,9 @@ class ModelDeepenerApp(ctk.CTk):
         self.column_selection_expanded = False
         self.all_columns_selected_var = tk.BooleanVar(value=True)
 
-        self._load_saved_models()
+        if not self._choose_database(is_startup=True):
+            self._close_application()
+            return
         self._configure_ttk_style()
         self._build_layout()
         self._show_import_page()
@@ -479,6 +487,10 @@ class ModelDeepenerApp(ctk.CTk):
         self.quit()
         self.destroy()
 
+    def is_running(self) -> bool:
+        """Return False once the app is closed, e.g. after the database dialog was cancelled at startup."""
+        return not self._is_closing
+
     def _show_configured_window(self):
         """
         Displays the finished application window in its maximized size.
@@ -556,7 +568,9 @@ class ModelDeepenerApp(ctk.CTk):
         )
         self.header.grid(row=1, column=0, sticky="ew")
         self.header.grid_propagate(False)
-        self.header.grid_columnconfigure(3, weight=1)
+        self.header.grid_columnconfigure(4, weight=1)
+
+        self._build_database_area()
 
         self.new_model_tab = ctk.CTkButton(
             self.header,
@@ -570,7 +584,7 @@ class ModelDeepenerApp(ctk.CTk):
             font=ctk.CTkFont(size=14),
             command=self._show_import_page,
         )
-        self.new_model_tab.grid(row=0, column=0, padx=(24, 8), pady=12)
+        self.new_model_tab.grid(row=0, column=1, padx=(0, 8), pady=12)
 
         self.models_tab = ctk.CTkButton(
             self.header,
@@ -584,7 +598,7 @@ class ModelDeepenerApp(ctk.CTk):
             font=ctk.CTkFont(size=14),
             command=self._show_models_overview_page,
         )
-        self.models_tab.grid(row=0, column=1, padx=(0, 8), pady=12)
+        self.models_tab.grid(row=0, column=2, padx=(0, 8), pady=12)
 
         self.model_tab = ctk.CTkButton(
             self.header,
@@ -598,11 +612,11 @@ class ModelDeepenerApp(ctk.CTk):
             font=ctk.CTkFont(size=14),
             command=self._show_model_page,
         )
-        self.model_tab.grid(row=0, column=2, padx=(0, 8), pady=12)
+        self.model_tab.grid(row=0, column=3, padx=(0, 8), pady=12)
         self.model_tab.grid_remove()
 
         self.logo_label = ctk.CTkLabel(self.header, text="", width=1)
-        self.logo_label.grid(row=0, column=4, sticky="e", padx=(8, 24), pady=8)
+        self.logo_label.grid(row=0, column=5, sticky="e", padx=(8, 24), pady=8)
         self._load_header_logo()
 
         self.shell = ctk.CTkFrame(
@@ -3671,32 +3685,106 @@ class ModelDeepenerApp(ctk.CTk):
             self.database.store(loaded.source_file, loaded)
         self.database.commit()
 
-    def _load_saved_models(self):
-        """Read all models that were saved in the object database.
+    def _choose_database(self, is_startup: bool) -> bool:
+        """Ask the user which database to open, open it and return True.
 
-        If the data file cannot be loaded, it is moved to a backup file, a message tells the user
-        to import the models again, and the app starts with an empty database.
+        Startup and the "Switch" button use the same dialog. If the user cancels, False is
+        returned: at startup the caller then ends the app, when switching the current database
+        stays open. After a switch the New Model page is shown again.
 
-        except Exception is used because the reasons are very different: a wrong format version
-        raises a ValueError, a broken file an UnpicklingError or EOFError, and a missing or
-        renamed class an AttributeError or ModuleNotFoundError. An error from move_to_backup()
-        is not caught and stops the app, because otherwise the next commit() would overwrite
-        the unreadable file and its data would be lost.
+        There is no question about unsaved changes, because every change to the loaded models
+        is committed at once. Two running instances that open the same database overwrite each
+        other's commits; there is no lock file against this.
         """
-        os.makedirs(os.path.dirname(self.database_path), exist_ok=True)
-        storage = FileStorage(self.database_path)
-        try:
-            self.database = Database(storage)
-        except Exception:
-            backup_name = storage.move_to_backup()
-            messagebox.showwarning(
-                "Saved models could not be loaded",
-                "The saved models could not be loaded.\n\n"
-                f"The old file was kept as a backup:\n{backup_name}\n\n"
-                "Please import the models again.",
-            )
-            self.database = Database(storage)
-        self.loaded_models = list(self.database.get_root().values())
+        result = ask_for_database(self, self._database_folder)
+        if result is None:
+            return False
+        database, name = result
+        self._open_database(database, name)
+        if not is_startup:
+            self._show_import_page()
+        return True
+
+    def _open_database(self, database: Database, name: str) -> None:
+        """Make the given database the current one and load its models.
+
+        The open model and an unfinished import are reset, because they belong to the old
+        database.
+        """
+        self.database = database
+        self._database_name = name
+        self.loaded_models = list(database.get_root().values())
+        self._reset_current_import_state()
+        self._show_database_name()
+
+    def _show_database_name(self) -> None:
+        """Show the name of the open database in the window title and in the navigation row.
+
+        The window title is what Windows shows in the taskbar. Long names are shortened in the
+        navigation row. At startup the label does not exist yet; _build_database_area() calls
+        this method again after creating it.
+        """
+        self.title(f"Model Deepener – {self._database_name}")
+        if self._database_name_label is not None:
+            self._database_name_label.configure(text=self._short_tab_text(self._database_name))
+
+    def _build_database_area(self) -> None:
+        """Create the left part of the navigation row: database name, "Switch" and a divider.
+
+        The name is only a hint and cannot be clicked. It sits on the same soft background as
+        the selected tab. The "Switch" button next to it opens the database dialog.
+        """
+        area = ctk.CTkFrame(self.header, fg_color="transparent")
+        area.grid(row=0, column=0, padx=(24, 0), pady=12)
+
+        name_box = ctk.CTkFrame(
+            area,
+            height=42,
+            corner_radius=8,
+            fg_color=self.colors["primary_soft"],
+        )
+        name_box.grid(row=0, column=0)
+        # The labels are lower than the box, so they do not cover its round corners.
+        ctk.CTkLabel(
+            name_box,
+            text="Database",
+            height=30,
+            text_color=self.colors["muted"],
+            font=ctk.CTkFont(size=11),
+        ).grid(row=0, column=0, padx=(14, 6), pady=6)
+        self._database_name_label = ctk.CTkLabel(
+            name_box,
+            text="",
+            height=30,
+            text_color=self.colors["primary"],
+            font=ctk.CTkFont(size=14, weight="bold"),
+        )
+        self._database_name_label.grid(row=0, column=1, padx=(0, 14), pady=6)
+
+        ctk.CTkButton(
+            area,
+            text="⇄  Switch",
+            width=86,
+            height=32,
+            corner_radius=8,
+            fg_color=self.colors["surface"],
+            hover_color=self.colors["surface_alt"],
+            border_width=1,
+            border_color=self.colors["border"],
+            text_color=self.colors["text"],
+            font=ctk.CTkFont(size=13),
+            command=lambda: self._choose_database(is_startup=False),
+        ).grid(row=0, column=1, padx=(8, 0))
+
+        # A plain tk.Frame, because CustomTkinter does not draw a CTkFrame that is 1 px wide.
+        tk.Frame(
+            area,
+            width=1,
+            height=28,
+            background=self.colors["border"],
+        ).grid(row=0, column=2, padx=16)
+
+        self._show_database_name()
 
     @staticmethod
     def _current_timestamp_text() -> str:
@@ -6282,8 +6370,13 @@ class ModelDeepenerApp(ctk.CTk):
             tree.delete(item)
 
 
-def run():
-    """Starts Model Deepener and keeps its interface active until it is closed."""
+def run() -> None:
+    """Starts Model Deepener and keeps its interface active until it is closed.
+
+    If the database dialog is cancelled at startup, the app is already closed and destroyed.
+    mainloop() is not started then, because CTk.mainloop() fails on a destroyed window.
+    """
     ModelDeepenerApp._set_windows_app_id()
     app = ModelDeepenerApp()
-    app.mainloop()
+    if app.is_running():
+        app.mainloop()
