@@ -6,7 +6,7 @@ import os
 import pickle
 from typing import Any
 
-FORMAT_VERSION = 1
+FORMAT_VERSION = 2
 
 
 class FileStorage:
@@ -33,7 +33,7 @@ class FileStorage:
             version = content.get("format_version")
         if version != FORMAT_VERSION:
             raise ValueError(
-                f"The file {self._file_name} has format version {version}, "
+                f"The file has format version {version}, "
                 f"but this program can only read format version {FORMAT_VERSION}."
             )
         return content["data"]

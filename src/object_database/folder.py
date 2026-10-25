@@ -19,7 +19,7 @@ WINDOWS_RESERVED_NAMES = {
 class DatabaseFolder:
     """Finds, opens and creates the databases in one folder.
 
-    Names are cleaned with strip() first, so "Default " and "Default" are the same name.
+    Names are cleaned with strip() first, so "Education " and "Education" are the same name.
     """
 
     def __init__(self, folder_path: str) -> None:
@@ -40,18 +40,22 @@ class DatabaseFolder:
     def open_database(self, name: str) -> Database:
         """Open the database with the given name.
 
-        Raises a KeyError if there is no database with this name. Raises a ValueError if the file
-        cannot be read. The file is not changed in that case, because a file with a newer format
-        version is not broken. Any error while loading is turned into a ValueError, so the caller
-        only has to handle one error type.
+        Raises a KeyError if there is no database with this name. Raises a ValueError with a short
+        message without the file path if the file cannot be read. The file is not changed in that
+        case, because a file with a newer format version is not broken. Any error while loading
+        is turned into a ValueError, so the caller only has to handle one error type.
         """
         name = name.strip()
         if name not in self.get_names():
             raise KeyError(f"There is no database with the name: {name}")
         try:
             return Database(FileStorage(self._get_path(name)))
+        except ValueError as error:
+            # FileStorage.load() raises a ValueError for a different format version.
+            raise ValueError(f"Database {name} cannot be read. {error.args[0]}") from error
         except Exception as error:
-            raise ValueError(f"Database {name} cannot be read: {error}") from error
+            raise ValueError(f"Database {name} cannot be read. The file is damaged or was not "
+                             f"written by this program.") from error
 
     def create_database(self, name: str) -> Database:
         """Create a new, empty database with the given name and save it at once.
@@ -71,7 +75,7 @@ class DatabaseFolder:
 
         The name must not be empty, may only contain letters, digits, spaces, - and _, must not
         be a reserved Windows name, and must not be used yet. Upper and lower case are not told
-        apart, because Windows treats Default.pkl and default.pkl as the same file. Raises a
+        apart, because Windows treats Education.pkl and education.pkl as the same file. Raises a
         ValueError if one of these rules is broken.
         """
         if name == "":

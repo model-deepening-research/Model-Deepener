@@ -4,8 +4,8 @@
 class Persistent:
     """Base class for every object that is stored in a Database.
 
-    Each object knows its own object ID (OID). The Database gives it the OID when the object is
-    stored for the first time; after that it never changes.
+    Each object knows its own object identifier (OID). The Database gives it the OID when the
+    object is stored for the first time; after that it never changes.
     """
 
     def __init__(self) -> None:

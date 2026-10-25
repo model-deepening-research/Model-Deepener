@@ -1,4 +1,4 @@
-"""Database that keeps Persistent objects in memory and finds them by name or OID.
+"""Database that keeps Persistent objects in memory and finds them by their OID.
 
 Changes are saved with commit() or thrown away with abort().
 """
@@ -9,8 +9,8 @@ from src.object_database.storage import FileStorage
 class Database:
     """Keeps Persistent objects in memory and saves them with a FileStorage.
 
-    Objects are stored under a name in the root and can also be found by their OID. All changes
-    stay in memory until commit() is called; abort() throws them away again.
+    Every stored object gets an OID, by which it can be found again. All changes stay in memory
+    until commit() is called; abort() throws them away again.
     """
 
     def __init__(self, storage: FileStorage) -> None:
@@ -20,34 +20,28 @@ class Database:
         (see FileStorage.load()).
         """
         self._storage = storage
+        # These attributes are set in _start_empty() and _load().
+        self._objects: dict[int, Persistent]
+        self._next_oid: int
         self._start_empty()
         if storage.exists():
             self._load()
 
-    def get_root(self) -> dict[str, Persistent]:
-        """Return a copy of the root, a dictionary from names to objects."""
-        return self._root.copy()
+    def store(self, stored_object: Persistent) -> int:
+        """Store an object and return its OID.
 
-    def store(self, name: str, obj: Persistent) -> None:
-        """Store an object under a name. It gets an OID if it has none yet.
-
-        Raises a TypeError if the object is not a Persistent object.
+        An object without an OID gets the next free OID. An object that already has an OID keeps
+        it. Raises a TypeError if the object is not a Persistent object.
         """
-        if not isinstance(obj, Persistent):
+        if not isinstance(stored_object, Persistent):
             raise TypeError("Only Persistent objects can be stored.")
-        self._register(obj)
-        self._root[name] = obj
+        if stored_object.get_oid() is None:
+            stored_object.assign_oid(self._next_oid)
+            self._next_oid = self._next_oid + 1
+        self._objects[stored_object.get_oid()] = stored_object
+        return stored_object.get_oid()
 
-    def get(self, name: str) -> Persistent:
-        """Return the object stored under a name.
-
-        Raises a KeyError if no object is stored under this name.
-        """
-        if name not in self._root:
-            raise KeyError(f"No object stored under the name: {name}")
-        return self._root[name]
-
-    def get_by_oid(self, oid: int) -> Persistent:
+    def get(self, oid: int) -> Persistent:
         """Return the object with the given OID.
 
         Raises a KeyError if no object has this OID.
@@ -56,29 +50,33 @@ class Database:
             raise KeyError(f"No object with the OID: {oid}")
         return self._objects[oid]
 
-    def delete(self, name: str) -> None:
-        """Delete the object stored under a name from the root and from the OID table.
+    def delete(self, oid: int) -> None:
+        """Delete the object with the given OID.
 
         Like every change, the deletion is only saved by commit(). Raises a KeyError if no object
-        is stored under this name.
-
-        Known limit: if the same object is stored under two names, it can still be reached under
-        the second name after delete(), but its OID is not in the OID table.
+        has this OID.
         """
-        obj = self.get(name)
-        del self._root[name]
-        del self._objects[obj.get_oid()]
+        if oid not in self._objects:
+            raise KeyError(f"No object with the OID: {oid}")
+        del self._objects[oid]
+
+    def get_all(self) -> list[Persistent]:
+        """Return all stored objects, ordered by their OID, which is the order of storing."""
+        objects = []
+        for oid in sorted(self._objects):
+            objects.append(self._objects[oid])
+        return objects
 
     def commit(self) -> None:
         """Make all changes since the last commit permanent by writing them to the file."""
-        data = {"root": self._root, "objects": self._objects, "next_oid": self._next_oid}
+        data = {"objects": self._objects, "next_oid": self._next_oid}
         self._storage.save(data)
 
     def abort(self) -> None:
         """Throw away all changes since the last commit.
 
         The last committed state is loaded from the file again. Variables that still point to old
-        objects are not updated, so fetch objects again via get() or get_by_oid() after an abort.
+        objects are not updated, so fetch objects again via get() or get_all() after an abort.
         Raises a ValueError if the data file has a different format version.
         """
         if self._storage.exists():
@@ -88,16 +86,8 @@ class Database:
 
     def _start_empty(self) -> None:
         """Reset the database to the empty state."""
-        self._root = {}
         self._objects = {}
         self._next_oid = 1
-
-    def _register(self, obj: Persistent) -> None:
-        """Give the object an OID if needed and add it to the OID table."""
-        if obj.get_oid() is None:
-            obj.assign_oid(self._next_oid)
-            self._next_oid = self._next_oid + 1
-        self._objects[obj.get_oid()] = obj
 
     def _load(self) -> None:
         """Replace everything in memory with the data from the file.
@@ -105,6 +95,5 @@ class Database:
         Raises a ValueError if the data file has a different format version.
         """
         data = self._storage.load()
-        self._root = data["root"]
         self._objects = data["objects"]
         self._next_oid = data["next_oid"]

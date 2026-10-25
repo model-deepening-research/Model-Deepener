@@ -26,7 +26,12 @@ from src.object_database.database import Database
 from src.object_database.folder import DatabaseFolder
 from src.object_database.persistent import Persistent
 
-DATABASE_FOLDER_PATH = os.path.join("example_models", "databases")
+# app.py lies in src/gui/, so the project folder is three folders above this file.
+PROJECT_FOLDER_PATH = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+DATABASE_FOLDER_PATH = os.path.join(PROJECT_FOLDER_PATH, "databases")
+# GWLP_HWNDPARENT in the Windows application programming interface (API): the index that sets
+# the owner window of a window.
+OWNER_WINDOW_INDEX = -8
 
 
 @dataclass
@@ -157,7 +162,8 @@ class ModelDeepenerApp(ctk.CTk):
         self.tree_item_payload: Dict[str, object] = {}
         self.tree_item_view: Dict[str, str] = {}
         self.loaded_models: List[LoadedModel] = []
-        self.database: Database | None = None
+        # Set in _open_database().
+        self._database: Database
         self._database_folder = DatabaseFolder(DATABASE_FOLDER_PATH)
         self._database_name = ""
         self._database_name_label: ctk.CTkLabel | None = None
@@ -177,7 +183,7 @@ class ModelDeepenerApp(ctk.CTk):
         self._is_closing = False
         self._detail_load_token = 0
         self._detail_batch_after_id = None
-        self._detail_loading_overlay = None
+        self._detail_loading_panel = None
         self.column_selection_expanded = False
         self.all_columns_selected_var = tk.BooleanVar(value=True)
 
@@ -330,7 +336,6 @@ class ModelDeepenerApp(ctk.CTk):
         The returned area leaves out space occupied by the Windows taskbar.
         It is used to size the window correctly on different screens.
         """
-        import ctypes
         from ctypes import wintypes
 
         class MonitorInfo(ctypes.Structure):
@@ -374,7 +379,6 @@ class ModelDeepenerApp(ctk.CTk):
             return
 
         try:
-            import ctypes
             hwnd, left, top, width, height = self._current_monitor_work_area()
             keep_window_order = 0x0004
             show_window = 0x0040
@@ -436,7 +440,6 @@ class ModelDeepenerApp(ctk.CTk):
         """
         self.state("normal")
         try:
-            import ctypes
             hwnd, left, top, width, height = self._current_monitor_work_area()
             target_width = round(width * 0.60)
             target_height = round(height * 0.60)
@@ -467,7 +470,7 @@ class ModelDeepenerApp(ctk.CTk):
             )
             self._window_maximized = False
 
-    def _close_application(self):
+    def _close_application(self) -> None:
         """
         Closes the complete application when the user selects the X button.
 
@@ -481,7 +484,9 @@ class ModelDeepenerApp(ctk.CTk):
         try:
             for after_id in self.tk.call("after", "info"):
                 try:
-                    self.after_cancel(after_id)
+                    # Cancel on the Tcl level, so the Python callbacks stay registered and
+                    # destroy() can remove them together with their widgets.
+                    self.tk.call("after", "cancel", after_id)
                 except tk.TclError:
                     pass
         except tk.TclError:
@@ -490,10 +495,13 @@ class ModelDeepenerApp(ctk.CTk):
         self.destroy()
 
     def is_running(self) -> bool:
-        """Return False once the app is closed, e.g. after the database dialog was cancelled at startup."""
+        """Return False once the tool is closed.
+
+        This is the case, for example, after the database dialog was cancelled at startup.
+        """
         return not self._is_closing
 
-    def _show_info(self, title: str, message: str) -> None:
+    def _show_information(self, title: str, message: str) -> None:
         """Show an information message over the darkened main window."""
         self._overlay.show()
         try:
@@ -517,14 +525,14 @@ class ModelDeepenerApp(ctk.CTk):
         finally:
             self._overlay.hide()
 
-    def _ask_open_file(self, filetypes: list[tuple[str, str]]) -> str:
+    def _ask_open_file(self, file_types: list[tuple[str, str]]) -> str:
         """Ask for a file to open over the darkened main window.
 
         Returns the chosen path, or an empty string if the user cancels.
         """
         self._overlay.show()
         try:
-            return filedialog.askopenfilename(parent=self, filetypes=filetypes)
+            return filedialog.askopenfilename(parent=self, filetypes=file_types)
         finally:
             self._overlay.hide()
 
@@ -533,7 +541,7 @@ class ModelDeepenerApp(ctk.CTk):
             title: str,
             initial_file: str,
             default_extension: str,
-            filetypes: list[tuple[str, str]],
+            file_types: list[tuple[str, str]],
     ) -> str:
         """Ask where a file should be saved, over the darkened main window.
 
@@ -546,7 +554,7 @@ class ModelDeepenerApp(ctk.CTk):
                 title=title,
                 initialfile=initial_file,
                 defaultextension=default_extension,
-                filetypes=filetypes,
+                filetypes=file_types,
             )
         finally:
             self._overlay.hide()
@@ -579,7 +587,6 @@ class ModelDeepenerApp(ctk.CTk):
         own entry in the taskbar.
         """
         try:
-            import ctypes
             # This is the hidden Windows wrapper around the visible Tk window.
             hwnd = ctypes.windll.user32.GetParent(self.winfo_id())
             # These values remove the "small utility window" marker and add
@@ -782,7 +789,6 @@ class ModelDeepenerApp(ctk.CTk):
         if not os.path.exists(taskbar_icon_path):
             return
         try:
-            import ctypes
             self.update_idletasks()
             try:
                 # The outer Windows handle owns the taskbar entry. The visible
@@ -955,10 +961,15 @@ class ModelDeepenerApp(ctk.CTk):
         """
         Returns the model name shown in the top tab.
 
-        If the model has no path name, the file name is used instead.
+        A stored model shows its name from the Models Overview, for example "examMgmt (2)".
+        Otherwise the path name of the model is used, or the file name if the model has no path
+        name.
         """
         if self.current_model is None:
             return "Model"
+        for loaded in self.loaded_models:
+            if loaded.model is self.current_model:
+                return self._display_table_value(loaded.name)
         name = self.current_model.path_name.split("::")[-1] if self.current_model.path_name else ""
         if not name and self.current_file_path:
             name = os.path.splitext(os.path.basename(self.current_file_path))[0]
@@ -1836,7 +1847,7 @@ class ModelDeepenerApp(ctk.CTk):
     def _check_current_constraints(self):
         """Check the current model and show whether BaseMLM constraints are valid."""
         if self.current_model is None:
-            self._show_info(
+            self._show_information(
                 "Check Constraints",
                 "Create or open a model before checking constraints.",
             )
@@ -1844,7 +1855,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         violations = self.current_model.validate_basemlm_integrity()
         if not violations:
-            self._show_info(
+            self._show_information(
                 "Check Constraints",
                 "The model is valid according to the constraints.",
             )
@@ -1860,7 +1871,7 @@ class ModelDeepenerApp(ctk.CTk):
     def _export_current_model_placeholder(self):
         """Export the current model only when all constraints are satisfied."""
         if self.current_model is None:
-            self._show_info("Export Model", "Create or open a model before exporting.")
+            self._show_information("Export Model", "Create or open a model before exporting.")
             return
 
         violations = self.current_model.validate_basemlm_integrity()
@@ -1900,7 +1911,7 @@ class ModelDeepenerApp(ctk.CTk):
             title="Export Model",
             initial_file=source_name,
             default_extension=".xml",
-            filetypes=[("XML files", "*.xml"), ("All files", "*.*")],
+            file_types=[("XML files", "*.xml"), ("All files", "*.*")],
         )
         if not target_path:
             return
@@ -1914,7 +1925,7 @@ class ModelDeepenerApp(ctk.CTk):
         except (AttributeError, OSError, TypeError, ValueError) as exc:
             self._show_error("Export Model", f"Could not export XML: {exc}")
             return
-        self._show_info("Export Model", f"Model exported to:\n{target_path}")
+        self._show_information("Export Model", f"Model exported to:\n{target_path}")
 
     def _ask_instances_per_class(self):
         """
@@ -2287,7 +2298,7 @@ class ModelDeepenerApp(ctk.CTk):
             title="Export Model",
             initial_file=source_name,
             default_extension=f".{extension}",
-            filetypes=[(f"{export_format} files", f"*.{extension}"), ("All files", "*.*")],
+            file_types=[(f"{export_format} files", f"*.{extension}"), ("All files", "*.*")],
         )
         if not target_path:
             return
@@ -2309,7 +2320,7 @@ class ModelDeepenerApp(ctk.CTk):
         except (AttributeError, OSError, TypeError, csv.Error, ValueError) as exc:
             self._show_error("Export Model", f"Could not export {export_format}: {exc}")
             return
-        self._show_info("Export Model", f"Model exported to:\n{target_path}")
+        self._show_information("Export Model", f"Model exported to:\n{target_path}")
 
     def _write_selected_csv_columns(self, source_path: str, target_path: str,
                                     selected_columns: List[str], max_instances: Optional[int] = None):
@@ -2507,7 +2518,7 @@ class ModelDeepenerApp(ctk.CTk):
         """
         examples_root = os.path.join(os.getcwd(), "example_models")
         if not os.path.isdir(examples_root):
-            self._show_info(
+            self._show_information(
                 "No examples found",
                 "Place XML files in example_models.",
             )
@@ -2515,7 +2526,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         example_files = self._collect_example_files(examples_root)
         if not example_files:
-            self._show_info(
+            self._show_information(
                 "No examples found",
                 "No XML files were found in example_models.",
             )
@@ -2623,9 +2634,13 @@ class ModelDeepenerApp(ctk.CTk):
                 rows.append((folder_path, supported_files))
         return rows
 
-    def _browse_file(self):
+    def _browse_file(self) -> None:
+        """Ask for a CSV or XML file over the darkened main window and validate it.
+
+        If the user cancels the file dialog, nothing changes.
+        """
         file_path = self._ask_open_file(
-            filetypes=[
+            file_types=[
                 ("Supported files", "*.csv *.xml"),
                 ("CSV files", "*.csv"),
                 ("XML files", "*.xml"),
@@ -3704,11 +3719,18 @@ class ModelDeepenerApp(ctk.CTk):
             self.file_path_var.set(target_path)
         return target_path
 
-    def _store_loaded_model(self, extension: str):
+    def _store_loaded_model(self, extension: str) -> None:
+        """Store the current model as a new model in the open database and commit.
+
+        Every import becomes a new model with its own OID. If another model already has the same
+        name, the next free number is added to the name. The model is then shown in the Models
+        Overview.
+        """
         if self.current_model is None or self.current_file_path is None:
             return
         source_file = os.path.basename(self.current_file_path)
         name = self.current_model.path_name.split("::")[-1] if self.current_model.path_name else os.path.splitext(source_file)[0]
+        name = self._unique_model_name(name)
         uploaded = datetime.now().strftime("%Y-%m-%d %H:%M")
         now_text = self._current_timestamp_text()
         selected_columns = [
@@ -3716,36 +3738,41 @@ class ModelDeepenerApp(ctk.CTk):
             for column, selected in self.selected_csv_columns.items()
             if selected.get()
         ] if extension == ".csv" else []
-        self.loaded_models.append(
-            LoadedModel(
-                name=name,
-                source_file=source_file,
-                file_type=extension.lstrip(".").upper(),
-                model=self.current_model,
-                source_path=self.current_file_path,
-                selected_columns=selected_columns,
-                uploaded=uploaded,
-                last_worked_on=now_text,
-                last_action=self.ACTION_TITLES[2],
-            )
+        loaded = LoadedModel(
+            name=name,
+            source_file=source_file,
+            file_type=extension.lstrip(".").upper(),
+            model=self.current_model,
+            source_path=self.current_file_path,
+            selected_columns=selected_columns,
+            uploaded=uploaded,
+            last_worked_on=now_text,
+            last_action=self.ACTION_TITLES[2],
         )
-        self._save_loaded_models()
+        self._database.store(loaded)
+        self._database.commit()
+        self.loaded_models.append(loaded)
 
-    def _save_loaded_models(self):
-        """Store every loaded model in the object database and commit.
+    def _unique_model_name(self, name: str) -> str:
+        """Return the name, or the name with the next free number if a model already has it.
 
-        Each model is stored under its source file name, which is unique.
+        The second model with the name "examMgmt" is called "examMgmt (2)", the third
+        "examMgmt (3)", and so on. The number is part of the stored name.
         """
-        for loaded in self.loaded_models:
-            self.database.store(loaded.source_file, loaded)
-        self.database.commit()
+        used_names = [loaded.name for loaded in self.loaded_models]
+        if name not in used_names:
+            return name
+        number = 2
+        while f"{name} ({number})" in used_names:
+            number = number + 1
+        return f"{name} ({number})"
 
     def _choose_database(self, is_startup: bool) -> bool:
         """Ask the user which database to open, open it and return True.
 
         Startup and the "Switch" button use the same dialog. At startup the main window is
         hidden, so the dialog has no overlay; when switching, the main window is darkened. If the
-        user cancels, False is returned: at startup the caller then ends the app, when switching
+        user cancels, False is returned: at startup the caller then ends the tool, when switching
         the current database stays open. After a switch the New Model page is shown again.
 
         There is no question about unsaved changes, because every change to the loaded models
@@ -3768,9 +3795,9 @@ class ModelDeepenerApp(ctk.CTk):
         The open model and an unfinished import are reset, because they belong to the old
         database.
         """
-        self.database = database
+        self._database = database
         self._database_name = name
-        self.loaded_models = list(database.get_root().values())
+        self.loaded_models = database.get_all()
         self._reset_current_import_state()
         self._show_database_name()
 
@@ -3833,7 +3860,7 @@ class ModelDeepenerApp(ctk.CTk):
             command=lambda: self._choose_database(is_startup=False),
         ).grid(row=0, column=1, padx=(8, 0))
 
-        # A plain tk.Frame, because CustomTkinter does not draw a CTkFrame that is 1 px wide.
+        # A plain tk.Frame, because CustomTkinter does not draw a CTkFrame that is 1 pixel wide.
         tk.Frame(
             area,
             width=1,
@@ -3847,23 +3874,34 @@ class ModelDeepenerApp(ctk.CTk):
     def _current_timestamp_text() -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    def _touch_loaded_model(self, model: Optional[FmmlxModel]):
+    def _touch_loaded_model(self, model: Optional[FmmlxModel]) -> None:
+        """Set "Last worked on" of the stored model to the current time and commit.
+
+        Nothing happens if the model is None or does not belong to a stored model.
+        """
         if model is None:
             return
         for loaded in self.loaded_models:
             if loaded.model is model:
                 loaded.last_worked_on = self._current_timestamp_text()
-                self._save_loaded_models()
+                # The loaded model is the object in the database, so commit() saves the change.
+                self._database.commit()
                 break
 
-    def _set_last_action(self, action: int):
+    def _set_last_action(self, action: int) -> None:
+        """Set the title of the given workflow step as the last action and commit it.
+
+        The title is stored in last_action_label and, if a stored model is open, in its
+        last_action.
+        """
         self.last_action_label = self.ACTION_TITLES.get(action, "Imported")
         if self.current_model is None:
             return
         for loaded in self.loaded_models:
             if loaded.model is self.current_model:
                 loaded.last_action = self.last_action_label
-                self._save_loaded_models()
+                # The loaded model is the object in the database, so commit() saves the change.
+                self._database.commit()
                 break
 
     def _populate_model_tree(
@@ -4299,16 +4337,16 @@ class ModelDeepenerApp(ctk.CTk):
         self._detail_staging_window = None
         self._pending_overview_rows = []
 
-        overlay = getattr(self, "_detail_loading_overlay", None)
-        if overlay is not None and overlay.winfo_exists():
+        panel = getattr(self, "_detail_loading_panel", None)
+        if panel is not None and panel.winfo_exists():
             try:
                 if hasattr(self, "detail_loading_bar"):
                     self.detail_loading_bar.stop()
             except tk.TclError:
                 # The progress bar may already have been destroyed while the screen was changing.
                 pass
-            overlay.destroy()
-        self._detail_loading_overlay = None
+            panel.destroy()
+        self._detail_loading_panel = None
         toolbar = getattr(self, "_detail_overview_toolbar", None)
         if toolbar is not None and toolbar.winfo_exists():
             toolbar.destroy()
@@ -4689,22 +4727,22 @@ class ModelDeepenerApp(ctk.CTk):
             return
         self._detail_progress_after_id = None
 
-        existing = getattr(self, "_detail_loading_overlay", None)
+        existing = getattr(self, "_detail_loading_panel", None)
         if existing is not None and existing.winfo_exists():
             existing.destroy()
 
-        overlay = ctk.CTkFrame(
+        panel = ctk.CTkFrame(
             self.detail_table_wrapper,
             fg_color="#FFFFFF",
             corner_radius=0,
             border_width=0,
         )
-        overlay.place(x=0, y=0, relwidth=1, relheight=1)
-        overlay.grid_columnconfigure(0, weight=1)
-        overlay.grid_rowconfigure(0, weight=1)
+        panel.place(x=0, y=0, relwidth=1, relheight=1)
+        panel.grid_columnconfigure(0, weight=1)
+        panel.grid_rowconfigure(0, weight=1)
 
         loading_panel = ctk.CTkFrame(
-            overlay,
+            panel,
             fg_color="#FFFFFF",
             corner_radius=12,
             border_width=1,
@@ -4830,8 +4868,8 @@ class ModelDeepenerApp(ctk.CTk):
             pady=(18, 20),
         )
 
-        self._detail_loading_overlay = overlay
-        overlay.lift()
+        self._detail_loading_panel = panel
+        panel.lift()
         self._refresh_determinate_progress_display(token)
 
         # Force Tk to paint the loading layer before the first data batch starts.
@@ -4843,8 +4881,8 @@ class ModelDeepenerApp(ctk.CTk):
         if not getattr(self, "_detail_progress_determinate", False):
             return
 
-        overlay = getattr(self, "_detail_loading_overlay", None)
-        if overlay is None or not overlay.winfo_exists():
+        panel = getattr(self, "_detail_loading_panel", None)
+        if panel is None or not panel.winfo_exists():
             return
 
         loaded = getattr(self, "_detail_progress_loaded", 0)
@@ -5022,9 +5060,9 @@ class ModelDeepenerApp(ctk.CTk):
         self._detail_staging_table = None
         self._detail_staging_window = None
         self._detail_canvas_overview_loading = True
-        overlay = getattr(self, "_detail_loading_overlay", None)
-        if overlay is not None and overlay.winfo_exists():
-            overlay.lift()
+        panel = getattr(self, "_detail_loading_panel", None)
+        if panel is not None and panel.winfo_exists():
+            panel.lift()
 
         headers = [model_name] + [attr.name for attr in attributes]
         x = 0
@@ -5264,10 +5302,10 @@ class ModelDeepenerApp(ctk.CTk):
         self._overview_sticky_y = 0
         self._sync_model_overview_sticky_items()
 
-        overlay = getattr(self, "_detail_loading_overlay", None)
-        if overlay is not None and overlay.winfo_exists():
-            overlay.destroy()
-        self._detail_loading_overlay = None
+        panel = getattr(self, "_detail_loading_panel", None)
+        if panel is not None and panel.winfo_exists():
+            panel.destroy()
+        self._detail_loading_panel = None
         self._detail_canvas_overview_loading = False
         self.detail_subtitle.configure(
             text="Complete model overview loaded."
@@ -6132,7 +6170,7 @@ class ModelDeepenerApp(ctk.CTk):
         dialog.wait_window()
         return answer["delete"]
 
-    def _delete_loaded_model(self, loaded: LoadedModel):
+    def _delete_loaded_model(self, loaded: LoadedModel) -> None:
         """Ask the user and delete the model from the overview and from the object database.
 
         The question is asked by _ask_delete_confirmation(). On "Yes" the deletion is saved at
@@ -6141,8 +6179,8 @@ class ModelDeepenerApp(ctk.CTk):
         if not self._ask_delete_confirmation(loaded.name):
             return
         if loaded in self.loaded_models:
-            self.database.delete(loaded.source_file)
-            self.database.commit()
+            self._database.delete(loaded.get_oid())
+            self._database.commit()
             self.loaded_models.remove(loaded)
         if self.current_model is loaded.model:
             self.current_model = self.loaded_models[-1].model if self.loaded_models else None
@@ -6218,7 +6256,6 @@ class ModelDeepenerApp(ctk.CTk):
         Without this, Windows can show the Python icon for Tk apps.
         """
         try:
-            import ctypes
             ctypes.windll.shell32.SetCurrentProcessExplicitAppUserModelID("ModelDeepener.App")
         except (AttributeError, OSError):
             pass
@@ -6446,10 +6483,10 @@ class Overlay:
         self._window.geometry(f"{width}x{height}+{x}+{y}")
         self._window.deiconify()
         self._window.update_idletasks()
-        # GWLP_HWNDPARENT (-8) sets the owner window, which keeps the overlay above the main window.
+        # The main window becomes the owner, which keeps the overlay above the main window.
         overlay_handle = ctypes.windll.user32.GetParent(self._window.winfo_id())
         master_handle = ctypes.windll.user32.GetParent(self._master.winfo_id())
-        ctypes.windll.user32.SetWindowLongPtrW(overlay_handle, -8, master_handle)
+        ctypes.windll.user32.SetWindowLongPtrW(overlay_handle, OWNER_WINDOW_INDEX, master_handle)
         ctypes.windll.user32.EnableWindow(overlay_handle, False)
         self._window.lift(self._master)
 
@@ -6528,7 +6565,10 @@ class DatabaseDialog(ctk.CTkToplevel):
         return self._result
 
     def _build_layout(self) -> None:
-        """Create the list with "Open", the name field with "Create", the error label and "Cancel"."""
+        """Create the widgets of the dialog.
+
+        These are the list with "Open", the name field with "Create", the error label and "Cancel".
+        """
         self._make_heading("Open a database", 0)
 
         self._name_list = tk.Listbox(
@@ -6680,7 +6720,7 @@ class DatabaseDialog(ctk.CTkToplevel):
         try:
             database = self._folder.create_database(name)
         except ValueError as error:
-            self._show_dialog_error(str(error))
+            self._show_dialog_error(error.args[0])
             return
         self._close_with(database, name)
 
@@ -6718,8 +6758,8 @@ class DatabaseDialog(ctk.CTkToplevel):
         """Give the keyboard focus to the dialog and to the list.
 
         If there is no database yet, the name field gets the focus. focus_force() is used, because
-        Windows does not always give a new window the focus, e.g. when the user clicks into
-        another window at startup.
+        Windows does not always give a new window the focus, for example when the user clicks
+        into another window at startup.
         """
         if not self.winfo_exists():
             return
@@ -6752,7 +6792,7 @@ def ask_for_database(
 def run() -> None:
     """Starts Model Deepener and keeps its interface active until it is closed.
 
-    If the database dialog is cancelled at startup, the app is already closed and destroyed.
+    If the database dialog is cancelled at startup, the tool is already closed and destroyed.
     mainloop() is not started then, because CTk.mainloop() fails on a destroyed window.
     """
     ModelDeepenerApp._set_windows_app_id()
