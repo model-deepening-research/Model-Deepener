@@ -24,8 +24,17 @@ class BaseMlmAttribute(BaseMlmProperty):
         self.attr_type_str_short = enum_type.name
         self.uses_enum = True
 
+    def is_assoc_end(self) -> bool:
+        return False if self.attr_category == "ATTR" else True
+
+    def is_regular_attribute(self) -> bool:
+        return True if self.attr_category == "ATTR" else False
+
     def get_attr_type(self) -> str:
         return self.attr_type_str_short
+
+    def get_type_spec(self) -> TypeSpec:
+        return self.attr_type_spec
 
     def set_owner(self, owner):
         self.owner = owner
@@ -47,6 +56,20 @@ class BaseMlmAttribute(BaseMlmProperty):
 
     def get_owner(self):
         return self.owner
+
+    def valid_inst_level(self) -> bool:
+        if 0 <= self.inst_level < self.get_owner().get_level():
+            return True
+        return False
+
+    def all_slots_provided(self) -> bool:
+        descendants = self.get_owner().get_descendants()
+
+        for obj in descendants:
+            if obj.get_level() == self.get_inst_level():
+                if not any(slot.get_attribute() == self for slot in obj.get_all_slots()):
+                    return False
+        return True
 
     def add_collective_slot(self, slot_collective):
         self.slot_collectives.append(slot_collective)
