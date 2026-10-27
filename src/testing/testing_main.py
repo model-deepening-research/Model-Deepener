@@ -1,6 +1,6 @@
 import os.path
 
-from src.fmmlx_mlm_structure.fm_multi_level_model import FmmlxModel
+from src.basemlm.basemlm_model import BaseMlmModel
 from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
 
 #pa_tester = PrecedenceAnalysisTester(variant=2,
@@ -12,6 +12,6 @@ from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
 model_name = os.path.join(os.getcwd()[:-4], "example_models", "Portaview_with_Objects.xml")
 
 
-my_model: FmmlxModel = FmmlxModel(model_name)
+my_model: BaseMlmModel = BaseMlmModel(model_name)
 
 print(my_model)

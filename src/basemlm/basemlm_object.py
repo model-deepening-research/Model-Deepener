@@ -1,17 +1,19 @@
 import xml.etree.ElementTree as ElementTree
 from typing import List
 
-from src.fmmlx_mlm_structure.model_entity import ModelEntity
+from basemlm.basemlm_type_spec import TypeSpec
+from src.basemlm.model_member import ModelMember
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
-from src.fmmlx_mlm_structure.fm_attr import FmmlxAttribute
-from src.fmmlx_mlm_structure.fm_constraint import FmmlxConstraint
-from src.fmmlx_mlm_structure.fm_operation import FmmlxOperation
-from src.fmmlx_mlm_structure.fm_slot import FmmlxSlot
+from src.basemlm.basemlm_attribute import BaseMlmAttribute
+from src.basemlm.basemlm_constraint import BaseMlmConstraint
+from src.basemlm.basemlm_operation import BaseMlmOperation
+from src.basemlm.basemlm_slot import BaseMlmSlot
 from src.model_deepening.slot_collective import SlotCollective
 from src.model_deepening.slot_precedence_graph import SlotPrecedenceGraph
 
 
-class FmmlxObject(ModelEntity):
+class BaseMlmObject(ModelMember, TypeSpec):
+
     def __init__(self, full_name: str, object_name: str, level: str, class_of_object, is_abstract: str, model=None):
         super().__init__(name=object_name, print_name=object_name)
         self.full_name = full_name
@@ -28,6 +30,12 @@ class FmmlxObject(ModelEntity):
         self.attribute_precedence_graph: AttributePrecedenceGraph = AttributePrecedenceGraph(self)
         self.slot_precedence_graph: SlotPrecedenceGraph = SlotPrecedenceGraph(self)
         self.model = model
+
+    def get_type_name(self) -> str:
+        return self.name
+
+    def slot_conforms_to_type(self, slot) -> bool:
+        pass
 
     def __repr__(self):
         # class_str = f"[CLASS] {self.name}"
@@ -46,7 +54,7 @@ class FmmlxObject(ModelEntity):
     @classmethod
     def meta_class(cls):
         return cls("MetaClass", "MetaClass", "99",
-                   FmmlxObject("MetaClass", "MetaClass", "100", None, "False")
+                   BaseMlmObject("MetaClass", "MetaClass", "100", None, "False")
                    , "False")
 
     @classmethod
@@ -62,18 +70,18 @@ class FmmlxObject(ModelEntity):
         except:
             return "NO MODEL NAME"
 
-    def get_all_slots(self) -> List[FmmlxSlot]:
+    def get_all_slots(self) -> List[BaseMlmSlot]:
         return self.slot_list
 
-    def get_slot_by_attribute(self, mlm_attr: FmmlxAttribute) -> FmmlxSlot:
+    def get_slot_by_attribute(self, mlm_attr: BaseMlmAttribute) -> BaseMlmSlot:
         for slot in self.slot_list:
             if slot.get_attribute() == mlm_attr:
                 return slot
 
-    def get_all_attributes(self) -> List[FmmlxAttribute]:
+    def get_all_attributes(self) -> List[BaseMlmAttribute]:
         return self.attr_list
 
-    def get_attributes_at_inst_level_x(self, inst_level: int) -> List[FmmlxAttribute]:
+    def get_attributes_at_inst_level_x(self, inst_level: int) -> List[BaseMlmAttribute]:
         attr_list_at_inst_level = []
         for attr in self.attr_list:
             if attr.inst_level == inst_level:
@@ -89,10 +97,10 @@ class FmmlxObject(ModelEntity):
         operations in model deepening"""
         assert self.level > 0, "new instances can only be created for objects on level > 0"
 
-    def add_attr(self, attr: FmmlxAttribute):
+    def add_attr(self, attr: BaseMlmAttribute):
         self.attr_list.append(attr)
 
-    def add_slot(self, new_slot: FmmlxSlot):
+    def add_slot(self, new_slot: BaseMlmSlot):
         """support fot multiplicity (for now only for slot links): This operation checks whether a slot with the
         same name is already in the object and then adds the value to the slot"""
         slot_found: bool = False
@@ -103,10 +111,10 @@ class FmmlxObject(ModelEntity):
         if not slot_found:
             self.slot_list.append(new_slot)
 
-    def add_operation(self, operation: FmmlxOperation):
+    def add_operation(self, operation: BaseMlmOperation):
         self.operations_list.append(operation)
 
-    def add_constraint(self, constraint: FmmlxConstraint):
+    def add_constraint(self, constraint: BaseMlmConstraint):
         self.constraints_list.append(constraint)
 
     def set_level(self, level: int):
@@ -127,7 +135,7 @@ class FmmlxObject(ModelEntity):
     def set_slot_precedence_graph(self, slot_precedence_graph: SlotPrecedenceGraph):
         self.slot_precedence_graph = slot_precedence_graph
 
-    def get_slot_collective_by_attribute_and_value(self, attribute: FmmlxAttribute, value: str):
+    def get_slot_collective_by_attribute_and_value(self, attribute: BaseMlmAttribute, value: str):
         for slot_collective in self.slot_collectives:
             if slot_collective.get_attribute() == attribute and slot_collective.get_value() == value:
                 return slot_collective
@@ -137,7 +145,7 @@ class FmmlxObject(ModelEntity):
         for attr in self.attr_list:
             encountered_slot_values: [str] = []
             for instance in self.instances:
-                slot: FmmlxSlot = instance.get_slot_by_attribute(attr)
+                slot: BaseMlmSlot = instance.get_slot_by_attribute(attr)
                 slot_values: [str] = slot.get_values_as_list()
                 slot_collective: SlotCollective
                 for slot_value in slot_values:
@@ -161,9 +169,9 @@ class FmmlxObject(ModelEntity):
         assert len(self.attr_list[0].get_collective_slots()) > 0, ("Attribute precedence analysis "
                                                                    "requires collective slots")
         for outer_i in range(len(self.attr_list)):
-            outer_attr: FmmlxAttribute = self.attr_list[outer_i]
+            outer_attr: BaseMlmAttribute = self.attr_list[outer_i]
             for inner_in in range(outer_i+1, len(self.attr_list)):
-                inner_attr: FmmlxAttribute = self.attr_list[inner_in]
+                inner_attr: BaseMlmAttribute = self.attr_list[inner_in]
                 attr_comparison_symbol: str = outer_attr.get_attribute_comparison_symbol(inner_attr)
                 self.attribute_precedence_graph.add_property_relation(
                     outer_attr, inner_attr, attr_comparison_symbol)
@@ -220,7 +228,7 @@ class FmmlxObject(ModelEntity):
                 continue
             attribute = ElementTree.SubElement(model, 'addAttribute', level=str(attr.inst_level),
                                                multiplicity='Seq{1,1,true,false}', name=attr.name,
-                                               package=projectName, type=attr.attr_type)
+                                               package=projectName, type=attr.attr_type_str)
             # this attr has to be set separetly because of the keyword class and cannot be used in the prior operation
             attribute.set('class', projectName + "::" + self.name)
 

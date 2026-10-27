@@ -1,4 +1,4 @@
-from src.fmmlx_mlm_structure.model_element import ModelElement
+from src.basemlm.model_element import ModelElement
 
 
 class ChangeSuggestion:

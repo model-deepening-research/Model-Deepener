@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ElementTree
 
-from src.fmmlx_mlm_structure.model_connection import ModelConnection
-from src.fmmlx_mlm_structure.fm_object import FmmlxObject
-from src.fmmlx_mlm_structure.model_element import ModelElement
-from src.fmmlx_mlm_structure.multiplicity import Multiplicity
+from src.basemlm.basemlm_connection import BaseMlmConnection
+from src.basemlm.basemlm_object import BaseMlmObject
+from src.basemlm.model_element import ModelElement
+from src.basemlm.multiplicity import Multiplicity
 
 
-class FmmlxAssociation(ModelConnection):
+class BaseMlmAssociation(BaseMlmConnection):
     def __init__(self, name: str, source_inst_level: int, target_inst_level: int, source_access_name: str,
                  target_access_name: str):
         """Creates an association and retains all XModeler settings needed for re-import."""

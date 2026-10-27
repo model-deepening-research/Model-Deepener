@@ -1,7 +1,7 @@
-from src.fmmlx_mlm_structure.model_property import ModelProperty
+from src.basemlm.basemlm_property import BaseMlmProperty
 
 
-class FmmlxOperation(ModelProperty):
+class BaseMlmOperation(BaseMlmProperty):
     def __init__(self, operation_name: str, inst_level: int, return_type: str):
         """Creates an operation and retains its complete executable XModeler definition."""
         super().__init__(name=operation_name, print_name=operation_name)

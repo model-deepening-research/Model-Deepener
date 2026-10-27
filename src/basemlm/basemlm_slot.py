@@ -1,8 +1,8 @@
-from src.fmmlx_mlm_structure.fm_attr import FmmlxAttribute
-from src.fmmlx_mlm_structure.model_property import ModelProperty
+from src.basemlm.basemlm_attribute import BaseMlmAttribute
+from src.basemlm.basemlm_property import BaseMlmProperty
 
 
-class FmmlxSlot(ModelProperty):
+class BaseMlmSlot(BaseMlmProperty):
     """
     FmmlxSlot serves as an implementation of slots in FMMLx. Note that the attribute "owner" is of type FmmlxObject.
     Thus, the method set_attribute() can call "class_of_object".
@@ -13,7 +13,7 @@ class FmmlxSlot(ModelProperty):
         """
         Stores a slot's readable value and its original XModeler expression.
         """
-        super().__init__(name=slot_name,print_name=f"{slot_name}:{value}")
+        super().__init__(name=slot_name, print_name=f"{slot_name}:{value}")
         self.attribute = None
         self.value = value # self._import_slot_value(value) # parsing done in FmmlxModel class
         self.xml_value = xml_value
@@ -31,7 +31,7 @@ class FmmlxSlot(ModelProperty):
         if self.xml_value is not None and self.value == self.imported_value:
             return self.xml_value
 
-        attribute_type = "" if self.attribute is None else self.attribute.attr_type_short
+        attribute_type = "" if self.attribute is None else self.attribute.attr_type_str_short
         if attribute_type == "String":
             character_codes = ",".join(str(ord(character)) for character in str(self.value))
             return f"[{character_codes}].asString()"
@@ -45,7 +45,7 @@ class FmmlxSlot(ModelProperty):
     def get_values_as_list(self) -> [str]:
         return str(self.value).split("///")
 
-    def set_attribute(self, attribute: FmmlxAttribute = None):
+    def set_attribute(self, attribute: BaseMlmAttribute = None):
         """Connects the slot to its matching attribute when one can be found."""
         # Beim CSV-Import kennen wir das passende Attribut schon.
         if attribute is not None:

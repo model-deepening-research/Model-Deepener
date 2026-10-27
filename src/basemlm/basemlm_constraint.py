@@ -1,7 +1,7 @@
-from src.fmmlx_mlm_structure.model_property import ModelProperty
+from src.basemlm.basemlm_property import BaseMlmProperty
 
 
-class FmmlxConstraint(ModelProperty):
+class BaseMlmConstraint(BaseMlmProperty):
 
     def __init__(self, constraint_name: str, inst_level: int):
         """Creates a constraint and retains its complete XModeler roundtrip expression."""

@@ -1,15 +1,17 @@
-from src.fmmlx_mlm_structure.fm_enum_type import FmmlxEnumType
-from src.fmmlx_mlm_structure.model_property import ModelProperty
+from basemlm.basemlm_type_spec import TypeSpec
+from src.basemlm.basemlm_enum_type import BaseMlmEnumType
+from src.basemlm.basemlm_property import BaseMlmProperty
 
 
-class FmmlxAttribute(ModelProperty):
-    def __init__(self, attr_name: str, attr_type: str, inst_level: int,
+class BaseMlmAttribute(BaseMlmProperty):
+    def __init__(self, attr_name: str, attr_type_str: str, inst_level: int, attr_type_spec: TypeSpec,
                  uses_enum: bool = False, uses_domain_specific_type: bool = False,
                  multiplicity=None):
         super().__init__(name=attr_name, print_name=attr_name)
-        self.attr_type = attr_type
-        self.attr_type_short = attr_type.split("::")[2]
+        self.attr_type_str = attr_type_str
+        self.attr_type_str_short = attr_type_str.split("::")[2]
         self.inst_level = inst_level
+        self.attr_type_spec = attr_type_spec
         self.uses_enum = False
         self.uses_domain_specific_type = False
         self.attr_category: str = "ATTR"  # used for printing to distinguish with ASSOC ENDs
@@ -18,18 +20,12 @@ class FmmlxAttribute(ModelProperty):
         self.proposed_inst_level: int = 0
         self.multiplicity = multiplicity
 
-    def set_enum_type(self, enum_type: FmmlxEnumType):
-        self.attr_type_short = enum_type.name
+    def set_enum_type(self, enum_type: BaseMlmEnumType):
+        self.attr_type_str_short = enum_type.name
         self.uses_enum = True
 
-    def get_attr_category(self) -> str:
-        if str(type(self)) == "FmmlxAssociationEnd":
-            return "ASSOC-END"
-        else:
-            return "ATTR"
-
     def get_attr_type(self) -> str:
-        return self.attr_type_short
+        return self.attr_type_str_short
 
     def set_owner(self, owner):
         self.owner = owner
@@ -120,4 +116,4 @@ class FmmlxAttribute(ModelProperty):
         return True if self.get_attribute_comparison_symbol(other) == (">" or ">=") else False
 
     def __repr__(self):
-        return f"[{self.attr_category}-{self.inst_level}] {self.name}:{self.attr_type_short}"
+        return f"[{self.attr_category}-{self.inst_level}] {self.name}:{self.attr_type_str_short}"

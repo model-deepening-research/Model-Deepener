@@ -1,7 +1,10 @@
 from xml.dom.minidom import parse
 import copy
 import xml.etree.ElementTree as ElementTree
-from src.fmmlx_mlm_structure import xml_export as export_xml
+
+from basemlm.basemlm_predefined_type import *
+from basemlm.basemlm_type_spec import TypeSpec
+from src.basemlm import xml_export as export_xml
 
 from typing import List, Optional
 import csv
@@ -12,25 +15,25 @@ import unicodedata
 import math
 import networkx as nx
 
-from src.fmmlx_mlm_structure.fm_association import FmmlxAssociation
-from src.fmmlx_mlm_structure.fm_association_end import FmmlxAssociationEnd
-from src.fmmlx_mlm_structure.fm_attr import FmmlxAttribute
-from src.fmmlx_mlm_structure.fm_constraint import FmmlxConstraint
-from src.fmmlx_mlm_structure.fm_enum_type import FmmlxEnumType
-from src.fmmlx_mlm_structure.fm_link import FmmlxLink
-from src.fmmlx_mlm_structure.fm_object import FmmlxObject
-from src.fmmlx_mlm_structure.fm_operation import FmmlxOperation
-from src.fmmlx_mlm_structure.fm_slot import FmmlxSlot
-from src.fmmlx_mlm_structure.multiplicity import Multiplicity
-from src.fmmlx_mlm_structure.slot_link import FmmlxSlotLink
+from src.basemlm.basemlm_association import BaseMlmAssociation
+from src.basemlm.basemlm_assoc_end import BaseMlmAssocEnd
+from src.basemlm.basemlm_attribute import BaseMlmAttribute
+from src.basemlm.basemlm_constraint import BaseMlmConstraint
+from src.basemlm.basemlm_enum_type import BaseMlmEnumType
+from src.basemlm.basemlm_link import BaseMlmLink
+from src.basemlm.basemlm_object import BaseMlmObject
+from src.basemlm.basemlm_operation import BaseMlmOperation
+from src.basemlm.basemlm_slot import BaseMlmSlot
+from src.basemlm.multiplicity import Multiplicity
+from src.basemlm.basemlm_slot_link import BaseMlmSlotLink
 
-metaClass = FmmlxObject("MetaClass",
-                        "MetaClass", "99",
-                        None, "false",
-                        None)
+metaClass = BaseMlmObject("MetaClass",
+                          "MetaClass", "99",
+                          None, "false",
+                          None)
 
 
-class FmmlxModel:
+class BaseMlmModel:
     """
     This class serves to represent complete MultiLevelModels. It offers functions for importing standard FMMLx XML files
     into a Python representation and exporting them again to XML documents once processed as intended.
@@ -47,10 +50,10 @@ class FmmlxModel:
         are retained so a later export can reproduce the source information.
         """
         self.path_name = ""
-        self.mlm_objects: List[FmmlxObject] = []
-        self.enums: List[FmmlxEnumType] = []
-        self.associations: List[FmmlxAssociation] = []
-        self.links: List[FmmlxLink] = []
+        self.mlm_objects: List[BaseMlmObject] = []
+        self.enums: List[BaseMlmEnumType] = []
+        self.associations: List[BaseMlmAssociation] = []
+        self.links: List[BaseMlmLink] = []
         self.parsed_xml = None
         self.diagram_xml = None
         self.imports_xml = None
@@ -74,7 +77,7 @@ class FmmlxModel:
 
     def validate_basemlm_integrity(self):
         """Return all implemented BaseMLM integrity violations for this model."""
-        from src.fmmlx_mlm_structure.integrity import BaseMLMValidator
+        from src.basemlm.integrity import BaseMLMValidator
 
         return BaseMLMValidator(self).validate()
 
@@ -86,7 +89,7 @@ class FmmlxModel:
         Empty cells do not create slots because they contain no exportable
         value. CSV input contains no relationships, so none are invented.
         """
-        all_mlm_objects: List[FmmlxObject] = []
+        all_mlm_objects: List[BaseMlmObject] = []
         # CSV files can contain special characters such as umlauts or non-English names.
         # On Windows, open() may otherwise use the local default encoding and fail while reading.
         # utf-8-sig reads normal UTF-8 files and also ignores a possible BOM marker from Excel.
@@ -129,8 +132,8 @@ class FmmlxModel:
 
         # Hier wird die eine Klasse gebaut, zu der alle CSV-Zeilen später gehören.
         # Beispiel: Aus der Datei news_decline.csv wird die Klasse NewsDecline.
-        mlm_class: FmmlxObject = FmmlxObject(
-            f"{project_name}::{class_name}", class_name, "1", FmmlxObject.meta_class(),
+        mlm_class: BaseMlmObject = BaseMlmObject(
+            f"{project_name}::{class_name}", class_name, "1", BaseMlmObject.meta_class(),
             "false", self)
         all_mlm_objects.append(mlm_class) #speichert Klasse im Modell
 
@@ -141,7 +144,8 @@ class FmmlxModel:
             attribute_name = self._make_unique_csv_attribute_name(attribute_name, used_attribute_names)
             column_values = [row[col_counter] for row in data_rows] #holt alle Werte dieser Spalte
             attribute_type = self._get_csv_attribute_type(column_values) #String, Integer oder Float
-            new_attr: FmmlxAttribute = FmmlxAttribute(attribute_name, attribute_type, 0)
+            new_attr: BaseMlmAttribute = BaseMlmAttribute(attribute_name, attribute_type, 0,
+                                                          self._parse_attribute_type(attribute_type))
             new_attr.set_owner(mlm_class)
             all_csv_attr.append(new_attr) #attribut in Liste
             mlm_class.add_attr(new_attr) #fügt zur Klasse hinzu
@@ -149,7 +153,7 @@ class FmmlxModel:
         for row_counter, row in enumerate(data_rows, start=1):
             # Aus jeder Datenzeile wird eine Instanz mit eindeutigem Namen.
             instance_name = f"{class_name.lower()}{row_counter}"
-            mlm_instance: FmmlxObject = FmmlxObject(
+            mlm_instance: BaseMlmObject = BaseMlmObject(
                 f"{project_name}::{instance_name}", instance_name, "0",
                 mlm_class, "false", self)
             mlm_class.add_instance(mlm_instance)
@@ -160,7 +164,7 @@ class FmmlxModel:
                 if value == "":
                     continue
                 attribute = all_csv_attr[col_counter]
-                new_slot: FmmlxSlot = FmmlxSlot(attribute.name, self._convert_csv_value(value, attribute.attr_type))
+                new_slot: BaseMlmSlot = BaseMlmSlot(attribute.name, self._convert_csv_value(value, attribute.attr_type_str))
                 new_slot.set_owner_object(mlm_instance)
                 # Der Slot bekommt direkt das Attribut aus seiner Spalte.
                 new_slot.set_attribute(attribute)
@@ -343,34 +347,34 @@ class FmmlxModel:
             return False
 
     # Ab hier gehen die normalen Funktionen weiter.
-    def _set_mlm_objects(self, mlm_objects: List[FmmlxObject]):
+    def _set_mlm_objects(self, mlm_objects: List[BaseMlmObject]):
         self.mlm_objects = mlm_objects
 
-    def add_mlm_object(self, mlm_object: FmmlxObject):
+    def add_mlm_object(self, mlm_object: BaseMlmObject):
         self.mlm_objects.append(mlm_object)
 
     def set_instances_of_mlm_objects(self):
-        mlm_classes: List[FmmlxObject] = []
+        mlm_classes: List[BaseMlmObject] = []
         for mlm_object in self.mlm_objects:
             if mlm_object.level > 0:
                 mlm_classes.append(mlm_object)
         for mlm_class in mlm_classes:
-            objects_beneath: List[FmmlxObject] = self.get_all_objects_at_level_x(mlm_class.level-1)
+            objects_beneath: List[BaseMlmObject] = self.get_all_objects_at_level_x(mlm_class.level - 1)
             for object_beneath in objects_beneath:
                 if object_beneath.class_of_object == mlm_class:
                     mlm_class.add_instance(object_beneath)
 
-    def get_all_objects_at_level_x(self, level: int) -> List[FmmlxObject]:
-        objects_at_level_x: List[FmmlxObject] = []
+    def get_all_objects_at_level_x(self, level: int) -> List[BaseMlmObject]:
+        objects_at_level_x: List[BaseMlmObject] = []
         for obj in self.mlm_objects:
             if obj.level == level:
                 objects_at_level_x.append(obj)
         return objects_at_level_x
 
-    def get_all_flat_classes(self) -> List[FmmlxObject]:
+    def get_all_flat_classes(self) -> List[BaseMlmObject]:
         return self.get_all_objects_at_level_x(1)
 
-    def get_all_pure_objects(self) -> List[FmmlxObject]:
+    def get_all_pure_objects(self) -> List[BaseMlmObject]:
         return self.get_all_objects_at_level_x(0)
 
     def export_xml(self, filepath: str = 'export_test.xml', project_name='Root::Export',
@@ -468,7 +472,7 @@ class FmmlxModel:
         root.remove(current_section)
         root.insert(insertion_index, imported_section)
 
-    def _objects_for_export(self, max_instances_per_class: Optional[int]) -> List[FmmlxObject]:
+    def _objects_for_export(self, max_instances_per_class: Optional[int]) -> List[BaseMlmObject]:
         """
         Selects all MLM classes and at most the requested Level 0 instances.
 
@@ -491,7 +495,7 @@ class FmmlxModel:
         return selected_objects
 
     def _prepare_export_diagrams(self, root, project_name: str,
-                                 exported_objects: List[FmmlxObject], diagram_mode: str):
+                                 exported_objects: List[BaseMlmObject], diagram_mode: str):
         """
         Prepares the diagrams for the selected objects and their model levels.
 
@@ -610,7 +614,7 @@ class FmmlxModel:
                 yCoordinate="0",
             )
 
-    def _diagram_layout_by_level(self, exported_objects: List[FmmlxObject], project_name: str):
+    def _diagram_layout_by_level(self, exported_objects: List[BaseMlmObject], project_name: str):
         """
         Calculates non-overlapping boxes from highest to lowest model level.
 
@@ -795,7 +799,7 @@ class FmmlxModel:
         return block_width + gap_width
 
     @staticmethod
-    def _estimate_diagram_box_size(mlm_object: FmmlxObject):
+    def _estimate_diagram_box_size(mlm_object: BaseMlmObject):
         """
         Estimates the visible width and height of one XModeler class block.
 
@@ -811,12 +815,12 @@ class FmmlxModel:
         ]
         visible_lines = [mlm_object.name]
         visible_lines.extend(
-            f"{attribute.name}: {attribute.attr_type_short} [{attribute.inst_level}]"
+            f"{attribute.name}: {attribute.attr_type_str_short} [{attribute.inst_level}]"
             for attribute in direct_attributes
         )
-        inherited_attributes, inherited_operations = FmmlxModel._inherited_diagram_members(mlm_object)
+        inherited_attributes, inherited_operations = BaseMlmModel._inherited_diagram_members(mlm_object)
         visible_lines.extend(
-            f"{attribute.name}: {attribute.attr_type_short} [{attribute.inst_level}] (from {owner_name})"
+            f"{attribute.name}: {attribute.attr_type_str_short} [{attribute.inst_level}] (from {owner_name})"
             for attribute, owner_name in inherited_attributes
         )
         slot_values = {
@@ -825,7 +829,7 @@ class FmmlxModel:
             if slot.slot_category != "SLOT-LINK"
         }
         classification_attributes, classification_operations = (
-            FmmlxModel._classification_diagram_members(mlm_object)
+            BaseMlmModel._classification_diagram_members(mlm_object)
         )
         visible_classification_names = set()
         for attribute in classification_attributes:
@@ -840,13 +844,13 @@ class FmmlxModel:
             for slot_name, slot_value in slot_values.items()
             if slot_name not in visible_classification_names
         )
-        visible_lines.extend(FmmlxModel._operation_diagram_text(operation) for operation in mlm_object.operations_list)
+        visible_lines.extend(BaseMlmModel._operation_diagram_text(operation) for operation in mlm_object.operations_list)
         visible_lines.extend(
-            f"{FmmlxModel._operation_diagram_text(operation)} (from {owner_name})"
+            f"{BaseMlmModel._operation_diagram_text(operation)} (from {owner_name})"
             for operation, owner_name in inherited_operations
         )
         visible_lines.extend(
-            FmmlxModel._operation_diagram_text(operation)
+            BaseMlmModel._operation_diagram_text(operation)
             for operation in classification_operations
         )
         visible_lines.extend(constraint.constraint_name for constraint in mlm_object.constraints_list)
@@ -862,7 +866,7 @@ class FmmlxModel:
         return width, height
 
     @staticmethod
-    def _classification_diagram_members(mlm_object: FmmlxObject):
+    def _classification_diagram_members(mlm_object: BaseMlmObject):
         """Collects members that XModeler displays on an instance of its class."""
         attributes = []
         operations = []
@@ -891,7 +895,7 @@ class FmmlxModel:
         return attributes, operations
 
     @staticmethod
-    def _inherited_diagram_members(mlm_object: FmmlxObject):
+    def _inherited_diagram_members(mlm_object: BaseMlmObject):
         """Collects inherited attributes and operations displayed by XModeler."""
         attributes = []
         operations = []
@@ -927,7 +931,7 @@ class FmmlxModel:
         return_type = operation.return_type.split("::")[-1]
         return f"{operation.operation_name}({parameters}): {return_type} [{operation.inst_level}]"
 
-    def _diagram_connection_pairs(self, exported_objects: List[FmmlxObject]):
+    def _diagram_connection_pairs(self, exported_objects: List[BaseMlmObject]):
         """
         Lists visible relationships that require room between diagram blocks.
 
@@ -951,7 +955,7 @@ class FmmlxModel:
                 add_connection(mlm_object, parent)
         return connection_pairs
 
-    def _connection_aware_positions(self, exported_objects: List[FmmlxObject]):
+    def _connection_aware_positions(self, exported_objects: List[BaseMlmObject]):
         """
         Produces stable guide positions that keep connected classes together.
 
@@ -1161,7 +1165,7 @@ class FmmlxModel:
     @staticmethod
     def _box_port_point(position, size, port):
         """Returns the coordinate where a connection leaves a class block."""
-        center_x, center_y = FmmlxModel._box_center(position, size)
+        center_x, center_y = BaseMlmModel._box_center(position, size)
         return {
             "NORTH": (center_x, position[1]),
             "SOUTH": (center_x, position[1] + size[1]),
@@ -1269,14 +1273,16 @@ class FmmlxModel:
         the associations and links have been retrieved"""
         if len(self.associations) > 0:
             for assoc in self.associations:
-                src_assoc_end: FmmlxAssociationEnd = FmmlxAssociationEnd(assoc.get_source_access_name(),
-                                                                         assoc.get_target_object().full_name,
-                                                                         assoc.get_source_inst_level(),
-                                                                         assoc, True)
-                tgt_assoc_end: FmmlxAssociationEnd = FmmlxAssociationEnd(assoc.get_target_access_name(),
-                                                                         assoc.get_source_object().full_name,
-                                                                         assoc.get_target_inst_level(),
-                                                                         assoc, False)
+                src_assoc_end: BaseMlmAssocEnd = BaseMlmAssocEnd(assoc.get_source_access_name(),
+                                                                 assoc.get_target_object().full_name,
+                                                                 assoc.get_source_inst_level(),
+                                                                 assoc.get_target_object(),
+                                                                 assoc, True)
+                tgt_assoc_end: BaseMlmAssocEnd = BaseMlmAssocEnd(assoc.get_target_access_name(),
+                                                                 assoc.get_source_object().full_name,
+                                                                 assoc.get_target_inst_level(),
+                                                                 assoc.get_source_object(),
+                                                                 assoc, False)
                 assoc.get_source_object().add_attr(src_assoc_end)
                 assoc.set_source_association_end(src_assoc_end)
                 assoc.get_target_object().add_attr(tgt_assoc_end)
@@ -1285,10 +1291,10 @@ class FmmlxModel:
     def add_slot_links(self):
         """This operation adds slots for each link the attribute of each is an association end"""
         for link in self.links:
-            src_slot_link: FmmlxSlotLink = FmmlxSlotLink(link.get_association().get_source_access_name(),
-                                                         link.get_target_object().full_name, link, True)
-            tgt_slot_link: FmmlxSlotLink = FmmlxSlotLink(link.get_association().get_target_access_name(),
-                                                         link.get_source_object().full_name, link, False)
+            src_slot_link: BaseMlmSlotLink = BaseMlmSlotLink(link.get_association().get_source_access_name(),
+                                                             link.get_target_object().full_name, link, True)
+            tgt_slot_link: BaseMlmSlotLink = BaseMlmSlotLink(link.get_association().get_target_access_name(),
+                                                             link.get_source_object().full_name, link, False)
             link.get_source_object().add_slot(src_slot_link)
             link.get_target_object().add_slot(tgt_slot_link)
 
@@ -1308,7 +1314,7 @@ class FmmlxModel:
             return project_nodes[0].getAttribute("name")
         raise ValueError("The XML file does not contain an XModeler project path.")
 
-    def retrieve_all_mlm_objects(self) -> List[FmmlxObject]:
+    def retrieve_all_mlm_objects(self) -> List[BaseMlmObject]:
         """
         This operation retrieves all MLM objects/classes. First all highest-level classes are retrieved via the
         function `_retrieve_all_mlm_metaclass_objects.` This is important since they have a separate XML tag.
@@ -1325,45 +1331,45 @@ class FmmlxModel:
             mlm_objects.append(instance_object)
         return mlm_objects
 
-    def _retrieve_metaclass_objects(self) -> List[FmmlxObject]:
+    def _retrieve_metaclass_objects(self) -> List[BaseMlmObject]:
         mlm_objects = []
         for object_element in self.parsed_xml.getElementsByTagName("addMetaClass"):
             mlm_object_long = object_element.getAttribute("package") + "::" + object_element.getAttribute("name")
-            mlm_object = FmmlxObject(mlm_object_long, object_element.getAttribute("name"),
-                                     object_element.getAttribute("level"), metaClass,
-                                     object_element.getAttribute("abstract"), self)
+            mlm_object = BaseMlmObject(mlm_object_long, object_element.getAttribute("name"),
+                                       object_element.getAttribute("level"), metaClass,
+                                       object_element.getAttribute("abstract"), self)
             mlm_objects.append(mlm_object)
 
         return mlm_objects
 
-    def _retrieve_instance_objects(self) -> List[FmmlxObject]:
+    def _retrieve_instance_objects(self) -> List[BaseMlmObject]:
         mlm_objects = []
         for object_element in self.parsed_xml.getElementsByTagName("addInstance"):
             mlm_object_long = object_element.getAttribute("package") + "::" + object_element.getAttribute("name")
             declared_level = object_element.getAttribute("level") or "99"
-            mlm_object = FmmlxObject(mlm_object_long, object_element.getAttribute("name"), declared_level,
-                                     FmmlxObject(object_element.getAttribute("of"),
+            mlm_object = BaseMlmObject(mlm_object_long, object_element.getAttribute("name"), declared_level,
+                                       BaseMlmObject(object_element.getAttribute("of"),
                                              "", "99", None, "false", self),
-                                     object_element.getAttribute("abstract"), self)
+                                       object_element.getAttribute("abstract"), self)
             mlm_objects.append(mlm_object)
 
         return mlm_objects
 
-    def _get_class_of_mlm_object(self, full_object_name: str, mlm_instance_objects: List[FmmlxObject]) -> FmmlxObject:
+    def _get_class_of_mlm_object(self, full_object_name: str, mlm_instance_objects: List[BaseMlmObject]) -> BaseMlmObject:
         for object_elem in mlm_instance_objects:
             if object_elem.full_name == full_object_name:
                 return object_elem
 
     def _set_generalizations(self):
         for parent_element in self.parsed_xml.getElementsByTagName("changeParent"):
-            child_class: FmmlxObject = self.get_mlm_object_by_fullname(parent_element.getAttribute("class"))
+            child_class: BaseMlmObject = self.get_mlm_object_by_fullname(parent_element.getAttribute("class"))
             for parent_class_name in parent_element.getAttribute("new").split(","):
                 child_class.add_parent_class(self.get_mlm_object_by_fullname(parent_class_name))
 
     def retrieve_all_enums(self):
-        enums_tmp: List[FmmlxEnumType] = []
+        enums_tmp: List[BaseMlmEnumType] = []
         for enum_element in self.parsed_xml.getElementsByTagName("addEnumeration"):
-            enums_tmp.append(FmmlxEnumType(enum_element.getAttribute("name")))
+            enums_tmp.append(BaseMlmEnumType(enum_element.getAttribute("name")))
         for enum_value_element in self.parsed_xml.getElementsByTagName("addEnumerationValue"):
             for enum_tmp in enums_tmp:
                 if enum_value_element.getAttribute("enum_name") == enum_tmp.name:
@@ -1372,18 +1378,42 @@ class FmmlxModel:
 
     def retrieve_all_attributes(self):
         for attribute_element in self.parsed_xml.getElementsByTagName("addAttribute"):
-            new_attr = FmmlxAttribute(attribute_element.getAttribute("name"), attribute_element.getAttribute("type"),
-                                      attribute_element.getAttribute("level"),
-                                      multiplicity=self._parse_attribute_multiplicity(
+            new_attr = BaseMlmAttribute(attribute_element.getAttribute("name"), attribute_element.getAttribute("type"),
+                                        attribute_element.getAttribute("level"),
+                                        self._parse_attribute_type(attribute_element.getAttribute("type")),
+                                        multiplicity=self._parse_attribute_multiplicity(
                                           attribute_element.getAttribute("multiplicity")))
             # need to look for custom attr data types: enums or custom class types
-            if new_attr.attr_type.split("::")[1] != "XCore" and new_attr.attr_type.split("::")[1] != "Auxiliary":
-                if not self._is_custom_attribute_type_an_enum(new_attr):
-                    print("TO-DO: Custom Data Type " + new_attr.attr_type_short + " Detected") #TODO CUSTOM CLASS AS OBJECT
             owner_object = self._find_object_named_in_xml(attribute_element.getAttribute("class"))
             if owner_object is not None:
                 owner_object.add_attr(new_attr)
                 new_attr.set_owner(owner_object)
+
+    def _parse_attribute_type(self, type_str: str) -> TypeSpec:
+        """receives the type as String from the FMMLX XML file and parses it to produce TypeSpec. The type string always
+        conforms to the following form: Root::<Model-Name>::<Object-Name>. Accepted predefined Types are specified
+        either in XCore or Auxiliary. If no predefined type is detected, the object name must correspond to an enum or
+        object of the model"""
+        model_of_type: str = type_str.split("::")[1]
+        short_name: str = type_str.split("::")[2]
+
+        if model_of_type == "XCore" or model_of_type == "Auxiliary":
+            match short_name:
+                case "String":
+                    return StringType()
+                case "Boolean":
+                    return BooleanType()
+                case "Float":
+                    return FloatType()
+                case "Integer":
+                    return IntegerType()
+                case "Date":
+                    return DateType()
+                case _:
+                    return UnknownType()
+
+        else:
+            return self.get_object_or_enum_type(short_name)
 
     @staticmethod
     def _parse_attribute_multiplicity(multiplicity_value: str):
@@ -1415,10 +1445,10 @@ class FmmlxModel:
             return matching_objects[0]
         return None
 
-    def _is_custom_attribute_type_an_enum(self, mlm_attr: FmmlxAttribute) -> bool:
+    def _is_custom_attribute_type_an_enum(self, mlm_attr: BaseMlmAttribute) -> bool:
         # check 1: look if in list of enums
         for enum in self.enums:
-            if enum.name == mlm_attr.attr_type_short:
+            if enum.name == mlm_attr.attr_type_str_short:
                 mlm_attr.set_enum_type(enum)
                 return True
         return False
@@ -1427,8 +1457,8 @@ class FmmlxModel:
         """Reads slot values while retaining their original XML expressions."""
         for slot_element in self.parsed_xml.getElementsByTagName("changeSlotValue"):
             xml_value = slot_element.getAttribute("valueToBeParsed")
-            new_slot = FmmlxSlot(slot_element.getAttribute("slotName"),
-                                 self._parse_slot_value(xml_value), xml_value=xml_value)
+            new_slot = BaseMlmSlot(slot_element.getAttribute("slotName"),
+                                   self._parse_slot_value(xml_value), xml_value=xml_value)
             owner_object = self._find_object_named_in_xml(slot_element.getAttribute("class"))
             if owner_object is not None:
                 owner_object.add_slot(new_slot)
@@ -1446,9 +1476,9 @@ class FmmlxModel:
 
     def retrieve_all_operations(self):
         for operations_element in self.parsed_xml.getElementsByTagName("addOperation"):
-            new_operation = FmmlxOperation(operations_element.getAttribute("name"),
-                                           operations_element.getAttribute("level"),
-                                           operations_element.getAttribute("type"))
+            new_operation = BaseMlmOperation(operations_element.getAttribute("name"),
+                                             operations_element.getAttribute("level"),
+                                             operations_element.getAttribute("type"))
             new_operation.xml_attributes = {
                 attribute_name: operations_element.getAttribute(attribute_name)
                 for attribute_name in operations_element.attributes.keys()
@@ -1460,8 +1490,8 @@ class FmmlxModel:
 
     def retrieve_all_constraints(self):
         for constraint_element in self.parsed_xml.getElementsByTagName("addConstraint"):
-            new_constraint = FmmlxConstraint(constraint_element.getAttribute("constName"),
-                                             constraint_element.getAttribute("instLevel"))
+            new_constraint = BaseMlmConstraint(constraint_element.getAttribute("constName"),
+                                               constraint_element.getAttribute("instLevel"))
             new_constraint.xml_attributes = {
                 attribute_name: constraint_element.getAttribute(attribute_name)
                 for attribute_name in constraint_element.attributes.keys()
@@ -1472,11 +1502,11 @@ class FmmlxModel:
 
     def retrieve_all_associations(self):
         for association_element in self.parsed_xml.getElementsByTagName("addAssociation"):
-            new_association = FmmlxAssociation(association_element.getAttribute("fwName"),
-                                               association_element.getAttribute("instLevelSource"),
-                                               association_element.getAttribute("instLevelTarget"),
-                                               association_element.getAttribute("accessTargetFromSourceName"),
-                                               association_element.getAttribute("accessSourceFromTargetName"))
+            new_association = BaseMlmAssociation(association_element.getAttribute("fwName"),
+                                                 association_element.getAttribute("instLevelSource"),
+                                                 association_element.getAttribute("instLevelTarget"),
+                                                 association_element.getAttribute("accessTargetFromSourceName"),
+                                                 association_element.getAttribute("accessSourceFromTargetName"))
             new_association.xml_attributes = {
                 attribute_name: association_element.getAttribute(attribute_name)
                 for attribute_name in association_element.attributes.keys()
@@ -1501,7 +1531,7 @@ class FmmlxModel:
         direct and unambiguous reference used by the example models.
         """
         for link_element in self.parsed_xml.getElementsByTagName("addLink"):
-            new_link: FmmlxLink = FmmlxLink(link_element.getAttribute("name"))
+            new_link: BaseMlmLink = BaseMlmLink(link_element.getAttribute("name"))
             for mlm_object in self.mlm_objects:
                 if link_element.getAttribute("classSource") == mlm_object.full_name:
                     new_link.set_source_object(mlm_object)
@@ -1520,46 +1550,59 @@ class FmmlxModel:
                 new_link.set_association(matching_associations[0])
             self.links.append(new_link)
 
-    def get_mlm_object_by_fullname(self, full_name: str) -> FmmlxObject:
+    def get_object_or_enum_type(self, short_name: str) -> TypeSpec:
+        """returns BaseMlmObject or EnumType, used to determine type of an attribute"""
+        for obj in self.mlm_objects + self.enums:
+            if obj.name == short_name:
+                return obj
+        raise Exception(f"No matching type found for {short_name}!")
+
+    def get_enum_type(self, enum_name: str) -> BaseMlmEnumType:
+        for enum_type in self.enums:
+            if enum_type.get_name == enum_name:
+                return enum_type
+        raise Exception(f"No matching enum type ({enum_name}) found!")
+
+    def get_mlm_object_by_fullname(self, full_name: str) -> BaseMlmObject:
         for mlm_object in self.mlm_objects:
             if mlm_object.full_name == full_name:
                 return mlm_object
         raise Exception(f"No matching MLM object ({full_name}) found!")
 
-    def get_mlm_object_by_shortname(self, short_name: str) -> FmmlxObject:
+    def get_mlm_object_by_shortname(self, short_name: str) -> BaseMlmObject:
         full_name = f"{self.path_name}::{short_name}"
         for mlm_object in self.mlm_objects:
             if mlm_object.full_name == full_name:
                 return mlm_object
         raise Exception(f"No matching MLM object ({full_name}) found!")
 
-    def get_all_objects_for_class(self, search_class: FmmlxObject) -> List[FmmlxObject]:
-        instances_for_class:List[FmmlxObject] = []
+    def get_all_objects_for_class(self, search_class: BaseMlmObject) -> List[BaseMlmObject]:
+        instances_for_class:List[BaseMlmObject] = []
         for mlm_object in self.mlm_objects:
             if mlm_object.class_of_object == search_class:
                 instances_for_class.append(mlm_object)
         return instances_for_class
 
-    def perform_change_operations_for_precedence_analysis(self, fm_object: FmmlxObject):
+    def perform_change_operations_for_precedence_analysis(self, fm_object: BaseMlmObject):
         assert fm_object.level == 1, "Change operations performed on L1 classes only"
         assert fm_object.attribute_precedence_graph is not None, ("Precedence graph not detected, "
                                                                   "precedence analysis must be performed first")
-        flat_class: FmmlxObject = self.get_mlm_object_by_fullname(fm_object.full_name)
+        flat_class: BaseMlmObject = self.get_mlm_object_by_fullname(fm_object.full_name)
         max_inst_level: int = flat_class.get_attribute_precedence_graph().get_max_level()
         flat_class.promote_to_level_x(max_inst_level + 1)
         flat_class.promote_attributes()
         while max_inst_level > 0:
-            attrs_at_inst_level: [FmmlxAttribute] = flat_class.get_attributes_at_inst_level_x(max_inst_level)
+            attrs_at_inst_level: [BaseMlmAttribute] = flat_class.get_attributes_at_inst_level_x(max_inst_level)
             print(attrs_at_inst_level[0].get_slots_for_unique_values())
             for unique_value_slot in attrs_at_inst_level[0].get_slots_for_unique_values():
-                new_instance: FmmlxObject = FmmlxObject(flat_class.full_name, unique_value_slot.get_value().upper(),
-                                                        str(max_inst_level),flat_class, "false", self)
+                new_instance: BaseMlmObject = BaseMlmObject(flat_class.full_name, unique_value_slot.get_value().upper(),
+                                                            str(max_inst_level), flat_class, "false", self)
                 self.mlm_objects.append(new_instance)
             print(max_inst_level)
             max_inst_level -= max_inst_level
 
-    def get_assoc_classification_indicators(self) -> List[FmmlxAssociation]:
-        indicating_associations: List[FmmlxAssociation] = []
+    def get_assoc_classification_indicators(self) -> List[BaseMlmAssociation]:
+        indicating_associations: List[BaseMlmAssociation] = []
         for mlm_assoc in self.associations:
             if mlm_assoc.is_classification_indicator():
                 indicating_associations.append(mlm_assoc)

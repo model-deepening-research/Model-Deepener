@@ -2,13 +2,13 @@
 Slot collectives are used in property-precedence analysis. Instances of slot collectives represent groupings of slots
 for unique values within a specific attribute.
 """
-from src.fmmlx_mlm_structure.fm_attr import FmmlxAttribute
-from src.fmmlx_mlm_structure.fm_slot import FmmlxSlot
-from src.fmmlx_mlm_structure.model_property import ModelProperty
+from src.basemlm.basemlm_attribute import BaseMlmAttribute
+from src.basemlm.basemlm_slot import BaseMlmSlot
+from src.basemlm.basemlm_property import BaseMlmProperty
 
 
-class SlotCollective(ModelProperty):
-    def __init__(self, value: str, attribute: FmmlxAttribute):
+class SlotCollective(BaseMlmProperty):
+    def __init__(self, value: str, attribute: BaseMlmAttribute):
         if attribute.get_attr_type() == "Boolean":
             print_value = "is " + attribute.get_name() if value == "true" \
                 else "is not " + attribute.get_name()
@@ -17,8 +17,8 @@ class SlotCollective(ModelProperty):
         # too long names cause unreadable graphs
         super().__init__(f"{print_value}")
         self.value: str = value
-        self.attribute: FmmlxAttribute = attribute
-        self.slots: [FmmlxSlot] = []
+        self.attribute: BaseMlmAttribute = attribute
+        self.slots: [BaseMlmSlot] = []
         self.scope_list: [] = []
         self.scope_set: set = set()
 
@@ -28,16 +28,16 @@ class SlotCollective(ModelProperty):
     def add_object_to_scope(self, fm_object):
         self.scope_list.append(fm_object)
 
-    def get_attribute(self) -> FmmlxAttribute:
+    def get_attribute(self) -> BaseMlmAttribute:
         return self.attribute
 
     def get_value(self) -> str:
         return self.value
 
-    def add_slot(self, slot: FmmlxSlot):
+    def add_slot(self, slot: BaseMlmSlot):
         self.slots.append(slot)
 
-    def get_slots(self) -> [FmmlxSlot]:
+    def get_slots(self) -> [BaseMlmSlot]:
         return self.slots
 
     def get_scope_set(self) -> set:

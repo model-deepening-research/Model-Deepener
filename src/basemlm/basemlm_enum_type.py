@@ -1,16 +1,24 @@
 import xml.etree.ElementTree as ElementTree
 
-from src.fmmlx_mlm_structure.model_element import ModelElement
-from src.fmmlx_mlm_structure.model_entity import ModelEntity
+from basemlm.basemlm_type_spec import TypeSpec
+from src.basemlm.model_element import ModelElement
+from src.basemlm.model_member import ModelMember
 
 
-class FmmlxEnumType(ModelEntity):
+class BaseMlmEnumType(ModelMember, TypeSpec):
+
     def __init__(self, enum_name: str):
         super().__init__(name=enum_name, print_name=enum_name)
         self.enum_values = []
 
     def add_enum_value(self, enum_value: str):
         self.enum_values.append(enum_value)
+
+    def get_type_name(self) -> str:
+        return self.name
+
+    def slot_conforms_to_type(self, slot) -> bool:
+        pass
 
     def __repr__(self):
         enum_print: str = ""
