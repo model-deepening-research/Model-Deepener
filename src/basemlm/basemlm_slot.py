@@ -21,6 +21,24 @@ class BaseMlmSlot(BaseMlmProperty):
         self.owner = None
         self.slot_category: str = "SLOT"
 
+    def is_regular_slot(self) -> bool:
+        return True if self.slot_category == "SLOT" else False
+
+    def is_slot_link(self) -> bool:
+        return False if self.slot_category == "SLOT" else True
+
+    def conforms_to_type_spec(self) -> bool:
+        if self.get_attribute().get_type_spec().slot_conforms_to_type(self):
+            return True
+        return False
+
+    def conforms_to_multiplicity(self) -> bool:
+        multiplicity = self.get_attribute().get_multiplicity()
+        value_count = len(self.get_values_as_list())
+
+        return (value_count >= multiplicity.get_lower_bound() and
+                (multiplicity.is_unbounded() or value_count <= multiplicity.get_upper_bound()))
+
     def value_for_xml(self) -> str:
         """
         Returns the value in the expression format expected by XModeler.

@@ -1355,8 +1355,9 @@ class BaseMlmModel:
 
         return mlm_objects
 
-    def _get_class_of_mlm_object(self, full_object_name: str, mlm_instance_objects: List[BaseMlmObject]) -> BaseMlmObject:
-        for object_elem in mlm_instance_objects:
+    @staticmethod
+    def _get_class_of_mlm_object(full_object_name: str, instances: List[BaseMlmObject]) -> BaseMlmObject:
+        for object_elem in instances:
             if object_elem.full_name == full_object_name:
                 return object_elem
 
@@ -1427,7 +1428,7 @@ class BaseMlmModel:
         lower_bound = int(match.group(1))
         upper_bound = int(match.group(2))
         is_unbounded = match.group(3).lower() == "true"
-        return Multiplicity(lower_bound, upper_bound, is_unbounded=is_unbounded)
+        return Multiplicity(lower_bound, upper_bound, unbound=is_unbounded)
 
     def _find_object_named_in_xml(self, xml_object_name: str):
         # XML files sometimes use the full model path and sometimes only the final class name.
@@ -1465,13 +1466,22 @@ class BaseMlmModel:
                 new_slot.set_owner_object(owner_object)
                 new_slot.set_attribute()
 
-    def _parse_slot_value(self, slot_value: str):
+    @staticmethod
+    def _parse_slot_value(slot_value: str) -> str:
         if slot_value.endswith("asString()"):
             sign_list = slot_value[1:].split("]")[0].split(",")
             slot_value = ""
             if sign_list[0] != "":
                 for sign_code in sign_list:
                     slot_value += chr(int(sign_code))
+        if len(slot_value.split("::")) > 1: # this means an object or enum value
+            date_prefix: str = "Auxiliary::Date::createDate("
+            if slot_value.startswith(date_prefix):
+                parts = slot_value[len(date_prefix):-1].split(",")
+                year, month, day = (int(part.strip()) for part in parts)
+                slot_value = f"DATE({day:02d},{month:02d},{year:04d})"
+            else:
+                slot_value = slot_value.split("::")[-1]  # always last item
         return slot_value
 
     def retrieve_all_operations(self):
@@ -1550,6 +1560,21 @@ class BaseMlmModel:
                 new_link.set_association(matching_associations[0])
             self.links.append(new_link)
 
+    def is_flat(self) -> bool:
+        for mlm_object in self.mlm_objects:
+            if mlm_object.get_level() > 1:
+                return False
+        return True
+
+    def get_objects(self) -> [BaseMlmObject]:
+        return self.mlm_objects
+
+    def get_associations(self) -> [BaseMlmAssociation]:
+        return self.associations
+
+    def get_links(self) -> [BaseMlmLink]:
+        return self.links
+
     def get_object_or_enum_type(self, short_name: str) -> TypeSpec:
         """returns BaseMlmObject or EnumType, used to determine type of an attribute"""
         for obj in self.mlm_objects + self.enums:
@@ -1562,6 +1587,52 @@ class BaseMlmModel:
             if enum_type.get_name == enum_name:
                 return enum_type
         raise Exception(f"No matching enum type ({enum_name}) found!")
+
+    def only_unique_object_names(self) -> bool:
+        all_names = [obj.get_name() for obj in self.get_objects()]
+        return len(all_names) == len(set(all_names))
+
+    def valid_associations(self) -> bool:
+        for assoc in self.get_associations():
+            src_object = assoc.get_source_object()
+            tgt_object = assoc.get_target_object()
+
+            src_assoc_ends = src_object.get_assoc_ends()
+            tgt_assoc_ends = tgt_object.get_assoc_ends()
+
+            if not any(end.get_association() == assoc and end.get_attr_type() == tgt_object.get_name()
+                       for end in src_assoc_ends):
+                return False
+
+            if not any(end.get_association == assoc and end.get_attr_type() == src_object.get_name()
+                       for end in tgt_assoc_ends):
+                return False
+        return True
+
+    def valid_links(self) -> bool:
+        for link in self.get_links():
+            src_object = link.get_source_object()
+            tgt_object = link.get_target_object()
+
+            src_slot_links = src_object.get_slot_links()
+            tgt_slot_links = tgt_object.get_slot_links()
+
+            if not any(
+                    slot_link.get_link() == link
+                    and slot_link.get_attr_type() == tgt_object.get_name()
+                    for slot_link in src_slot_links
+            ):
+                return False
+
+            if not any(
+                    slot_link.get_link() == link
+                    and slot_link.get_attr_type() == src_object.get_name()
+                    for slot_link in tgt_slot_links
+            ):
+                return False
+
+        return True
+
 
     def get_mlm_object_by_fullname(self, full_name: str) -> BaseMlmObject:
         for mlm_object in self.mlm_objects:

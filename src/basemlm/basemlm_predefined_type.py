@@ -1,3 +1,4 @@
+import re
 from abc import ABCMeta, abstractmethod
 
 from basemlm.basemlm_type_spec import TypeSpec
@@ -16,47 +17,73 @@ class BaseMlmPredefinedType(TypeSpec, metaclass=ABCMeta):
     def get_type_as_enum_value(self) -> BaseMlmPredefinedTypesEnum:
         return self.type_name
 
+    @abstractmethod
     def slot_conforms_to_type(self, slot) -> bool:
-        match self.type_name:
-            case BaseMlmPredefinedTypesEnum.STRING:
-                return True
-            case BaseMlmPredefinedTypesEnum.INTEGER:
-                pass
-            case BaseMlmPredefinedTypesEnum.BOOLEAN:
-                pass
-            case BaseMlmPredefinedTypesEnum.FLOAT:
-                pass
-            case BaseMlmPredefinedTypesEnum.DATE:
-                pass
-        return False
+        """must be overwritten in derived classes"""
 
 
 class StringType(BaseMlmPredefinedType):
     def __init__(self):
         super().__init__(BaseMlmPredefinedTypesEnum.STRING)
 
+    def slot_conforms_to_type(self, slot) -> bool:
+        return True
+
 
 class IntegerType(BaseMlmPredefinedType):
     def __init__(self):
         super().__init__(BaseMlmPredefinedTypesEnum.INTEGER)
+
+    def slot_conforms_to_type(self, slot) -> bool:
+        for value in slot.get_values_as_list():
+            try:
+                int(value)
+            except ValueError:
+                return False
+        return True
 
 
 class BooleanType(BaseMlmPredefinedType):
     def __init__(self):
         super().__init__(BaseMlmPredefinedTypesEnum.BOOLEAN)
 
+    def slot_conforms_to_type(self, slot) -> bool:
+        for value in slot.get_values_as_list():
+            if not (value == "true" or value == "false"):
+                return False
+        return True
+
 
 class FloatType(BaseMlmPredefinedType):
     def __init__(self):
         super().__init__(BaseMlmPredefinedTypesEnum.FLOAT)
+
+    def slot_conforms_to_type(self, slot) -> bool:
+        pattern = r"[-+]?[0-9]+\.[0-9]+"
+
+        for value in slot.get_values_as_list():
+            if re.fullmatch(pattern, value) is None:
+                return False
+        return True
 
 
 class DateType(BaseMlmPredefinedType):
     def __init__(self):
         super().__init__(BaseMlmPredefinedTypesEnum.DATE)
 
+    def slot_conforms_to_type(self, slot) -> bool:
+        pattern = r"DATE\([0-9]{2},[0-9]{2},[0-9]{4}\)"
+
+        for value in slot.get_values_as_list():
+            if re.fullmatch(pattern, value) is None:
+                return False
+        return True
+
 
 class UnknownType(BaseMlmPredefinedType):
     def __init__(self):
         super().__init__(BaseMlmPredefinedTypesEnum.UNSPECIFIED)
+
+    def slot_conforms_to_type(self, slot) -> bool:
+        return False
 

@@ -10,6 +10,7 @@ class BaseMLMValidator:
     def __init__(self, model):
         """Create a validator for the given ``FmmlxModel``."""
         self._model = model
+        self.validations = []
 
     @property
     def model(self):
