@@ -1355,8 +1355,9 @@ class BaseMlmModel:
 
         return mlm_objects
 
-    def _get_class_of_mlm_object(self, full_object_name: str, mlm_instance_objects: List[BaseMlmObject]) -> BaseMlmObject:
-        for object_elem in mlm_instance_objects:
+    @staticmethod
+    def _get_class_of_mlm_object(full_object_name: str, instances: List[BaseMlmObject]) -> BaseMlmObject:
+        for object_elem in instances:
             if object_elem.full_name == full_object_name:
                 return object_elem
 
@@ -1465,13 +1466,22 @@ class BaseMlmModel:
                 new_slot.set_owner_object(owner_object)
                 new_slot.set_attribute()
 
-    def _parse_slot_value(self, slot_value: str):
+    @staticmethod
+    def _parse_slot_value(slot_value: str) -> str:
         if slot_value.endswith("asString()"):
             sign_list = slot_value[1:].split("]")[0].split(",")
             slot_value = ""
             if sign_list[0] != "":
                 for sign_code in sign_list:
                     slot_value += chr(int(sign_code))
+        if len(slot_value.split("::")) > 1: # this means an object or enum value
+            date_prefix: str = "Auxiliary::Date::createDate("
+            if slot_value.startswith(date_prefix):
+                parts = slot_value[len(date_prefix):-1].split(",")
+                year, month, day = (int(part.strip()) for part in parts)
+                slot_value = f"DATE({day:02d},{month:02d},{year:04d})"
+            else:
+                slot_value = slot_value.split("::")[-1]  # always last item
         return slot_value
 
     def retrieve_all_operations(self):
@@ -1549,6 +1559,15 @@ class BaseMlmModel:
             if len(matching_associations) == 1:
                 new_link.set_association(matching_associations[0])
             self.links.append(new_link)
+
+    def is_flat(self) -> bool:
+        for mlm_object in self.mlm_objects:
+            if mlm_object.get_level() > 1:
+                return False
+        return True
+
+    def get_objects(self) -> [BaseMlmObject]:
+        return self.mlm_objects
 
     def get_object_or_enum_type(self, short_name: str) -> TypeSpec:
         """returns BaseMlmObject or EnumType, used to determine type of an attribute"""

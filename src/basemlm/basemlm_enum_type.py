@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ElementTree
 
 from basemlm.basemlm_type_spec import TypeSpec
-from src.basemlm.model_element import ModelElement
 from src.basemlm.model_member import ModelMember
 
 
@@ -18,7 +17,12 @@ class BaseMlmEnumType(ModelMember, TypeSpec):
         return self.name
 
     def slot_conforms_to_type(self, slot) -> bool:
-        pass
+        # must account for multiple values due to associations
+        slot_values: [str] = slot.get_values_as_list()
+        for slot_value in slot_values:
+            if slot_value not in self.enum_values:
+                return False
+        return True
 
     def __repr__(self):
         enum_print: str = ""

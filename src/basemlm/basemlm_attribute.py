@@ -30,6 +30,9 @@ class BaseMlmAttribute(BaseMlmProperty):
     def set_owner(self, owner):
         self.owner = owner
 
+    def get_inst_level(self) -> int:
+        return self.inst_level
+
     def get_proposed_inst_level(self):
         return self.proposed_inst_level
 

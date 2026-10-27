@@ -35,7 +35,13 @@ class BaseMlmObject(ModelMember, TypeSpec):
         return self.name
 
     def slot_conforms_to_type(self, slot) -> bool:
-        pass
+        attr_inst_level: int = slot.get_attribute().get_inst_level()
+        descendants_at_level = self.get_descendants_at_level_x(attr_inst_level)
+
+        valid_values = {mlm_obj.get_name() for mlm_obj in descendants_at_level}
+        slot_values = slot.get_values_as_list()
+
+        return all(value in valid_values for value in slot_values)
 
     def __repr__(self):
         # class_str = f"[CLASS] {self.name}"
@@ -61,8 +67,49 @@ class BaseMlmObject(ModelMember, TypeSpec):
     def get_shell_class(cls, base_class):
         return cls(base_class.full_name, base_class.name, "0", cls.meta_class(), "false")
 
+    def get_level(self) -> int:
+        return self.level
+
     def get_model(self):
         return self.model
+
+    def get_parents(self):
+        return self.parent_classes
+
+    def get_meta_class(self):
+        return self.class_of_object
+
+    def is_xcore_meta_class(self):
+        return True if self.get_name() == "MetaClass" else False
+
+    def is_top_level_class(self):
+        return True if self.get_meta_class().is_xcore_meta_class() else False
+
+    def get_ancestors(self) -> set:
+        ancestors = set()
+        if not self.is_xcore_meta_class():
+            if not self.is_top_level_class():
+                ancestors.add(self.get_meta_class())
+                ancestors.update(self.get_meta_class().get_ancestors())
+            for parent in self.get_parents():
+                ancestors.add(parent)
+                # ancestors.update(parent.get_ancestors())
+                # should not be required since parent classes must share same meta class
+        return ancestors
+
+    def get_descendants(self) -> set:
+        descendants = set()
+        for mlm_object in self.get_model().get_objects():
+            if self in mlm_object.get_ancestors():
+                descendants.add(mlm_object)
+        return descendants
+
+    def get_descendants_at_level_x(self, level: int) -> set:
+        descendants = set()
+        for descendant in self.get_descendants():
+            if descendant.get_level() == level:
+                descendants.add(descendant)
+        return descendants
 
     def get_model_name(self) -> str:
         try:
