@@ -2,6 +2,7 @@ import xml.etree.ElementTree as ElementTree
 from typing import List
 
 from basemlm.basemlm_association import BaseMlmAssociation
+from basemlm.basemlm_property import BaseMlmProperty
 from basemlm.basemlm_type_spec import TypeSpec
 from src.basemlm.model_member import ModelMember
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
@@ -162,6 +163,9 @@ class BaseMlmObject(ModelMember, TypeSpec):
             if attr.is_regular_attribute():
                 reg_attributes.append(attr)
         return reg_attributes
+
+    def get_all_properties(self) -> List[BaseMlmProperty]:
+        return self.get_all_attributes() + self.get_all_slots()
 
     def get_attributes_at_inst_level_x(self, inst_level: int) -> List[BaseMlmAttribute]:
         attr_list_at_inst_level = []

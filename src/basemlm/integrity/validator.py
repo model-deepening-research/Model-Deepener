@@ -2,22 +2,46 @@ from collections import defaultdict
 from typing import List
 
 from .violations import ConstraintViolation
+from ..basemlm_model import BaseMlmModel
 
 
-class BaseMLMValidator:
+class BaseMlmValidator:
     """Checks a model against the non-Type BaseMLM integrity constraints."""
 
     def __init__(self, model):
         """Create a validator for the given ``FmmlxModel``."""
-        self._model = model
-        self.validations = []
+        self._model: BaseMlmModel = model
+        self._all_violations = []
 
     @property
-    def model(self):
+    def model(self) -> BaseMlmModel:
         """Return the model that is being checked."""
         return self._model
 
+    @property
+    def violations(self):
+        return self._all_violations
+
     def validate(self) -> List[ConstraintViolation]:
+        self.validate_element_name()
+        self.validate_unique_object_name()
+        self.validate_unique_attribute_names()
+        self.validate_no_type_properties_in_pure_objects()
+        self.validate_no_generalizations_in_pure_objects()
+        self.validate_no_instances_of_pure_objects()
+        self.validate_abstract_classes()
+        self.validate_regular_instances_on_l0()
+        self.validate_object_levels()
+        self.validate_generalizations()
+        self.validate_no_cyclic_hierarchies()
+        self.validate_associations()
+        self.validate_links()
+        self.validate_inst_levels()
+        self.validate_type_conformance()
+        self.validate_multiplicity()
+        return self.violations
+
+    def validate_old(self) -> List[ConstraintViolation]:
         """Run all implemented constraints and return every violation found."""
         violations = []
         violations.extend(self.validate_c1_valid_element_name())
@@ -34,6 +58,96 @@ class BaseMLMValidator:
         violations.extend(self.validate_c15_necessary_slots_provided())
         violations.extend(self.validate_c16_multiplicity_conformance())
         return violations
+
+    ############### new impl
+
+    def validate_element_name(self):
+        for elem in self.model.get_all_model_elements():
+            if not elem.is_name_valid():
+                self.violations.append(ConstraintViolation(
+                    "C1", "Model element name must not be empty", elem))
+
+    def validate_unique_object_name(self):
+        if not self.model.only_unique_object_names():
+            self.violations.append(ConstraintViolation(
+                "C2", "Some object names are not unique", None))
+
+    def validate_unique_attribute_names(self):
+        for obj in self.model.get_objects():
+            if not obj.only_unique_attribute_names():
+                self.violations.append(ConstraintViolation("C3",
+                                                           "Some attribute names are not unique for the object", obj))
+
+    def validate_no_type_properties_in_pure_objects(self):
+        for obj in self.model.get_objects():
+            if not obj.no_type_properties_in_pure_objects():
+                self.violations.append(ConstraintViolation("C4", "Objects on L0 must not contain type properties", obj))
+
+    def validate_no_generalizations_in_pure_objects(self):
+        for obj in self.model.get_objects():
+            if not obj.no_generalizations_between_objects():
+                self.violations.append(ConstraintViolation("C5", "Generalizations are forbidden on L0", obj))
+
+    def validate_no_instances_of_pure_objects(self):
+        for obj in self.model.get_objects():
+            if not obj.pure_objects():
+                self.violations.append(ConstraintViolation("C6", "Pure objects must not have instances", obj))
+
+    def validate_abstract_classes(self):
+        for obj in self.model.get_objects():
+            if not obj.abstract_class_check():
+                self.violations.append(ConstraintViolation("C7", "Invalid abstract class", obj))
+
+    def validate_regular_instances_on_l0(self):
+        for obj in self.model.get_objects():
+            if not obj.is_regular_instance():
+                self.violations.append(ConstraintViolation("C8",
+                                                           "Instances on L0 must not instantiate from MetaClass", obj))
+
+    def validate_object_levels(self):
+        for obj in self.model.get_objects():
+            if not obj.valid_level():
+                self.violations.append(ConstraintViolation("C9", "Level of object is invalid", obj))
+
+    def validate_generalizations(self):
+        for obj in self.model.get_objects():
+            if not obj.valid_generalizations():
+                self.violations.append(ConstraintViolation("C10", "Invalid generalization detected", obj))
+
+    def validate_no_cyclic_hierarchies(self):
+        for obj in self.model.get_objects():
+            if not obj.no_cyclic_hierarchies():
+                self.violations.append(ConstraintViolation("C11", "Cyclic hierarchies detected", obj))
+
+    def validate_associations(self):
+        if not self.model.valid_associations():
+            self.violations.append(ConstraintViolation("C12",
+                                                       "Invalid associations detected (assoc ends do not match)"))
+
+    def validate_links(self):
+        if not self.model.valid_links():
+            self.violations.append(ConstraintViolation("C13", "Invalid links detected (slot links do not match)"))
+
+    def validate_inst_levels(self):
+        for obj in self.model.get_objects():
+            for attr in obj.get_all_attributes():
+                if not attr.valid_inst_level():
+                    self.violations.append(ConstraintViolation("C14", "Invalid instantiation level detected", attr))
+
+    def validate_type_conformance(self):
+        for obj in self.model.get_objects():
+            for slot in obj.get_all_slots():
+                if not slot.conforms_to_type_spec():
+                    self.violations.append(ConstraintViolation("C15", "Slot value does not conform to type", slot))
+
+    def validate_multiplicity(self):
+        for obj in self.model.get_objects():
+            for slot in obj.get_all_slots():
+                if not slot.conforms_to_multiplicity():
+                    self.violations.append(ConstraintViolation("C16", "Slot does not conform to multiplicity", slot))
+
+
+    ############# old impl by Vicky
 
     def validate_c1_valid_element_name(self) -> List[ConstraintViolation]:
         """Check C-1: every model element must have a non-empty name."""
