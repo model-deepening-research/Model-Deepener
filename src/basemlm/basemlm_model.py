@@ -4,6 +4,7 @@ import xml.etree.ElementTree as ElementTree
 
 from basemlm.basemlm_predefined_type import *
 from basemlm.basemlm_type_spec import TypeSpec
+from basemlm.model_element import ModelElement
 from src.basemlm import xml_export as export_xml
 
 from typing import List, Optional
@@ -77,9 +78,9 @@ class BaseMlmModel:
 
     def validate_basemlm_integrity(self):
         """Return all implemented BaseMLM integrity violations for this model."""
-        from src.basemlm.integrity import BaseMLMValidator
+        from src.basemlm.integrity import BaseMlmValidator
 
-        return BaseMLMValidator(self).validate()
+        return BaseMlmValidator(self).validate()
 
     def _import_csv(self, csv_file_path: str, selected_csv_columns: Optional[List[str]] = None):
         """
@@ -1566,13 +1567,13 @@ class BaseMlmModel:
                 return False
         return True
 
-    def get_objects(self) -> [BaseMlmObject]:
+    def get_objects(self) -> List[BaseMlmObject]:
         return self.mlm_objects
 
-    def get_associations(self) -> [BaseMlmAssociation]:
+    def get_associations(self) -> List[BaseMlmAssociation]:
         return self.associations
 
-    def get_links(self) -> [BaseMlmLink]:
+    def get_links(self) -> List[BaseMlmLink]:
         return self.links
 
     def get_object_or_enum_type(self, short_name: str) -> TypeSpec:
@@ -1646,6 +1647,17 @@ class BaseMlmModel:
             if mlm_object.full_name == full_name:
                 return mlm_object
         raise Exception(f"No matching MLM object ({full_name}) found!")
+
+    def get_enum_types(self) -> List[BaseMlmEnumType]:
+        return self.enums
+
+    def get_all_model_elements(self) -> List[ModelElement]:
+        """elements include: all connections, objects, enum types, and properties"""
+        all_elem: [ModelElement] = self.get_objects() + self.get_associations() + self.get_links() + self.get_enum_types()
+        for obj in self.get_objects():
+            for prop in obj.get_all_properties():
+                all_elem.append(prop)
+        return all_elem
 
     def get_all_objects_for_class(self, search_class: BaseMlmObject) -> List[BaseMlmObject]:
         instances_for_class:List[BaseMlmObject] = []
