@@ -11,7 +11,7 @@ class BaseMlmValidator:
     def __init__(self, model):
         """Create a validator for the given ``FmmlxModel``."""
         self._model: BaseMlmModel = model
-        self._all_violations = []
+        self._all_violations: [ConstraintViolation] = []
 
     @property
     def model(self) -> BaseMlmModel:
@@ -19,7 +19,7 @@ class BaseMlmValidator:
         return self._model
 
     @property
-    def violations(self):
+    def violations(self) -> List[ConstraintViolation]:
         return self._all_violations
 
     def validate(self) -> List[ConstraintViolation]:
