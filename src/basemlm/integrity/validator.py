@@ -23,6 +23,25 @@ class BaseMlmValidator:
         return self._all_violations
 
     def validate(self) -> List[ConstraintViolation]:
+        self.validate_element_name()
+        self.validate_unique_object_name()
+        self.validate_unique_attribute_names()
+        self.validate_no_type_properties_in_pure_objects()
+        self.validate_no_generalizations_in_pure_objects()
+        self.validate_no_instances_of_pure_objects()
+        self.validate_abstract_classes()
+        self.validate_regular_instances_on_l0()
+        self.validate_object_levels()
+        self.validate_generalizations()
+        self.validate_no_cyclic_hierarchies()
+        self.validate_associations()
+        self.validate_links()
+        self.validate_inst_levels()
+        self.validate_type_conformance()
+        self.validate_multiplicity()
+        return self.violations
+
+    def validate_old(self) -> List[ConstraintViolation]:
         """Run all implemented constraints and return every violation found."""
         violations = []
         violations.extend(self.validate_c1_valid_element_name())
