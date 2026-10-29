@@ -1,5 +1,5 @@
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
-from src.fmmlx_mlm_structure.fm_multi_level_model import *
+from src.basemlm.basemlm_model import *
 from src.model_deepening.image_file_format_enum import ImageFileFormat
 from src.model_deepening.model_deepening_stage_enum import ModelDeepeningStage
 
@@ -7,26 +7,26 @@ from src.model_deepening.model_deepening_stage_enum import ModelDeepeningStage
 class ModelDeepening:
 
     # init only accepts single MLM file currently, may be expanded to multiple files in the future
-    def __init__(self, input_model: FmmlxModel = None):
-        self.fmmlx_model: FmmlxModel = input_model
+    def __init__(self, input_model: BaseMlmModel = None):
+        self.fmmlx_model: BaseMlmModel = input_model
         self.stage: ModelDeepeningStage = ModelDeepeningStage.ORIGINAL
         self.num_of_applied_suggestions: int = 0
 
-    def set_input_model(self, input_model: FmmlxModel):
+    def set_input_model(self, input_model: BaseMlmModel):
         assert self.fmmlx_model is None, "Input model for model deepening may not be changed mid-process"
-        self.fmmlx_model: FmmlxModel = input_model
+        self.fmmlx_model: BaseMlmModel = input_model
 
-    def get_fmmlx_model(self) -> FmmlxModel:
+    def get_fmmlx_model(self) -> BaseMlmModel:
         return self.fmmlx_model
 
     def export_fmmlx_model_as_xml(self):
         assert self.fmmlx_model is not None, "No output model is specified"
         self.fmmlx_model.export_xml()
 
-    def get_flat_classes(self) -> [FmmlxObject]:
+    def get_flat_classes(self) -> [BaseMlmObject]:
         return self.fmmlx_model.get_all_flat_classes()
 
-    def get_pure_objects(self) -> [FmmlxObject]:
+    def get_pure_objects(self) -> [BaseMlmObject]:
         return self.fmmlx_model.get_all_pure_objects()
 
     """
@@ -83,7 +83,7 @@ class ModelDeepening:
         print("DONE")
         return self.fmmlx_model
 
-    def perform_deepening_operations_for_class(self, flat_class: FmmlxObject):
+    def perform_deepening_operations_for_class(self, flat_class: BaseMlmObject):
         """This method performs the required change operations on the output model, the original model remains
         unchanged. Currently tailored to property-precedence analysis only, needs to be tailored to further
         deepening analysis techniques"""

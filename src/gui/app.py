@@ -17,11 +17,11 @@ from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tk_font
 from typing import Any, Dict, List, Optional
 
-from src.fmmlx_mlm_structure.fm_attr import FmmlxAttribute
-from src.fmmlx_mlm_structure.fm_enum_type import FmmlxEnumType
-from src.fmmlx_mlm_structure.fm_multi_level_model import FmmlxModel
-from src.fmmlx_mlm_structure.fm_object import FmmlxObject
-from src.fmmlx_mlm_structure.fm_slot import FmmlxSlot
+from src.basemlm.basemlm_attribute import BaseMlmAttribute
+from src.basemlm.basemlm_enum_type import BaseMlmEnumType
+from src.basemlm.basemlm_model import BaseMlmModel
+from src.basemlm.basemlm_object import BaseMlmObject
+from src.basemlm.basemlm_slot import BaseMlmSlot
 from src.object_database.database import Database
 from src.object_database.folder import DatabaseFolder
 from src.object_database.persistent import Persistent
@@ -52,7 +52,7 @@ class XmlImportPreview:
     file_path: str
     errors: List[str]
     warnings: List[str] = field(default_factory=list)
-    model: Optional[FmmlxModel] = None
+    model: Optional[BaseMlmModel] = None
 
 
 @dataclass
@@ -60,7 +60,7 @@ class LoadedModel(Persistent):
     name: str
     source_file: str
     file_type: str
-    model: FmmlxModel
+    model: BaseMlmModel
     source_path: str = ""
     selected_columns: List[str] = field(default_factory=list)
     uploaded: str = ""
@@ -152,7 +152,7 @@ class ModelDeepenerApp(ctk.CTk):
         }
         self.configure(fg_color=self.colors["app_bg"])
 
-        self.current_model: Optional[FmmlxModel] = None
+        self.current_model: Optional[BaseMlmModel] = None
         self.current_file_path: Optional[str] = None
         self.current_file_type: str = ""
         self.current_selected_columns: List[str] = []
@@ -1752,7 +1752,7 @@ class ModelDeepenerApp(ctk.CTk):
         ]
 
     @staticmethod
-    def _model_overview_display_name(model: FmmlxModel) -> str:
+    def _model_overview_display_name(model: BaseMlmModel) -> str:
         class_objects = [
             obj
             for obj in model.mlm_objects
@@ -2897,7 +2897,7 @@ class ModelDeepenerApp(ctk.CTk):
     def _build_xml_preview(file_path: str) -> XmlImportPreview:
         # Try to open the XML model once so the GUI can report problems before the real import.
         try:
-            model = FmmlxModel(file_path=file_path)
+            model = BaseMlmModel(file_path=file_path)
             warnings = []
             if ModelDeepenerApp._count_attributes(model) == 0:
                 warnings.append(
@@ -3658,13 +3658,13 @@ class ModelDeepenerApp(ctk.CTk):
                     )
                     return
 
-                self.current_model = FmmlxModel(
+                self.current_model = BaseMlmModel(
                     file_path=self.current_file_path,
                     selected_csv_columns=selected_columns,
                 )
                 self.current_selected_columns = selected_columns
             elif extension == ".xml":
-                self.current_model = self.xml_preview.model if self.xml_preview and self.xml_preview.model else FmmlxModel(
+                self.current_model = self.xml_preview.model if self.xml_preview and self.xml_preview.model else BaseMlmModel(
                     file_path=self.current_file_path
                 )
                 self.current_selected_columns = []
@@ -3874,7 +3874,7 @@ class ModelDeepenerApp(ctk.CTk):
     def _current_timestamp_text() -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M")
 
-    def _touch_loaded_model(self, model: Optional[FmmlxModel]) -> None:
+    def _touch_loaded_model(self, model: Optional[BaseMlmModel]) -> None:
         """Set "Last worked on" of the stored model to the current time and commit.
 
         Nothing happens if the model is None or does not belong to a stored model.
@@ -3906,7 +3906,7 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _populate_model_tree(
             self,
-            model: FmmlxModel,
+            model: BaseMlmModel,
             query: str = "",
     ):
         """
@@ -4007,8 +4007,8 @@ class ModelDeepenerApp(ctk.CTk):
         )
         self.model_tree.yview_moveto(0)
 
-    def _insert_model_tree_object(self, parent_id: str, model: FmmlxModel,
-                                  obj: FmmlxObject, query: str):
+    def _insert_model_tree_object(self, parent_id: str, model: BaseMlmModel,
+                                  obj: BaseMlmObject, query: str):
         """Adds one class or object to the structure tree with its search hits."""
         obj_id = self.model_tree.insert(
             parent_id,
@@ -4021,8 +4021,8 @@ class ModelDeepenerApp(ctk.CTk):
         self.tree_item_view[obj_id] = "object" if obj.level == 0 else "class"
         self._insert_object_search_hits(obj_id, model, obj, query)
 
-    def _insert_model_tree_load_more(self, parent_id: str, model: FmmlxModel,
-                                     objects: List[FmmlxObject], next_index: int):
+    def _insert_model_tree_load_more(self, parent_id: str, model: BaseMlmModel,
+                                     objects: List[BaseMlmObject], next_index: int):
         """Adds a tree entry that loads the next 100 Level 0 objects on demand."""
         remaining = len(objects) - next_index
         item_id = self.model_tree.insert(
@@ -4053,12 +4053,12 @@ class ModelDeepenerApp(ctk.CTk):
             self._insert_model_tree_load_more(parent_id, model, objects, end_index)
         self.model_tree.item(parent_id, open=True)
 
-    def _object_matches_search(self, model: FmmlxModel, obj: FmmlxObject, query: str) -> bool:
+    def _object_matches_search(self, model: BaseMlmModel, obj: BaseMlmObject, query: str) -> bool:
         if not query:
             return True
         values = [obj.name, obj.full_name]
         values.extend(attr.name for attr in obj.attr_list)
-        values.extend(attr.attr_type_short for attr in obj.attr_list)
+        values.extend(attr.attr_type_str_short for attr in obj.attr_list)
         object_operations = self._operations_for_object(obj)
         values.extend(operation.operation_name for operation in object_operations)
         values.extend(operation.return_type for operation in object_operations)
@@ -4095,13 +4095,13 @@ class ModelDeepenerApp(ctk.CTk):
             values.extend(["generalization", "superclass", "subclass"])
         return any(query in str(value).lower() for value in values if value is not None)
 
-    def _insert_object_search_hits(self, parent_id: str, model: FmmlxModel, obj: FmmlxObject, query: str):
+    def _insert_object_search_hits(self, parent_id: str, model: BaseMlmModel, obj: BaseMlmObject, query: str):
         if not query:
             return
         hit_groups = [
             ("Attributes", "attribute", [
                 attr for attr in obj.attr_list
-                if self._query_matches_values(query, attr.name, attr.attr_type_short, attr.inst_level)
+                if self._query_matches_values(query, attr.name, attr.attr_type_str_short, attr.inst_level)
             ]),
             ("Slots", "slot", [
                 slot for slot in obj.slot_list
@@ -4147,7 +4147,7 @@ class ModelDeepenerApp(ctk.CTk):
                 self.tree_item_payload[item_id] = (view_name, obj, hit)
                 self.tree_item_view[item_id] = view_name
 
-    def _insert_enum_search_hits(self, parent_id: str, enum: FmmlxEnumType, query: str):
+    def _insert_enum_search_hits(self, parent_id: str, enum: BaseMlmEnumType, query: str):
         if not query:
             return
         matching_values = [
@@ -4171,7 +4171,7 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _search_hit_text(self, view_name: str, hit) -> str:
         if view_name == "attribute":
-            return f"{hit.name}: {hit.attr_type_short}"
+            return f"{hit.name}: {hit.attr_type_str_short}"
         if view_name == "slot":
             return f"{hit.name}: {self._display_table_value(hit.value)}"
         if view_name == "association":
@@ -4185,7 +4185,7 @@ class ModelDeepenerApp(ctk.CTk):
         return str(hit)
 
     @staticmethod
-    def _enum_matches_search(enum: FmmlxEnumType, query: str) -> bool:
+    def _enum_matches_search(enum: BaseMlmEnumType, query: str) -> bool:
         if not query:
             return True
         values = [enum.name] + list(enum.enum_values)
@@ -4217,16 +4217,16 @@ class ModelDeepenerApp(ctk.CTk):
         if isinstance(payload, tuple) and payload and payload[0] == "load_more_objects":
             self._load_more_model_tree_objects(selected[0], payload)
             self._render_empty_detail_state()
-        elif isinstance(payload, FmmlxModel):
+        elif isinstance(payload, BaseMlmModel):
             self._start_model_overview_loading(payload)
-        elif isinstance(payload, FmmlxObject):
+        elif isinstance(payload, BaseMlmObject):
             if selected_view == "class":
                 self._render_class_details(payload)
             elif selected_view == "object":
                 self._render_object_details(payload)
             else:
                 self._render_empty_detail_state()
-        elif isinstance(payload, FmmlxEnumType):
+        elif isinstance(payload, BaseMlmEnumType):
             self._render_enum_details(payload)
         elif isinstance(payload, tuple):
             self._render_search_hit_details(payload)
@@ -4241,7 +4241,7 @@ class ModelDeepenerApp(ctk.CTk):
             self.detail_subtitle.configure(text=f"Defined on {obj.name}.")
             self._render_detail_table(
                 ("Attribute", "Type", "Slot"),
-                [(attr.name, attr.attr_type_short, "-")],
+                [(attr.name, attr.attr_type_str_short, "-")],
             )
         elif view_name == "slot":
             _view, obj, slot = payload
@@ -4369,7 +4369,7 @@ class ModelDeepenerApp(ctk.CTk):
             return
         self._detail_batch_after_id = self.after(delay_ms, callback)
 
-    def _start_model_overview_loading(self, model: FmmlxModel):
+    def _start_model_overview_loading(self, model: BaseMlmModel):
         """
         Starts loading the large Model Overview table in Inspect Model.
 
@@ -4379,11 +4379,11 @@ class ModelDeepenerApp(ctk.CTk):
         self._show_model_overview_load_options(model)
 
     @staticmethod
-    def _attach_active_model_reference(model: FmmlxModel):
+    def _attach_active_model_reference(model: BaseMlmModel):
         for obj in model.mlm_objects:
             obj._active_model = model
 
-    def _show_model_overview_load_options(self, model: FmmlxModel):
+    def _show_model_overview_load_options(self, model: BaseMlmModel):
         self._detail_load_token = getattr(self, "_detail_load_token", 0) + 1
 
         self.detail_title.configure(
@@ -4541,7 +4541,7 @@ class ModelDeepenerApp(ctk.CTk):
         self.detail_canvas.xview_moveto(0)
         self.detail_canvas.yview_moveto(0)
 
-    def _render_model_structure_overview(self, model: FmmlxModel):
+    def _render_model_structure_overview(self, model: BaseMlmModel):
         self._clear_detail_option_bar()
         self.detail_title.configure(
             text="Model Overview",
@@ -4571,7 +4571,7 @@ class ModelDeepenerApp(ctk.CTk):
             column_minsizes=[110, 180, 150, 520],
         )
 
-    def _model_structure_content_text(self, model: FmmlxModel, obj: FmmlxObject) -> str:
+    def _model_structure_content_text(self, model: BaseMlmModel, obj: BaseMlmObject) -> str:
         operation_count = len(self._operations_for_object(obj)) if obj.level == 0 else len(obj.operations_list)
         parts = [
             f"{len(obj.attr_list)} attributes",
@@ -4630,9 +4630,9 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _start_model_overview_loading_with_options(
             self,
-            model: FmmlxModel,
-            attributes: List[FmmlxAttribute],
-            objects: List[FmmlxObject],
+            model: BaseMlmModel,
+            attributes: List[BaseMlmAttribute],
+            objects: List[BaseMlmObject],
     ):
         try:
             requested_count = int(self.model_overview_count_var.get().strip())
@@ -4709,10 +4709,10 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _select_model_overview_objects(
             self,
-            objects: List[FmmlxObject],
+            objects: List[BaseMlmObject],
             count: int,
             mode: str,
-    ) -> List[FmmlxObject]:
+    ) -> List[BaseMlmObject]:
         if mode == "from_end":
             return objects[-count:]
         if mode == "random":
@@ -4961,8 +4961,8 @@ class ModelDeepenerApp(ctk.CTk):
     def _prepare_model_overview_batch(
             self,
             token: int,
-            attributes: List[FmmlxAttribute],
-            objects: List[FmmlxObject],
+            attributes: List[BaseMlmAttribute],
+            objects: List[BaseMlmObject],
             start_index: int,
     ):
         self._detail_batch_after_id = None
@@ -5027,7 +5027,7 @@ class ModelDeepenerApp(ctk.CTk):
             self,
             token: int,
             model_name: str,
-            attributes: List[FmmlxAttribute],
+            attributes: List[BaseMlmAttribute],
             prepared_rows: list,
     ):
         if token != getattr(self, "_detail_load_token", None):
@@ -5394,7 +5394,7 @@ class ModelDeepenerApp(ctk.CTk):
         )
         self._render_detail_rows([])
 
-    def _render_class_details(self, obj: FmmlxObject):
+    def _render_class_details(self, obj: BaseMlmObject):
         self.detail_title.configure(
             text=f"Class: {obj.name}",
             text_color="#2563EB",
@@ -5415,7 +5415,7 @@ class ModelDeepenerApp(ctk.CTk):
                 return
         self._render_detail_table(("Name", "Type", "Slot"), [])
 
-    def _render_object_details(self, obj: FmmlxObject):
+    def _render_object_details(self, obj: BaseMlmObject):
         self.detail_title.configure(
             text=f"Object: {obj.name}",
             text_color="#16A34A",
@@ -5435,7 +5435,7 @@ class ModelDeepenerApp(ctk.CTk):
                 return
         self._render_detail_table(("Name", "Type", "Slot"), [])
 
-    def _render_enum_details(self, enum: FmmlxEnumType):
+    def _render_enum_details(self, enum: BaseMlmEnumType):
         self._clear_detail_option_bar()
         self.detail_title.configure(
             text=f"Enumeration Type: {enum.name}",
@@ -5486,7 +5486,7 @@ class ModelDeepenerApp(ctk.CTk):
         return obj.name if obj is not None else "-"
 
     @staticmethod
-    def _associations_for_class(model: Optional[FmmlxModel], obj: FmmlxObject):
+    def _associations_for_class(model: Optional[BaseMlmModel], obj: BaseMlmObject):
         if model is None:
             return []
         return [
@@ -5496,7 +5496,7 @@ class ModelDeepenerApp(ctk.CTk):
         ]
 
     @staticmethod
-    def _links_for_object(model: Optional[FmmlxModel], obj: FmmlxObject):
+    def _links_for_object(model: Optional[BaseMlmModel], obj: BaseMlmObject):
         if model is None:
             return []
         return [
@@ -5518,7 +5518,7 @@ class ModelDeepenerApp(ctk.CTk):
         return ModelDeepenerApp._clean_display_value(type_name)
 
     @staticmethod
-    def _operations_for_object(obj: FmmlxObject):
+    def _operations_for_object(obj: BaseMlmObject):
         operations = list(obj.operations_list)
         if obj.class_of_object is not None:
             operations.extend(
@@ -5528,7 +5528,7 @@ class ModelDeepenerApp(ctk.CTk):
             )
         return operations
 
-    def _generalization_rows(self, obj: FmmlxObject):
+    def _generalization_rows(self, obj: BaseMlmObject):
         rows = [
             (parent.name, obj.name)
             for parent in obj.parent_classes
@@ -5541,7 +5541,7 @@ class ModelDeepenerApp(ctk.CTk):
             )
         return rows
 
-    def _all_parent_classes(self, obj: FmmlxObject):
+    def _all_parent_classes(self, obj: BaseMlmObject):
         parents = []
         pending = list(obj.parent_classes)
         while pending:
@@ -5552,13 +5552,13 @@ class ModelDeepenerApp(ctk.CTk):
             pending.extend(parent.parent_classes)
         return parents
 
-    def _render_class_attribute_table(self, obj: FmmlxObject):
+    def _render_class_attribute_table(self, obj: BaseMlmObject):
         rows = [
-            (attr.name, attr.attr_type_short, attr.inst_level)
+            (attr.name, attr.attr_type_str_short, attr.inst_level)
             for attr in obj.attr_list
         ]
         inherited_rows = [
-            (attr.name, attr.attr_type_short, f"Level {attr.inst_level}, inherited from {parent.name}")
+            (attr.name, attr.attr_type_str_short, f"Level {attr.inst_level}, inherited from {parent.name}")
             for parent in self._all_parent_classes(obj)
             for attr in parent.attr_list
         ]
@@ -5568,7 +5568,7 @@ class ModelDeepenerApp(ctk.CTk):
             muted_row_indexes=set(range(len(rows), len(rows) + len(inherited_rows))),
         )
 
-    def _render_class_association_table(self, obj: FmmlxObject):
+    def _render_class_association_table(self, obj: BaseMlmObject):
         self._render_detail_table(
             ("Associationname", "Source", "Target", "Multiplicity"),
             [
@@ -5583,7 +5583,7 @@ class ModelDeepenerApp(ctk.CTk):
             highlight_column=3,
         )
 
-    def _render_class_operation_table(self, obj: FmmlxObject):
+    def _render_class_operation_table(self, obj: BaseMlmObject):
         self._render_detail_table(
             ("Operation", "Type", "Slot"),
             [
@@ -5592,13 +5592,13 @@ class ModelDeepenerApp(ctk.CTk):
             ],
         )
 
-    def _render_class_generalization_table(self, obj: FmmlxObject):
+    def _render_class_generalization_table(self, obj: BaseMlmObject):
         self._render_detail_table(
             ("Superclass", "Subclass"),
             self._generalization_rows(obj),
         )
 
-    def _render_object_value_table(self, obj: FmmlxObject):
+    def _render_object_value_table(self, obj: BaseMlmObject):
         self._render_detail_table(
             ("Attribute", "Type", "Slot"),
             [
@@ -5607,7 +5607,7 @@ class ModelDeepenerApp(ctk.CTk):
             ],
         )
 
-    def _render_object_link_table(self, obj: FmmlxObject):
+    def _render_object_link_table(self, obj: BaseMlmObject):
         self._render_detail_table(
             ("Linkname", "Source", "Target", "Multiplicity"),
             [
@@ -5622,7 +5622,7 @@ class ModelDeepenerApp(ctk.CTk):
             highlight_column=3,
         )
 
-    def _render_object_operation_table(self, obj: FmmlxObject):
+    def _render_object_operation_table(self, obj: BaseMlmObject):
         slot_by_name = {
             slot.name: slot.value
             for slot in obj.slot_list
@@ -6187,7 +6187,7 @@ class ModelDeepenerApp(ctk.CTk):
         self._populate_models_table()
         self._render_overview_details(None)
 
-    def _model_metrics(self, model: FmmlxModel):
+    def _model_metrics(self, model: BaseMlmModel):
         return [
             ("Higher Level Classes", self._count_higher_level_classes(model)),
             ("Classes", len(model.get_all_flat_classes())),
@@ -6202,32 +6202,32 @@ class ModelDeepenerApp(ctk.CTk):
         ]
 
     @staticmethod
-    def _count_attributes(model: FmmlxModel) -> int:
+    def _count_attributes(model: BaseMlmModel) -> int:
         return sum(len(obj.attr_list) for obj in model.mlm_objects)
 
     @staticmethod
-    def _count_higher_level_classes(model: FmmlxModel) -> int:
+    def _count_higher_level_classes(model: BaseMlmModel) -> int:
         """
         Counts classes above level 1 for the separate higher-level metric card.
         """
         return sum(1 for obj in model.mlm_objects if obj.level > 1)
 
     @staticmethod
-    def _count_slots(model: FmmlxModel) -> int:
+    def _count_slots(model: BaseMlmModel) -> int:
         return sum(len(obj.slot_list) for obj in model.mlm_objects)
 
     @staticmethod
-    def _count_operations(model: FmmlxModel) -> int:
+    def _count_operations(model: BaseMlmModel) -> int:
         return sum(len(obj.operations_list) for obj in model.mlm_objects)
 
     @staticmethod
-    def _count_generalizations(model: FmmlxModel) -> int:
+    def _count_generalizations(model: BaseMlmModel) -> int:
         return sum(len(obj.parent_classes) for obj in model.mlm_objects)
 
     @staticmethod
-    def _slot_type(slot: FmmlxSlot) -> str:
+    def _slot_type(slot: BaseMlmSlot) -> str:
         if slot.attribute is not None:
-            return ModelDeepenerApp._clean_display_value(slot.attribute.attr_type_short)
+            return ModelDeepenerApp._clean_display_value(slot.attribute.attr_type_str_short)
         owner = getattr(slot, "owner", None)
         model = getattr(owner, "_active_model", None)
         if model is not None:
@@ -6240,12 +6240,12 @@ class ModelDeepenerApp(ctk.CTk):
             enum_matches = [
                 attr
                 for attr in matches
-                if any(enum.name == ModelDeepenerApp._clean_display_value(attr.attr_type_short) for enum in model.enums)
+                if any(enum.name == ModelDeepenerApp._clean_display_value(attr.attr_type_str_short) for enum in model.enums)
             ]
             if enum_matches:
-                return ModelDeepenerApp._clean_display_value(enum_matches[0].attr_type_short)
+                return ModelDeepenerApp._clean_display_value(enum_matches[0].attr_type_str_short)
             if matches:
-                return ModelDeepenerApp._clean_display_value(matches[0].attr_type_short)
+                return ModelDeepenerApp._clean_display_value(matches[0].attr_type_str_short)
         return ModelDeepenerApp._clean_display_value(type(slot.value).__name__)
 
     @staticmethod

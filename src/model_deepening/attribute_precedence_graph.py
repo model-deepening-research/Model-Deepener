@@ -1,4 +1,4 @@
-from src.fmmlx_mlm_structure.model_property_enum import ModelPropertyEnum
+from src.basemlm.model_property_enum import ModelPropertyEnum
 from src.model_deepening.precedence_graph import PropertyPrecedenceGraph
 
 

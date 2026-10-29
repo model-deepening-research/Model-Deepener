@@ -1,11 +1,11 @@
-from src.fmmlx_mlm_structure.model_property import ModelProperty
+from src.basemlm.basemlm_property import BaseMlmProperty
 
 
 class PropertyGroup:
     """Property groups are a collection of properties. Property groups are required for property-precedence analysis,
     where groups are created every time two properties are concormitant to each other"""
-    def __init__(self, *model_properties: ModelProperty):
-        self.model_properties: [ModelProperty] = []
+    def __init__(self, *model_properties: BaseMlmProperty):
+        self.model_properties: [BaseMlmProperty] = []
         for arg in model_properties:
             self.model_properties.append(arg)
 
@@ -26,13 +26,13 @@ class PropertyGroup:
             for model_property in other_pg.get_model_properties():
                 self.add_model_property(model_property)
 
-    def get_model_properties(self) -> [ModelProperty]:
+    def get_model_properties(self) -> [BaseMlmProperty]:
         return self.model_properties
 
-    def add_model_property(self, model_property: ModelProperty):
+    def add_model_property(self, model_property: BaseMlmProperty):
         self.model_properties.append(model_property)
 
-    def includes_model_property(self, model_property: ModelProperty):
+    def includes_model_property(self, model_property: BaseMlmProperty):
         return model_property in self.model_properties
 
     def __eq__(self, other):

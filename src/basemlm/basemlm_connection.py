@@ -1,9 +1,10 @@
 from abc import ABCMeta
 
-from src.fmmlx_mlm_structure.model_element import ModelElement
+from basemlm.model_member import ModelMember
+from src.basemlm.model_element import ModelElement
 
 
-class ModelConnection(ModelElement, metaclass=ABCMeta):
+class BaseMlmConnection(ModelMember, metaclass=ABCMeta):
     """
     Superclass for model relationships, currently FmmlxAssociation and FmmlxLink.
     Each model relationship has exactly one source and one target object.

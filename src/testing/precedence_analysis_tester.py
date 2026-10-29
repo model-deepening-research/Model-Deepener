@@ -1,5 +1,5 @@
 from src.testing.tester import Tester
-from src.fmmlx_mlm_structure.fm_multi_level_model import FmmlxModel
+from src.basemlm.basemlm_model import BaseMlmModel
 
 
 class PrecedenceAnalysisTester(Tester):
@@ -42,7 +42,7 @@ class PrecedenceAnalysisTester(Tester):
 
     def init_test(self, model_xml_name: str, csv_columns: [str] = None):
         self.set_file_name(model_xml_name)
-        self.md_instance.set_input_model(FmmlxModel(self.get_original_model_path(), csv_columns))
+        self.md_instance.set_input_model(BaseMlmModel(self.get_original_model_path(), csv_columns))
         if self.print_input_model:
             print(self.get_md_instance().get_original_model())
 

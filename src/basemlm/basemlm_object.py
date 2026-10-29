@@ -1,17 +1,21 @@
 import xml.etree.ElementTree as ElementTree
 from typing import List
 
-from src.fmmlx_mlm_structure.model_entity import ModelEntity
+from basemlm.basemlm_association import BaseMlmAssociation
+from basemlm.basemlm_property import BaseMlmProperty
+from basemlm.basemlm_type_spec import TypeSpec
+from src.basemlm.model_member import ModelMember
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
-from src.fmmlx_mlm_structure.fm_attr import FmmlxAttribute
-from src.fmmlx_mlm_structure.fm_constraint import FmmlxConstraint
-from src.fmmlx_mlm_structure.fm_operation import FmmlxOperation
-from src.fmmlx_mlm_structure.fm_slot import FmmlxSlot
+from src.basemlm.basemlm_attribute import BaseMlmAttribute
+from src.basemlm.basemlm_constraint import BaseMlmConstraint
+from src.basemlm.basemlm_operation import BaseMlmOperation
+from src.basemlm.basemlm_slot import BaseMlmSlot
 from src.model_deepening.slot_collective import SlotCollective
 from src.model_deepening.slot_precedence_graph import SlotPrecedenceGraph
 
 
-class FmmlxObject(ModelEntity):
+class BaseMlmObject(ModelMember, TypeSpec):
+
     def __init__(self, full_name: str, object_name: str, level: str, class_of_object, is_abstract: str, model=None):
         super().__init__(name=object_name, print_name=object_name)
         self.full_name = full_name
@@ -21,7 +25,7 @@ class FmmlxObject(ModelEntity):
         self.operations_list = []
         self.constraints_list = []
         self.class_of_object = class_of_object
-        self.is_abstract: bool = True if is_abstract == "true" else False
+        self.abstract: bool = True if is_abstract == "true" else False
         self.parent_classes = []
         self.instances = []
         self.slot_collectives: [SlotCollective] = []
@@ -29,12 +33,24 @@ class FmmlxObject(ModelEntity):
         self.slot_precedence_graph: SlotPrecedenceGraph = SlotPrecedenceGraph(self)
         self.model = model
 
+    def get_type_name(self) -> str:
+        return self.name
+
+    def slot_conforms_to_type(self, slot) -> bool:
+        attr_inst_level: int = slot.get_attribute().get_inst_level()
+        descendants_at_level = self.get_descendants_at_level_x(attr_inst_level)
+
+        valid_values = {mlm_obj.get_name() for mlm_obj in descendants_at_level}
+        slot_values = slot.get_values_as_list()
+
+        return all(value in valid_values for value in slot_values)
+
     def __repr__(self):
         # class_str = f"[CLASS] {self.name}"
         # attr_str = ""
         # for attr in self.attr_list:
         #    attr_str  += ""
-        print("ABSTRACT CLASS") if self.is_abstract else None
+        print("ABSTRACT CLASS") if self.abstract else None
         print(f"[L{self.level}-OBJECT] {self.name} [of {self.class_of_object.name}]")
         print(f"HAS {len(self.parent_classes)} PARENTS") if self.parent_classes else None
         print(*self.attr_list, sep="\n")
@@ -46,15 +62,62 @@ class FmmlxObject(ModelEntity):
     @classmethod
     def meta_class(cls):
         return cls("MetaClass", "MetaClass", "99",
-                   FmmlxObject("MetaClass", "MetaClass", "100", None, "False")
+                   BaseMlmObject("MetaClass", "MetaClass", "100", None, "False")
                    , "False")
 
     @classmethod
     def get_shell_class(cls, base_class):
         return cls(base_class.full_name, base_class.name, "0", cls.meta_class(), "false")
 
+    def get_level(self) -> int:
+        return self.level
+
     def get_model(self):
         return self.model
+
+    def get_parents(self):
+        return self.parent_classes
+
+    def get_meta_class(self):
+        return self.class_of_object
+
+    def is_xcore_meta_class(self):
+        return True if self.get_name() == "MetaClass" else False
+
+    def is_top_level_class(self):
+        return True if self.get_meta_class().is_xcore_meta_class() else False
+
+    def get_instances(self):
+        return self.instances
+
+    def is_abstract(self) -> bool:
+        return self.abstract
+
+    def get_ancestors(self) -> set:
+        ancestors = set()
+        if not self.is_xcore_meta_class():
+            if not self.is_top_level_class():
+                ancestors.add(self.get_meta_class())
+                ancestors.update(self.get_meta_class().get_ancestors())
+            for parent in self.get_parents():
+                ancestors.add(parent)
+                # ancestors.update(parent.get_ancestors())
+                # should not be required since parent classes must share same meta class
+        return ancestors
+
+    def get_descendants(self) -> set:
+        descendants = set()
+        for mlm_object in self.get_model().get_objects():
+            if self in mlm_object.get_ancestors():
+                descendants.add(mlm_object)
+        return descendants
+
+    def get_descendants_at_level_x(self, level: int) -> set:
+        descendants = set()
+        for descendant in self.get_descendants():
+            if descendant.get_level() == level:
+                descendants.add(descendant)
+        return descendants
 
     def get_model_name(self) -> str:
         try:
@@ -62,23 +125,107 @@ class FmmlxObject(ModelEntity):
         except:
             return "NO MODEL NAME"
 
-    def get_all_slots(self) -> List[FmmlxSlot]:
+    def get_all_slots(self) -> List[BaseMlmSlot]:
         return self.slot_list
 
-    def get_slot_by_attribute(self, mlm_attr: FmmlxAttribute) -> FmmlxSlot:
+    def get_regular_slots(self):
+        reg_slots = []
+        for slot in self.get_all_slots():
+            if slot.is_regular_slot():
+                reg_slots.append(slot)
+        return reg_slots
+
+    def get_slot_links(self):
+        slot_links = []
+        for slot in self.get_all_slots():
+            if slot.is_slot_link():
+                slot_links.append(slot)
+        return slot_links
+
+    def get_slot_by_attribute(self, mlm_attr: BaseMlmAttribute) -> BaseMlmSlot:
         for slot in self.slot_list:
             if slot.get_attribute() == mlm_attr:
                 return slot
 
-    def get_all_attributes(self) -> List[FmmlxAttribute]:
+    def get_all_attributes(self) -> List[BaseMlmAttribute]:
         return self.attr_list
 
-    def get_attributes_at_inst_level_x(self, inst_level: int) -> List[FmmlxAttribute]:
+    def get_assoc_ends(self):
+        assoc_ends = []
+        for attr in self.get_all_attributes():
+            if attr.is_assoc_end():
+                assoc_ends.append(attr)
+        return assoc_ends
+
+    def get_regular_attributes(self):
+        reg_attributes = []
+        for attr in self.get_all_attributes():
+            if attr.is_regular_attribute():
+                reg_attributes.append(attr)
+        return reg_attributes
+
+    def get_all_properties(self) -> List[BaseMlmProperty]:
+        return self.get_all_attributes() + self.get_all_slots()
+
+    def get_attributes_at_inst_level_x(self, inst_level: int) -> List[BaseMlmAttribute]:
         attr_list_at_inst_level = []
         for attr in self.attr_list:
             if attr.inst_level == inst_level:
                 attr_list_at_inst_level.append(attr)
         return attr_list_at_inst_level
+
+    def only_unique_attribute_names(self) -> bool:
+        considered_objects = {self} | self.get_ancestors()
+        all_attributes = {attr for obj in considered_objects for attr in obj.get_all_attributes()}
+        all_attr_names = [attr.name for attr in all_attributes]
+        return len(all_attr_names) == len(set(all_attr_names))
+
+    def no_type_properties_in_pure_objects(self) -> bool:
+        if self.get_level() == 0:
+            if len(self.get_all_attributes()) > 0:
+                return False
+        return True
+
+    def no_generalizations_between_objects(self) -> bool:
+        if self.get_level() == 0:
+            if len(self.get_parents()) > 0:
+                return False
+        return True
+
+    def pure_objects(self) -> bool:
+        if self.get_level() == 0:
+            if len(self.get_instances()) > 0:
+                return False
+        return True
+
+    def abstract_class_check(self) -> bool:
+        if self.is_abstract():
+            if self.get_level() < 0 or len(self.get_instances()) > 0:
+                return False
+        return True
+
+    def is_regular_instance(self) -> bool:
+        if self.get_level() == 0 and self.get_meta_class().is_xcore_meta_class():
+            return False
+        return True
+
+    def valid_level(self) -> bool:
+        if self.get_level() >= 0:
+            if (self.get_level() == self.get_meta_class().get_level()-1) or (self.is_top_level_class()):
+                return True
+        return False
+
+    def valid_generalizations(self) -> bool:
+        for parent in self.get_parents():
+            if parent.get_level() != self.get_level():
+                return False
+        return True
+
+    def no_cyclic_hierarchies(self) -> bool:
+        for anc in self.get_ancestors():
+            if anc == self:
+                return False
+        return True
 
     def set_class_of_object(self, new_class_of_object):
         self.class_of_object = new_class_of_object
@@ -89,10 +236,10 @@ class FmmlxObject(ModelEntity):
         operations in model deepening"""
         assert self.level > 0, "new instances can only be created for objects on level > 0"
 
-    def add_attr(self, attr: FmmlxAttribute):
+    def add_attr(self, attr: BaseMlmAttribute):
         self.attr_list.append(attr)
 
-    def add_slot(self, new_slot: FmmlxSlot):
+    def add_slot(self, new_slot: BaseMlmSlot):
         """support fot multiplicity (for now only for slot links): This operation checks whether a slot with the
         same name is already in the object and then adds the value to the slot"""
         slot_found: bool = False
@@ -103,10 +250,10 @@ class FmmlxObject(ModelEntity):
         if not slot_found:
             self.slot_list.append(new_slot)
 
-    def add_operation(self, operation: FmmlxOperation):
+    def add_operation(self, operation: BaseMlmOperation):
         self.operations_list.append(operation)
 
-    def add_constraint(self, constraint: FmmlxConstraint):
+    def add_constraint(self, constraint: BaseMlmConstraint):
         self.constraints_list.append(constraint)
 
     def set_level(self, level: int):
@@ -127,7 +274,7 @@ class FmmlxObject(ModelEntity):
     def set_slot_precedence_graph(self, slot_precedence_graph: SlotPrecedenceGraph):
         self.slot_precedence_graph = slot_precedence_graph
 
-    def get_slot_collective_by_attribute_and_value(self, attribute: FmmlxAttribute, value: str):
+    def get_slot_collective_by_attribute_and_value(self, attribute: BaseMlmAttribute, value: str):
         for slot_collective in self.slot_collectives:
             if slot_collective.get_attribute() == attribute and slot_collective.get_value() == value:
                 return slot_collective
@@ -137,7 +284,7 @@ class FmmlxObject(ModelEntity):
         for attr in self.attr_list:
             encountered_slot_values: [str] = []
             for instance in self.instances:
-                slot: FmmlxSlot = instance.get_slot_by_attribute(attr)
+                slot: BaseMlmSlot = instance.get_slot_by_attribute(attr)
                 slot_values: [str] = slot.get_values_as_list()
                 slot_collective: SlotCollective
                 for slot_value in slot_values:
@@ -161,9 +308,9 @@ class FmmlxObject(ModelEntity):
         assert len(self.attr_list[0].get_collective_slots()) > 0, ("Attribute precedence analysis "
                                                                    "requires collective slots")
         for outer_i in range(len(self.attr_list)):
-            outer_attr: FmmlxAttribute = self.attr_list[outer_i]
+            outer_attr: BaseMlmAttribute = self.attr_list[outer_i]
             for inner_in in range(outer_i+1, len(self.attr_list)):
-                inner_attr: FmmlxAttribute = self.attr_list[inner_in]
+                inner_attr: BaseMlmAttribute = self.attr_list[inner_in]
                 attr_comparison_symbol: str = outer_attr.get_attribute_comparison_symbol(inner_attr)
                 self.attribute_precedence_graph.add_property_relation(
                     outer_attr, inner_attr, attr_comparison_symbol)
@@ -220,7 +367,7 @@ class FmmlxObject(ModelEntity):
                 continue
             attribute = ElementTree.SubElement(model, 'addAttribute', level=str(attr.inst_level),
                                                multiplicity='Seq{1,1,true,false}', name=attr.name,
-                                               package=projectName, type=attr.attr_type)
+                                               package=projectName, type=attr.attr_type_str)
             # this attr has to be set separetly because of the keyword class and cannot be used in the prior operation
             attribute.set('class', projectName + "::" + self.name)
 
@@ -254,7 +401,7 @@ class FmmlxObject(ModelEntity):
             parent.set('class', projectName + "::" + self.name)
 
     def set_is_abstract(self, is_abstract: bool):
-        self.is_abstract = is_abstract
+        self.abstract = is_abstract
 
     def add_parent_class(self, parent_class):
         self.parent_classes.append(parent_class)

@@ -23,3 +23,6 @@ class ModelElement(metaclass=ABCMeta):
 
     def set_print_name(self, print_name: str):
         self.print_name = print_name
+
+    def is_name_valid(self):
+        return self.name != ""

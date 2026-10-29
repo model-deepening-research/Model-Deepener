@@ -1,15 +1,15 @@
 import xml.etree.ElementTree as ElementTree
 
-from src.fmmlx_mlm_structure.model_element import ModelElement
-from src.fmmlx_mlm_structure.model_connection import ModelConnection
-from src.fmmlx_mlm_structure.fm_association import FmmlxAssociation
-from src.fmmlx_mlm_structure.fm_object import FmmlxObject
+from src.basemlm.model_element import ModelElement
+from src.basemlm.basemlm_connection import BaseMlmConnection
+from src.basemlm.basemlm_association import BaseMlmAssociation
+from src.basemlm.basemlm_object import BaseMlmObject
 
 
-class FmmlxLink(ModelConnection):
+class BaseMlmLink(BaseMlmConnection):
     def __init__(self, name: str):
         super().__init__(source_object=None, target_object=None, name=name, print_name=f"<{name}> LINK")
-        self.association: FmmlxAssociation = None
+        self.association: BaseMlmAssociation = None
 
     def export(self, root):
         """Adds a link whose object paths match the selected export project."""
@@ -21,10 +21,10 @@ class FmmlxLink(ModelConnection):
                                          name=self.name, package=projectName)
         return root
 
-    def get_association(self) -> FmmlxAssociation:
+    def get_association(self) -> BaseMlmAssociation:
         return self.association
 
-    def set_association(self, association: FmmlxAssociation):
+    def set_association(self, association: BaseMlmAssociation):
         self.association = association
 
     def __repr__(self):

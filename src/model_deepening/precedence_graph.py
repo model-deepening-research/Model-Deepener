@@ -12,8 +12,8 @@ import pydot
 from networkx import DiGraph
 
 from src.model_deepening.image_file_format_enum import ImageFileFormat
-from src.fmmlx_mlm_structure.model_property import ModelProperty
-from src.fmmlx_mlm_structure.model_property_enum import ModelPropertyEnum
+from src.basemlm.basemlm_property import BaseMlmProperty
+from src.basemlm.model_property_enum import ModelPropertyEnum
 from src.model_deepening.property_group import PropertyGroup
 
 
@@ -160,7 +160,7 @@ class PropertyPrecedenceGraph:
                 #  TODO: may values not include more than pg1 and pg2? then, Shared-property_group must be expanded
                 self._update_property_group(key=key, old_pg_groups=[pg1, pg2], new_p_group=shared_prop_group)
 
-    def add_property_relation(self, prop1: ModelProperty, prop2: ModelProperty, rel_symbol: str):
+    def add_property_relation(self, prop1: BaseMlmProperty, prop2: BaseMlmProperty, rel_symbol: str):
         pg1: PropertyGroup = PropertyGroup(prop1)
         pg2: PropertyGroup = PropertyGroup(prop2)
         #  print(f"We add the following: {pg1} {rel_symbol} {pg2}")
@@ -246,7 +246,7 @@ class PropertyPrecedenceGraph:
                 for value in self.nodes[node]:  # values should always be a list
                     self.edges.append((node, value))
 
-    def _remove_edge(self, mp1: ModelProperty, mp2: ModelProperty):
+    def _remove_edge(self, mp1: BaseMlmProperty, mp2: BaseMlmProperty):
         """This helper function only removes edges from the redundant edges list. This is done to support
         transitive reduction of PyDot Graphs, which visualize the edges in this list"""
         edge = (mp1, mp2)
