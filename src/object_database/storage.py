@@ -9,6 +9,16 @@ from typing import Any
 FORMAT_VERSION = 2
 
 
+class _StoredModelUnpickler(pickle.Unpickler):
+    """Reads stored objects whose classes are in another module than when they were stored."""
+
+    MOVED_MODULES = {"src.basemlm.import_report": "src.importers.import_report"}
+
+    def find_class(self, module: str, name: str) -> Any:
+        """Return the stored class, and look in its new module if the module has moved."""
+        return super().find_class(self.MOVED_MODULES.get(module, module), name)
+
+
 class FileStorage:
     """Reads and writes the data of a Database in one file."""
 
@@ -27,7 +37,7 @@ class FileStorage:
         file has a different or missing format version.
         """
         with open(self._file_name, "rb") as file:
-            content = pickle.load(file)
+            content = _StoredModelUnpickler(file).load()
         version = None
         if isinstance(content, dict):
             version = content.get("format_version")
@@ -43,10 +53,14 @@ class FileStorage:
 
         os.replace() swaps the two files in one single step. So if the program crashes while
         writing, only the temporary file is broken, and the real file still holds the last
-        committed state.
+        committed state. A temporary file left by a failed save is removed again.
         """
         content = {"format_version": FORMAT_VERSION, "data": data}
         temporary_name = f"{self._file_name}.tmp"
-        with open(temporary_name, "wb") as file:
-            pickle.dump(content, file)
-        os.replace(temporary_name, self._file_name)
+        try:
+            with open(temporary_name, "wb") as file:
+                pickle.dump(content, file)
+            os.replace(temporary_name, self._file_name)
+        finally:
+            if os.path.exists(temporary_name):
+                os.remove(temporary_name)

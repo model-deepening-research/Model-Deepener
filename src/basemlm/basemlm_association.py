@@ -47,16 +47,18 @@ class BaseMlmAssociation(BaseMlmConnection):
     def get_target_access_name(self) -> str:
         return self.target_access_name
 
-    def set_source_multiplicity(self, min_card: int, max_card: int):
-        # FH java, XMF saves "hasUpperLimit" -> is_unbounded muss genau andersherum sein daher änderung if und else teil
+    def set_source_multiplicity(self, min_card: int, max_card: int) -> None:
+        """Set how many source objects a target object can be linked to."""
+        # XMF stores "hasUpperLimit", the opposite of unbound. A maximum of -1 means there is no upper limit.
         if max_card == -1:
             self.source_multiplicity = Multiplicity(min_card, max_card, unbound=True)
             # IMPORTANT: DOES NOT WORK IF CONTINGENT ASSOCIATIONS ARE PRESENT
         else:
             self.source_multiplicity = Multiplicity(min_card, max_card)
 
-    def set_target_multiplicity(self, min_card: int, max_card: int):
-        # FH java, XMF saves "hasUpperLimit" -> is_unbounded muss genau andersherum sein daher änderung if und else teil
+    def set_target_multiplicity(self, min_card: int, max_card: int) -> None:
+        """Set how many target objects a source object can be linked to."""
+        # XMF stores "hasUpperLimit", the opposite of unbound. A maximum of -1 means there is no upper limit.
         if max_card == -1:
             self.target_multiplicity = Multiplicity(min_card, max_card, unbound=True)
             # IMPORTANT: DOES NOT WORK IF CONTINGENT ASSOCIATIONS ARE PRESENT

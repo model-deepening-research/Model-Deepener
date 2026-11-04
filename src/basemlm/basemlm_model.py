@@ -1,31 +1,21 @@
-from xml.dom.minidom import parse
 import copy
 import xml.etree.ElementTree as ElementTree
 
-from basemlm.basemlm_predefined_type import *
+from src.basemlm.basemlm_predefined_type import *
 from basemlm.basemlm_type_spec import TypeSpec
 from basemlm.model_element import ModelElement
 from src.basemlm import xml_export as export_xml
 
 from typing import List, Optional
-import csv
-import keyword  # für reservierten Wert
-import os  # für Dateinamen aus Dateiendung
-import re  # für Prüfung von Zeichen
-import unicodedata
 import math
 import networkx as nx
 
 from src.basemlm.basemlm_association import BaseMlmAssociation
 from src.basemlm.basemlm_assoc_end import BaseMlmAssocEnd
 from src.basemlm.basemlm_attribute import BaseMlmAttribute
-from src.basemlm.basemlm_constraint import BaseMlmConstraint
 from src.basemlm.basemlm_enum_type import BaseMlmEnumType
 from src.basemlm.basemlm_link import BaseMlmLink
 from src.basemlm.basemlm_object import BaseMlmObject
-from src.basemlm.basemlm_operation import BaseMlmOperation
-from src.basemlm.basemlm_slot import BaseMlmSlot
-from src.basemlm.multiplicity import Multiplicity
 from src.basemlm.basemlm_slot_link import BaseMlmSlotLink
 
 metaClass = BaseMlmObject("MetaClass",
@@ -36,16 +26,16 @@ metaClass = BaseMlmObject("MetaClass",
 
 class BaseMlmModel:
     """
-    This class serves to represent complete MultiLevelModels. It offers functions for importing standard FMMLx XML files
-    into a Python representation and exporting them again to XML documents once processed as intended.
+    This class serves to represent complete MultiLevelModels. The package src.importers reads files into a model,
+    and this class exports the model to XML documents again once processed as intended.
     All elements within a multi-level model are themselves instances of
-    Python classes specified in mlm_helper_classes.py
+    Python classes specified in the package src.basemlm
     """
 
     def __init__(self, file_path: str = "", print_progress: bool = False,
                  selected_csv_columns: Optional[List[str]] = None):
         """
-        Creates an empty model and optionally imports a CSV or XML document.
+        Creates an empty model and optionally imports a file with the importer for its file ending.
 
         XModeler version details, imported type references, and diagram data
         are retained so a later export can reproduce the source information.
@@ -55,23 +45,22 @@ class BaseMlmModel:
         self.enums: List[BaseMlmEnumType] = []
         self.associations: List[BaseMlmAssociation] = []
         self.links: List[BaseMlmLink] = []
-        self.parsed_xml = None
         self.diagram_xml = None
         self.imports_xml = None
         self.xml_root_attributes = {}
         self.model_name: str = ""
         self.print_progress = print_progress
         if file_path != "":
-            # Der Parameter heisst noch xml_file_path, weil er frueher nur fuer XML gedacht war.
-            # Inzwischen darf hier aber auch ein CSV-Pfad stehen.
-            # Die Dateiendung entscheidet, wie die Datei gelesen wird.
-            file_extension = os.path.splitext(file_path)[1].lower() #[1] für Dateiende
-            if file_extension == ".csv":
-                self._import_csv(file_path, selected_csv_columns)
-            elif file_extension == ".xml":
-                self._parse_xml(file_path)
-            else:
-                raise ValueError(f"File '{file_path}' must be a CSV or XML file.")
+            self._import_file(file_path, selected_csv_columns)
+
+    def _import_file(self, file_path: str, selected_csv_columns: Optional[List[str]] = None) -> None:
+        """Fills this model with the importer for the file. The import report is not kept."""
+        from src.importers.model_importer import importer_for
+
+        importer = importer_for(file_path)
+        if selected_csv_columns is not None:
+            importer.select_columns(selected_csv_columns)
+        importer.import_into(self, file_path)
 
     def get_model_name(self):
         return self.model_name
@@ -82,277 +71,36 @@ class BaseMlmModel:
 
         return BaseMlmValidator(self).validate()
 
-    def _import_csv(self, csv_file_path: str, selected_csv_columns: Optional[List[str]] = None):
-        """
-        Imports a CSV file as one class with one instance per data row.
-
-        Every heading becomes a unique XModeler-compatible attribute name.
-        Empty cells do not create slots because they contain no exportable
-        value. CSV input contains no relationships, so none are invented.
-        """
-        all_mlm_objects: List[BaseMlmObject] = []
-        # CSV files can contain special characters such as umlauts or non-English names.
-        # On Windows, open() may otherwise use the local default encoding and fail while reading.
-        # utf-8-sig reads normal UTF-8 files and also ignores a possible BOM marker from Excel.
-        with open(csv_file_path, "r", newline="", encoding="utf-8-sig") as csv_file: #r = read
-            # Das Trennzeichen wird erkannt, damit auch Dateien mit ; oder Tab funktionieren.
-            self.model_name = os.path.basename(csv_file_path)
-            csv_reader = csv.reader(csv_file, self._get_csv_dialect(csv_file), skipinitialspace=True)
-            #mit strip vorne und hinten Leerzeichen und Anführungszeichen entfernen
-            rows = [[value.strip().strip("\"") for value in row] for row in csv_reader if row]
-
-        # prüft, dass Datei nicht leer ist
-        assert len(rows) > 0, "CSV file must contain at least one row."
-
-        # Die erste Zeile beschreibt die Spalten. Die restlichen Zeilen sind die Daten.
-        header_row = rows[0]
-        data_rows = rows[1:]
-        number_of_columns = len(header_row)
-        # prüft, dass erste Zele mindestens eine Spalte hat
-        assert number_of_columns > 0, "CSV header must contain at least one column."
-        # prüft, ob erste Zeile wirklich Schema-Infos enthält
-        assert self._first_row_looks_like_header(header_row, data_rows), (
-            "CSV header does not look valid. The first row seems to contain data instead of attribute names."
-        )
-
-        # Jede Datenzeile muss genauso viele Werte haben wie die erste Zeile (daher start bei 2)
-        for row_number, row in enumerate(data_rows, start=2):
-            assert len(row) == number_of_columns, (
-                f"CSV row {row_number} has {len(row)} values, but the header has {number_of_columns} values."
-            )
-
-        if selected_csv_columns is not None:
-            # The user can list the columns that should become attributes in the model.
-            header_row, data_rows = self._select_csv_columns(header_row, data_rows, selected_csv_columns)
-            number_of_columns = len(header_row)
-
-        # Der Klassenname kommt aus dem Dateinamen.
-        class_name = self._make_csv_class_name(csv_file_path)
-        project_name = f"Root::{class_name}"
-        self.path_name = project_name
-
-        # Hier wird die eine Klasse gebaut, zu der alle CSV-Zeilen später gehören.
-        # Beispiel: Aus der Datei news_decline.csv wird die Klasse NewsDecline.
-        mlm_class: BaseMlmObject = BaseMlmObject(
-            f"{project_name}::{class_name}", class_name, "1", BaseMlmObject.meta_class(),
-            "false", self)
-        all_mlm_objects.append(mlm_class) #speichert Klasse im Modell
-
-        all_csv_attr = []
-        used_attribute_names = []
-        for col_counter, raw_attribute_name in enumerate(header_row):
-            attribute_name = self._make_csv_attribute_name(raw_attribute_name)
-            attribute_name = self._make_unique_csv_attribute_name(attribute_name, used_attribute_names)
-            column_values = [row[col_counter] for row in data_rows] #holt alle Werte dieser Spalte
-            attribute_type = self._get_csv_attribute_type(column_values) #String, Integer oder Float
-            new_attr: BaseMlmAttribute = BaseMlmAttribute(attribute_name, attribute_type, 0,
-                                                          self._parse_attribute_type(attribute_type))
-            new_attr.set_owner(mlm_class)
-            all_csv_attr.append(new_attr) #attribut in Liste
-            mlm_class.add_attr(new_attr) #fügt zur Klasse hinzu
-
-        for row_counter, row in enumerate(data_rows, start=1):
-            # Aus jeder Datenzeile wird eine Instanz mit eindeutigem Namen.
-            instance_name = f"{class_name.lower()}{row_counter}"
-            mlm_instance: BaseMlmObject = BaseMlmObject(
-                f"{project_name}::{instance_name}", instance_name, "0",
-                mlm_class, "false", self)
-            mlm_class.add_instance(mlm_instance)
-            all_mlm_objects.append(mlm_instance)
-
-            #Slots einfügen
-            for col_counter, value in enumerate(row):
-                if value == "":
-                    continue
-                attribute = all_csv_attr[col_counter]
-                new_slot: BaseMlmSlot = BaseMlmSlot(attribute.name, self._convert_csv_value(value, attribute.attr_type_str))
-                new_slot.set_owner_object(mlm_instance)
-                # Der Slot bekommt direkt das Attribut aus seiner Spalte.
-                new_slot.set_attribute(attribute)
-                mlm_instance.add_slot(new_slot)
-
-        self._set_mlm_objects(all_mlm_objects)
-
-    # Ab hier kommen kleine Hilfsfunktionen, um den Import oben kuerzer zu halten.
-    def _get_csv_dialect(self, csv_file):
-        # Es wird nur ein kleiner Anfang der Datei angeschaut, per Default ",".
-        sample = csv_file.read(2048)
-        csv_file.seek(0)
-        try:
-            return csv.Sniffer().sniff(sample, delimiters=",;\t|")
-        except csv.Error:
-            # csv.Sniffer can fail when the first rows contain many empty cells or irregular values.
-            # Returning csv.excel directly would use "," as delimiter, which breaks semicolon CSV files.
-            # Therefore, we count the allowed delimiters in the sample and use the one that appears most often.
-            dialect = csv.excel
-            delimiter_counts = {delimiter: sample.count(delimiter) for delimiter in [",", ";", "\t", "|"]}
-            dialect.delimiter = max(delimiter_counts, key=delimiter_counts.get)
-            return dialect
-
-    def _select_csv_columns(self, header_row: List[str], data_rows: List[List[str]],
-                            selected_csv_columns: List[str]):
-        # Without at least one selected column, the CSV class would not have any attributes.
-        assert len(selected_csv_columns) > 0, "At least one CSV column must be selected."
-
-        selected_column_numbers = []
-        missing_column_names = []
-        for selected_column in selected_csv_columns:
-            # For every selected column name, we search the matching position in the CSV header.
-            matching_column_number = self._get_csv_column_number(header_row, selected_column)
-            if matching_column_number is None:
-                # Missing names are collected first, so the error can show all wrong column names at once.
-                missing_column_names.append(selected_column)
-            else:
-                # We store the column number because the data rows are selected by position later.
-                selected_column_numbers.append(matching_column_number)
-
-        assert not missing_column_names, f"Selected CSV columns were not found: {missing_column_names}"
-
-        # The header is reduced to the selected columns, so only these columns become attributes.
-        selected_header_row = [header_row[col_number] for col_number in selected_column_numbers]
-        # Every data row is reduced in the same order, so the slots still match the selected attributes.
-        selected_data_rows = [
-            [row[col_number] for col_number in selected_column_numbers]
-            for row in data_rows
-        ]
-        return selected_header_row, selected_data_rows
-
-    def _get_csv_column_number(self, header_row: List[str], selected_column: str):
-        for col_counter, raw_header_name in enumerate(header_row):
-            # The user may enter the original CSV name or the safe attribute name used in the model.
-            safe_header_name = self._make_csv_attribute_name(raw_header_name)
-            if selected_column == raw_header_name or selected_column == safe_header_name:
-                return col_counter
-        # None means that this selected column does not exist in the CSV header.
-        return None
-
-    #Wenn es keine Daten gibt, kann man nicht vergleichen. Dann wird die Kopfzeile akzeptiert.
-    def _first_row_looks_like_header(self, header_row: List[str], data_rows: List[List[str]]) -> bool:
-        if len(data_rows) == 0:
-            return True
-
-        # Namen wie "name" oder "city" sind als erste Zeile in Ordnung.
-        if all(self._is_simple_header_name(header_value) for header_value in header_row):
-            return True
-
-        # Wenn die erste Zeile wie normale Daten aussieht, ist sie wahrscheinlich keine Kopfzeile.
-        for col_counter, header_value in enumerate(header_row):
-            column_values = [row[col_counter] for row in data_rows]
-            if self._get_simple_csv_value_type(header_value) not in self._get_simple_csv_column_types(column_values):
-                # also wenn erste Zeile anders aussieht als die Daten darunter, ist es wahrscheinlich ein Header
-                return True
-        return False
-
-    def _is_simple_header_name(self, value: str) -> bool:
-        return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) is not None
-
-    def _get_simple_csv_column_types(self, values: List[str]) -> List[str]:
-        column_types = []
-        for value in values:
-            value_type = self._get_simple_csv_value_type(value)
-            if value_type not in column_types:
-                column_types.append(value_type)
-        return column_types
-
-    def _get_simple_csv_value_type(self, value: str) -> str:
-        if value == "":
-            return "empty"
-        if self._is_integer(value):
-            return "integer"
-        if self._is_float(value):
-            return "float"
-        return "string"
-
-    def _make_csv_class_name(self, csv_file_path: str) -> str:
-        # Aus "news_decline.csv" wird zum Beispiel "NewsDecline".
-        file_name = os.path.splitext(os.path.basename(csv_file_path))[0]
-        safe_name = self._make_safe_name(file_name, "CsvClass")
-        return "".join(name_part.capitalize() for name_part in safe_name.split("_"))
-
-    def _make_csv_attribute_name(self, raw_name: str) -> str:
-        """Converts every CSV heading to an XModeler-friendly lowerCamelCase name."""
-        ascii_name = unicodedata.normalize("NFKD", raw_name.strip()).encode("ascii", "ignore").decode("ascii")
-        separated_words = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", ascii_name)
-        words = re.findall(r"[A-Za-z0-9]+", separated_words)
-        if not words:
-            return "attribute"
-
-        first_word = words[0].lower()
-        remaining_words = "".join(word.lower().capitalize() for word in words[1:])
-        attribute_name = first_word + remaining_words
-        if attribute_name[0].isdigit():
-            attribute_name = "attribute" + attribute_name[0].upper() + attribute_name[1:]
-
-        reserved_names = {"self", "super", "null", "true", "false"}
-        if keyword.iskeyword(attribute_name) or attribute_name in reserved_names:
-            attribute_name += "Attribute"
-        return attribute_name
-
-    @staticmethod
-    def _make_unique_csv_attribute_name(name: str, already_used_names: List[str]) -> str:
-        """Adds a number when different CSV headings result in the same attribute name."""
-        used_lowercase_names = {used_name.lower() for used_name in already_used_names}
-        unique_name = name
-        number = 2
-        while unique_name.lower() in used_lowercase_names:
-            unique_name = f"{name}{number}"
-            number += 1
-        already_used_names.append(unique_name)
-        return unique_name
-
-    def _make_safe_name(self, name: str, fallback_name: str, allow_first_char_digit: bool = False) -> str:
-        # Zeichen, die in Namen stören können, werden durch _ ersetzt.
-        # name attribute is occupied
-        # attribute names must be String
-        safe_name = re.sub(r"\W", "_", name.strip())
-        safe_name = re.sub(r"_+", "_", safe_name).strip("_")
-        if safe_name == "":
-            safe_name = fallback_name
-        if safe_name[0].isdigit() and not allow_first_char_digit:
-            safe_name = f"{fallback_name}_{safe_name}"
-        if keyword.iskeyword(safe_name):
-            safe_name = f"{safe_name}_{fallback_name}"
-        return safe_name
-
-    def _get_csv_attribute_type(self, values: List[str]) -> str:
-        # Wenn alle Werte Zahlen sind, wird auch das Attribut als Zahl gespeichert.
-        values_without_empty_strings = [value for value in values if value != ""]
-        if values_without_empty_strings and all(self._is_integer(value) for value in values_without_empty_strings):
-            return "Root::XCore::Integer"
-        if values_without_empty_strings and all(self._is_float(value) for value in values_without_empty_strings):
-            return "Root::XCore::Float"
-        return "Root::XCore::String"
-
-    def _convert_csv_value(self, value: str, attribute_type: str):
-        # Der Wert wird passend zum erkannten Attribut gespeichert.
-        if value == "":
-            return value
-        if attribute_type == "Root::XCore::Integer":
-            return int(value)
-        if attribute_type == "Root::XCore::Float":
-            return float(value)
-        return value
-
-    def _is_integer(self, value: str) -> bool:
-        try:
-            int(value)
-            return True
-        except ValueError:
-            return False
-
-    def _is_float(self, value: str) -> bool:
-        try:
-            float(value)
-            return True
-        except ValueError:
-            return False
-
-    # Ab hier gehen die normalen Funktionen weiter.
-    def _set_mlm_objects(self, mlm_objects: List[BaseMlmObject]):
-        self.mlm_objects = mlm_objects
-
-    def add_mlm_object(self, mlm_object: BaseMlmObject):
+    def add_mlm_object(self, mlm_object: BaseMlmObject) -> None:
+        """Add a class or an instance to the model."""
         self.mlm_objects.append(mlm_object)
+
+    def add_enum(self, enum: BaseMlmEnumType) -> None:
+        """Add an enumeration to the model."""
+        self.enums.append(enum)
+
+    def add_association(self, association: BaseMlmAssociation) -> None:
+        """Add an association to the model."""
+        self.associations.append(association)
+
+    def add_link(self, link: BaseMlmLink) -> None:
+        """Add a link to the model."""
+        self.links.append(link)
+
+    def set_path_name(self, path_name: str) -> None:
+        """Set the full path of the model, for example Root::Cruise."""
+        self.path_name = path_name
+
+    def set_model_name(self, model_name: str) -> None:
+        """Set the name of the model."""
+        self.model_name = model_name
+
+    def set_xml_metadata(self, root_attributes: dict, imports_xml: Optional[ElementTree.Element],
+                         diagram_xml: Optional[ElementTree.Element]) -> None:
+        """Keeps the parts of an imported XML document that the export writes again."""
+        self.xml_root_attributes = root_attributes
+        self.imports_xml = imports_xml
+        self.diagram_xml = diagram_xml
 
     def set_instances_of_mlm_objects(self):
         mlm_classes: List[BaseMlmObject] = []
@@ -418,7 +166,7 @@ class BaseMlmModel:
         root = export_xml.writeXML(root, filepath)
         print('New XML created at ' + filepath)
 
-        # root is returned in case it is needed ?!
+        # Return the XML root so callers can inspect the exported document.
         return root
 
     @staticmethod
@@ -825,7 +573,7 @@ class BaseMlmModel:
             for attribute, owner_name in inherited_attributes
         )
         slot_values = {
-            slot.name: slot.value
+            slot.name: slot.get_value_as_text()
             for slot in mlm_object.slot_list
             if slot.slot_category != "SLOT-LINK"
         }
@@ -1203,18 +951,6 @@ class BaseMlmModel:
                 compact_points.append(point)
         return compact_points
 
-    def _parse_xml(self, doc_file_path: str):
-        document = None
-        try:
-            document = parse(doc_file_path)
-        except FileNotFoundError:
-            raise FileNotFoundError(f"File '{doc_file_path}' was not found!")
-        except:
-            raise Exception(f"File '{doc_file_path}' could not be parsed!")
-
-        self.parsed_xml = document
-        self.extract_mlm_from_xml()
-
     @classmethod
     def input_xml_path(cls):
         print("BEGIN MLM EXTRACTION\nEnter the MLM Source Location:")
@@ -1223,51 +959,11 @@ class BaseMlmModel:
 
     def import_xml(self, xml_file_path: str):
         """Loads XML into an empty model and reports completion when requested."""
-        assert self.parsed_xml is None, ("Multi-level model is already imported! "
-                                         "Overriding of existing model is forbidden.")
-        self._parse_xml(xml_file_path)
+        assert self.path_name == "", ("Multi-level model is already imported! "
+                                      "Overriding of existing model is forbidden.")
+        self._import_file(xml_file_path)
         if self.print_progress:
             print("Extraction completed successfully!")
-
-    def extract_mlm_from_xml(self):
-        """Reads the semantic model and keeps its complete diagram section."""
-        self.xml_root_attributes = {
-            attribute_name: self.parsed_xml.documentElement.getAttribute(attribute_name)
-            for attribute_name in self.parsed_xml.documentElement.attributes.keys()
-        }
-        import_nodes = self.parsed_xml.getElementsByTagName("Imports")
-        if import_nodes:
-            self.imports_xml = ElementTree.fromstring(import_nodes[0].toxml())
-        self.path_name = self.retrieve_path_name()
-        self.model_name = self.path_name.split("::")[-1]
-        if self.print_progress:
-            print("BEGIN MLM EXTRACTION")
-        self.mlm_objects = self.retrieve_all_mlm_objects()
-        self.set_instances_of_mlm_objects()
-        if self.print_progress:
-            print("ALL OBJECTS RETRIEVED")
-        self._set_generalizations()
-        if self.print_progress:
-            print("ALL GENERALIZATIONS RETRIEVED")
-        self.enums = self.retrieve_all_enums()
-        if self.print_progress:
-            print("ALL ENUMS RETRIEVED")
-        self.retrieve_all_attributes()
-        if self.print_progress:
-            print("ALL ATTRIBUTES RETRIEVED")
-        self.retrieve_all_slots()
-        if self.print_progress:
-            print("ALL SLOTS RETRIEVED")
-        self.retrieve_all_operations()
-        self.retrieve_all_constraints()
-        self.retrieve_all_associations()
-        self.retrieve_all_links()
-        self.add_association_ends()
-        self.add_slot_links()
-
-        diagram_nodes = self.parsed_xml.getElementsByTagName("Diagrams")
-        if diagram_nodes:
-            self.diagram_xml = ElementTree.fromstring(diagram_nodes[0].toxml())
 
     def add_association_ends(self):
         """For every association, this operation adds the respective association ends. It must be executed after
@@ -1299,99 +995,7 @@ class BaseMlmModel:
             link.get_source_object().add_slot(src_slot_link)
             link.get_target_object().add_slot(tgt_slot_link)
 
-    def retrieve_path_name(self) -> str:
-        """
-        Returns the model path from current and older XModeler XML files.
-
-        Version 4 stores the path on the root element. Version 3 stores it as
-        the name of the first Project element, so both locations are checked.
-        """
-        root_path = self.parsed_xml.documentElement.getAttribute("path")
-        if root_path:
-            return root_path
-
-        project_nodes = self.parsed_xml.getElementsByTagName("Project")
-        if project_nodes and project_nodes[0].getAttribute("name"):
-            return project_nodes[0].getAttribute("name")
-        raise ValueError("The XML file does not contain an XModeler project path.")
-
-    def retrieve_all_mlm_objects(self) -> List[BaseMlmObject]:
-        """
-        This operation retrieves all MLM objects/classes. First all highest-level classes are retrieved via the
-        function `_retrieve_all_mlm_metaclass_objects.` This is important since they have a separate XML tag.
-        Afterward, the remaining MLM objects are retrieved.
-        """
-        mlm_objects = self._retrieve_metaclass_objects()
-        for instance_object in self._retrieve_instance_objects():
-            declared_level = instance_object.level
-            instance_object.set_class_of_object(self._get_class_of_mlm_object(instance_object.class_of_object.full_name,
-                                                                              mlm_objects))
-            instance_object.level = declared_level
-            if self.print_progress:
-                print(f"Object {instance_object.name} extracted.")
-            mlm_objects.append(instance_object)
-        return mlm_objects
-
-    def _retrieve_metaclass_objects(self) -> List[BaseMlmObject]:
-        mlm_objects = []
-        for object_element in self.parsed_xml.getElementsByTagName("addMetaClass"):
-            mlm_object_long = object_element.getAttribute("package") + "::" + object_element.getAttribute("name")
-            mlm_object = BaseMlmObject(mlm_object_long, object_element.getAttribute("name"),
-                                       object_element.getAttribute("level"), metaClass,
-                                       object_element.getAttribute("abstract"), self)
-            mlm_objects.append(mlm_object)
-
-        return mlm_objects
-
-    def _retrieve_instance_objects(self) -> List[BaseMlmObject]:
-        mlm_objects = []
-        for object_element in self.parsed_xml.getElementsByTagName("addInstance"):
-            mlm_object_long = object_element.getAttribute("package") + "::" + object_element.getAttribute("name")
-            declared_level = object_element.getAttribute("level") or "99"
-            mlm_object = BaseMlmObject(mlm_object_long, object_element.getAttribute("name"), declared_level,
-                                       BaseMlmObject(object_element.getAttribute("of"),
-                                             "", "99", None, "false", self),
-                                       object_element.getAttribute("abstract"), self)
-            mlm_objects.append(mlm_object)
-
-        return mlm_objects
-
-    @staticmethod
-    def _get_class_of_mlm_object(full_object_name: str, instances: List[BaseMlmObject]) -> BaseMlmObject:
-        for object_elem in instances:
-            if object_elem.full_name == full_object_name:
-                return object_elem
-
-    def _set_generalizations(self):
-        for parent_element in self.parsed_xml.getElementsByTagName("changeParent"):
-            child_class: BaseMlmObject = self.get_mlm_object_by_fullname(parent_element.getAttribute("class"))
-            for parent_class_name in parent_element.getAttribute("new").split(","):
-                child_class.add_parent_class(self.get_mlm_object_by_fullname(parent_class_name))
-
-    def retrieve_all_enums(self):
-        enums_tmp: List[BaseMlmEnumType] = []
-        for enum_element in self.parsed_xml.getElementsByTagName("addEnumeration"):
-            enums_tmp.append(BaseMlmEnumType(enum_element.getAttribute("name")))
-        for enum_value_element in self.parsed_xml.getElementsByTagName("addEnumerationValue"):
-            for enum_tmp in enums_tmp:
-                if enum_value_element.getAttribute("enum_name") == enum_tmp.name:
-                    enum_tmp.add_enum_value(enum_value_element.getAttribute("enum_value_name"))
-        return enums_tmp
-
-    def retrieve_all_attributes(self):
-        for attribute_element in self.parsed_xml.getElementsByTagName("addAttribute"):
-            new_attr = BaseMlmAttribute(attribute_element.getAttribute("name"), attribute_element.getAttribute("type"),
-                                        attribute_element.getAttribute("level"),
-                                        self._parse_attribute_type(attribute_element.getAttribute("type")),
-                                        multiplicity=self._parse_attribute_multiplicity(
-                                          attribute_element.getAttribute("multiplicity")))
-            # need to look for custom attr data types: enums or custom class types
-            owner_object = self._find_object_named_in_xml(attribute_element.getAttribute("class"))
-            if owner_object is not None:
-                owner_object.add_attr(new_attr)
-                new_attr.set_owner(owner_object)
-
-    def _parse_attribute_type(self, type_str: str) -> TypeSpec:
+    def parse_attribute_type(self, type_str: str) -> TypeSpec:
         """receives the type as String from the FMMLX XML file and parses it to produce TypeSpec. The type string always
         conforms to the following form: Root::<Model-Name>::<Object-Name>. Accepted predefined Types are specified
         either in XCore or Auxiliary. If no predefined type is detected, the object name must correspond to an enum or
@@ -1417,36 +1021,6 @@ class BaseMlmModel:
         else:
             return self.get_object_or_enum_type(short_name)
 
-    @staticmethod
-    def _parse_attribute_multiplicity(multiplicity_value: str):
-        """Read an XModeler ``Seq`` multiplicity used by an attribute."""
-        if not multiplicity_value:
-            return None
-        match = re.search(r"Seq\{\s*(-?\d+)\s*,\s*(-?\d+)\s*,\s*(true|false)",
-                          multiplicity_value, re.IGNORECASE)
-        if match is None:
-            return None
-        lower_bound = int(match.group(1))
-        upper_bound = int(match.group(2))
-        is_unbounded = match.group(3).lower() == "true"
-        return Multiplicity(lower_bound, upper_bound, unbound=is_unbounded)
-
-    def _find_object_named_in_xml(self, xml_object_name: str):
-        # XML files sometimes use the full model path and sometimes only the final class name.
-        # This finds the same class in both cases.
-        for mlm_object in self.mlm_objects:
-            if xml_object_name == mlm_object.full_name:
-                return mlm_object
-        short_name = xml_object_name.split("::")[-1]
-        matching_objects = [
-            mlm_object
-            for mlm_object in self.mlm_objects
-            if short_name == mlm_object.name
-        ]
-        if len(matching_objects) == 1:
-            return matching_objects[0]
-        return None
-
     def _is_custom_attribute_type_an_enum(self, mlm_attr: BaseMlmAttribute) -> bool:
         # check 1: look if in list of enums
         for enum in self.enums:
@@ -1454,112 +1028,6 @@ class BaseMlmModel:
                 mlm_attr.set_enum_type(enum)
                 return True
         return False
-
-    def retrieve_all_slots(self):
-        """Reads slot values while retaining their original XML expressions."""
-        for slot_element in self.parsed_xml.getElementsByTagName("changeSlotValue"):
-            xml_value = slot_element.getAttribute("valueToBeParsed")
-            new_slot = BaseMlmSlot(slot_element.getAttribute("slotName"),
-                                   self._parse_slot_value(xml_value), xml_value=xml_value)
-            owner_object = self._find_object_named_in_xml(slot_element.getAttribute("class"))
-            if owner_object is not None:
-                owner_object.add_slot(new_slot)
-                new_slot.set_owner_object(owner_object)
-                new_slot.set_attribute()
-
-    @staticmethod
-    def _parse_slot_value(slot_value: str) -> str:
-        if slot_value.endswith("asString()"):
-            sign_list = slot_value[1:].split("]")[0].split(",")
-            slot_value = ""
-            if sign_list[0] != "":
-                for sign_code in sign_list:
-                    slot_value += chr(int(sign_code))
-        if len(slot_value.split("::")) > 1: # this means an object or enum value
-            date_prefix: str = "Auxiliary::Date::createDate("
-            if slot_value.startswith(date_prefix):
-                parts = slot_value[len(date_prefix):-1].split(",")
-                year, month, day = (int(part.strip()) for part in parts)
-                slot_value = f"DATE({day:02d},{month:02d},{year:04d})"
-            else:
-                slot_value = slot_value.split("::")[-1]  # always last item
-        return slot_value
-
-    def retrieve_all_operations(self):
-        for operations_element in self.parsed_xml.getElementsByTagName("addOperation"):
-            new_operation = BaseMlmOperation(operations_element.getAttribute("name"),
-                                             operations_element.getAttribute("level"),
-                                             operations_element.getAttribute("type"))
-            new_operation.xml_attributes = {
-                attribute_name: operations_element.getAttribute(attribute_name)
-                for attribute_name in operations_element.attributes.keys()
-            }
-
-            for mlm_object in self.mlm_objects:
-                if operations_element.getAttribute("class") == mlm_object.full_name:
-                    mlm_object.add_operation(new_operation)
-
-    def retrieve_all_constraints(self):
-        for constraint_element in self.parsed_xml.getElementsByTagName("addConstraint"):
-            new_constraint = BaseMlmConstraint(constraint_element.getAttribute("constName"),
-                                               constraint_element.getAttribute("instLevel"))
-            new_constraint.xml_attributes = {
-                attribute_name: constraint_element.getAttribute(attribute_name)
-                for attribute_name in constraint_element.attributes.keys()
-            }
-            for mlm_object in self.mlm_objects:
-                if constraint_element.getAttribute("class") == mlm_object.full_name:
-                    mlm_object.add_constraint(new_constraint)
-
-    def retrieve_all_associations(self):
-        for association_element in self.parsed_xml.getElementsByTagName("addAssociation"):
-            new_association = BaseMlmAssociation(association_element.getAttribute("fwName"),
-                                                 association_element.getAttribute("instLevelSource"),
-                                                 association_element.getAttribute("instLevelTarget"),
-                                                 association_element.getAttribute("accessTargetFromSourceName"),
-                                                 association_element.getAttribute("accessSourceFromTargetName"))
-            new_association.xml_attributes = {
-                attribute_name: association_element.getAttribute(attribute_name)
-                for attribute_name in association_element.attributes.keys()
-            }
-            tgt_mult = association_element.getAttribute("multSourceToTarget")[4:-1].split(",")
-            src_mult = association_element.getAttribute("multTargetToSource")[4:-1].split(",")
-            new_association.set_source_multiplicity(int(src_mult[0]), int(src_mult[1]))
-            new_association.set_target_multiplicity(int(tgt_mult[0]), int(tgt_mult[1]))
-            for mlm_object in self.mlm_objects:
-                if association_element.getAttribute("classSource") == mlm_object.full_name:
-                    new_association.set_source_object(mlm_object)
-                if association_element.getAttribute("classTarget") == mlm_object.full_name:
-                    new_association.set_target_object(mlm_object)
-            self.associations.append(new_association)
-
-    def retrieve_all_links(self):
-        """
-        Reads links and connects each one to the association named in the XML.
-
-        Some older files use the association's forward name while other files
-        use an access name. The forward name is preferred because it is the
-        direct and unambiguous reference used by the example models.
-        """
-        for link_element in self.parsed_xml.getElementsByTagName("addLink"):
-            new_link: BaseMlmLink = BaseMlmLink(link_element.getAttribute("name"))
-            for mlm_object in self.mlm_objects:
-                if link_element.getAttribute("classSource") == mlm_object.full_name:
-                    new_link.set_source_object(mlm_object)
-                if link_element.getAttribute("classTarget") == mlm_object.full_name:
-                    new_link.set_target_object(mlm_object)
-            matching_associations = [
-                association for association in self.associations
-                if association.name == link_element.getAttribute("name")
-            ]
-            if len(matching_associations) != 1:
-                matching_associations = [
-                    association for association in self.associations
-                    if association.get_source_access_name() == link_element.getAttribute("name")
-                ]
-            if len(matching_associations) == 1:
-                new_link.set_association(matching_associations[0])
-            self.links.append(new_link)
 
     def is_flat(self) -> bool:
         for mlm_object in self.mlm_objects:
@@ -1676,12 +1144,10 @@ class BaseMlmModel:
         flat_class.promote_attributes()
         while max_inst_level > 0:
             attrs_at_inst_level: [BaseMlmAttribute] = flat_class.get_attributes_at_inst_level_x(max_inst_level)
-            print(attrs_at_inst_level[0].get_slots_for_unique_values())
             for unique_value_slot in attrs_at_inst_level[0].get_slots_for_unique_values():
-                new_instance: BaseMlmObject = BaseMlmObject(flat_class.full_name, unique_value_slot.get_value().upper(),
+                new_instance: BaseMlmObject = BaseMlmObject(flat_class.full_name, unique_value_slot.get_value_as_text().upper(),
                                                             str(max_inst_level), flat_class, "false", self)
                 self.mlm_objects.append(new_instance)
-            print(max_inst_level)
             max_inst_level -= max_inst_level
 
     def get_assoc_classification_indicators(self) -> List[BaseMlmAssociation]:
@@ -1693,7 +1159,7 @@ class BaseMlmModel:
 
     def __repr__(self):
         print(f"Multilevel Model <{self.model_name}>")
-        print(*self.enums, sep="Syntax Error at line: 38")#lmao opfer
+        print(*self.enums, sep="\n")
         print("\n--------------------------------------------------------------\n")
         print(*self.mlm_objects, sep="----------------------------------------------\n")
         print("\n--------------------------------------------------------------\n")

@@ -3,27 +3,35 @@
 # noinspection PyPackageRequirements
 import csv
 import ctypes
+import math
 import os
+import pickle
 import random
 import re
-import shutil
 import sys
 import tkinter as tk
 import customtkinter as ctk
 from dataclasses import dataclass, field
 from datetime import datetime
+from functools import partial
 from PIL import Image
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tk_font
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
+from src.basemlm.basemlm_association import BaseMlmAssociation
 from src.basemlm.basemlm_attribute import BaseMlmAttribute
 from src.basemlm.basemlm_enum_type import BaseMlmEnumType
+from src.basemlm.basemlm_link import BaseMlmLink
 from src.basemlm.basemlm_model import BaseMlmModel
 from src.basemlm.basemlm_object import BaseMlmObject
 from src.basemlm.basemlm_slot import BaseMlmSlot
+from src.importers import CsvImporter, PlantUmlImporter, XmlImporter, importer_for, supported_extensions
+from src.importers.csv_reader import CsvReader
+from src.importers.import_report import ImportReport
+from src.importers.model_importer import ModelImporter, supported_formats_text, supported_importers
 from src.object_database.database import Database
-from src.object_database.folder import DatabaseFolder
+from src.object_database.folder import DatabaseFolder, IncompatibleDatabaseError
 from src.object_database.persistent import Persistent
 
 # app.py lies in src/gui/, so the project folder is three folders above this file.
@@ -32,6 +40,190 @@ DATABASE_FOLDER_PATH = os.path.join(PROJECT_FOLDER_PATH, "databases")
 # GWLP_HWNDPARENT in the Windows application programming interface (API): the index that sets
 # the owner window of a window.
 OWNER_WINDOW_INDEX = -8
+FONT_FAMILY = "Segoe UI"
+WHITE = "#FFFFFF"
+LIGHT_BUTTON_HOVER = "#EEF2F7"
+DANGER_BUTTON_HOVER = "#b91c1c"
+DIALOG_PADDING = 18
+BUTTON_HEIGHT = 36
+BUTTON_WIDTH = 100
+# A popup is centered a second time, because the window system can still change its size at first.
+RECENTER_DELAY_MILLISECONDS = 200
+SAVE_ERRORS = (OSError, pickle.PickleError, RecursionError, TypeError, AttributeError)
+
+
+def save_error_message(error: Exception) -> str:
+    """Return the text shown to the user when saving failed."""
+    if isinstance(error, RecursionError):
+        return ("The model is too deeply nested to be stored in the database. "
+                "The last saved state of the database is unchanged.")
+    return str(error)
+
+
+def center_popup(dialog: ctk.CTkToplevel, parent: Optional[tk.Misc] = None) -> None:
+    """Position a popup using its final size, in physical screen pixels.
+
+    At startup use the monitor work area where the main window will open
+    maximized. Later dialogs use the visible owner's center. CTk scales sizes
+    but leaves screen positions alone.
+    """
+    dialog.update_idletasks()
+    scaling = ctk.ScalingTracker.get_window_scaling(dialog)
+    width = max(dialog.winfo_width(), dialog.winfo_reqwidth())
+    height = max(dialog.winfo_height(), dialog.winfo_reqheight())
+    dialog.geometry(f"{round(width / scaling)}x{round(height / scaling)}")
+    dialog.update_idletasks()
+    width, height = dialog.winfo_width(), dialog.winfo_height()
+    if parent is not None and parent.winfo_viewable():
+        x = parent.winfo_rootx() + (parent.winfo_width() - width) // 2
+        y = parent.winfo_rooty() + (parent.winfo_height() - height) // 2
+    else:
+        try:
+            _, left, top, area_width, area_height = parent.current_monitor_work_area()
+        except (AttributeError, OSError):
+            left, top = 0, 0
+            area_width, area_height = dialog.winfo_screenwidth(), dialog.winfo_screenheight()
+        x = left + (area_width - width) // 2
+        y = top + (area_height - height) // 2
+    if sys.platform == "win32" and dialog.winfo_ismapped():
+        # Tk reports the content size; include the Windows border and title bar.
+        from ctypes import wintypes
+        rectangle = wintypes.RECT()
+        handle = ctypes.windll.user32.GetParent(dialog.winfo_id())
+        if ctypes.windll.user32.GetWindowRect(handle, ctypes.byref(rectangle)):
+            x -= (rectangle.right - rectangle.left - width) // 2
+            y -= (rectangle.bottom - rectangle.top - height) // 2
+    dialog.geometry(f"+{x}+{y}")
+
+
+def _add_dialog_heading(dialog: ctk.CTkToplevel, title: str, colors: Dict[str, str]) -> None:
+    """Add the bold first line of a dialog."""
+    ctk.CTkLabel(dialog, text=title, anchor="w", text_color=colors["text"],
+                 font=ctk.CTkFont(family=FONT_FAMILY, size=16, weight="bold")).pack(
+                     fill="x", padx=DIALOG_PADDING, pady=(DIALOG_PADDING, 6))
+
+
+def _add_dialog_button_row(dialog: ctk.CTkToplevel) -> ctk.CTkFrame:
+    """Add the empty row that holds the buttons of a dialog."""
+    row = ctk.CTkFrame(dialog, fg_color="transparent")
+    row.pack(fill="x", padx=DIALOG_PADDING, pady=(0, DIALOG_PADDING))
+    return row
+
+
+def _show_dialog_and_wait(dialog: ctk.CTkToplevel, parent: tk.Misc) -> None:
+    """Center the dialog, block all other windows, and wait until the dialog is closed."""
+    center_popup(dialog, parent)
+    dialog.after(RECENTER_DELAY_MILLISECONDS, center_popup, dialog, parent)
+    dialog.grab_set()
+    parent.wait_window(dialog)
+
+
+def popup_message(parent: tk.Misc, title: str, message: str, confirm: bool = False,
+                  accept_text: str = "Yes", cancel_text: str = "No") -> bool:
+    """Show a consistently styled message. Destructive actions require an explicit Yes."""
+    result = False
+    previous_grab = parent.grab_current()
+    dialog = ctk.CTkToplevel(parent)
+    dialog.title(title)
+    dialog.resizable(False, False)
+    dialog.transient(parent)
+    colors = parent.colors
+    dialog.configure(fg_color=colors["app_bg"])
+    _add_dialog_heading(dialog, title, colors)
+    ctk.CTkLabel(dialog, text=message, wraplength=480, justify="left", anchor="w",
+                 text_color=colors["text"],
+                 font=ctk.CTkFont(family=FONT_FAMILY, size=13)).pack(
+                     fill="x", padx=DIALOG_PADDING, pady=(0, DIALOG_PADDING))
+    row = _add_dialog_button_row(dialog)
+
+    def close() -> None:
+        """Close the dialog without accepting."""
+        dialog.destroy()
+
+    def accept() -> None:
+        """Close the dialog and remember that the user accepted."""
+        nonlocal result
+        result = True
+        dialog.destroy()
+
+    def close_with_key(_event: tk.Event) -> None:
+        """Close the dialog without accepting, for a key that was pressed."""
+        close()
+
+    if confirm:
+        _add_accept_button(row, accept_text, colors, accept)
+        close_text = cancel_text
+    else:
+        close_text = "OK"
+    ctk.CTkButton(row, text=close_text, width=BUTTON_WIDTH, height=BUTTON_HEIGHT,
+                  fg_color=WHITE, hover_color=LIGHT_BUTTON_HOVER, border_width=1,
+                  border_color=colors["border"], text_color=colors["text"],
+                  command=close).pack(side="right", padx=(0, 8))
+    dialog.protocol("WM_DELETE_WINDOW", close)
+    dialog.bind("<Escape>", close_with_key)
+    dialog.bind("<Return>", close_with_key)
+    _show_dialog_and_wait(dialog, parent)
+    if previous_grab is not None and previous_grab.winfo_exists():
+        previous_grab.grab_set()
+    return result
+
+
+def _add_accept_button(row: ctk.CTkFrame, accept_text: str, colors: Dict[str, str],
+                       command: Callable[[], None]) -> None:
+    """Add the button that accepts a question. A plain Yes is red, because it confirms a destructive action."""
+    if accept_text == "Yes":
+        button_color = colors["danger"]
+        hover_color = DANGER_BUTTON_HOVER
+    else:
+        button_color = colors["primary"]
+        hover_color = colors["primary_hover"]
+    ctk.CTkButton(row, text=accept_text, width=BUTTON_WIDTH, height=BUTTON_HEIGHT, fg_color=button_color,
+                  hover_color=hover_color, text_color=WHITE, command=command).pack(side="right")
+
+
+def ask_database_conversion(parent: tk.Misc, name: str) -> str:
+    """Offer conversion, deletion or another selection; closing chooses another database."""
+    result = "other"
+    dialog = ctk.CTkToplevel(parent)
+    dialog.title("Database version")
+    dialog.transient(parent)
+    dialog.resizable(False, False)
+    colors = parent.colors
+    dialog.configure(fg_color=colors["app_bg"])
+    _add_dialog_heading(dialog, "This database uses an older model format", colors)
+    ctk.CTkLabel(dialog,
+                 text=f"Database '{name}' cannot be opened directly.\n"
+                      "Convert this database to the current format, delete it, "
+                      "or select another one.\nConversion updates this database and keeps a backup.",
+                 text_color=colors["text"], justify="left", wraplength=480,
+                 font=ctk.CTkFont(family=FONT_FAMILY, size=13)).pack(
+                     fill="x", padx=DIALOG_PADDING, pady=(0, DIALOG_PADDING))
+    row = _add_dialog_button_row(dialog)
+
+    def close(choice: str = "other") -> None:
+        """Close the dialog and remember the choice of the user."""
+        nonlocal result
+        result = choice
+        dialog.destroy()
+
+    def close_with_key(_event: tk.Event) -> None:
+        """Close the dialog for a key that was pressed, which chooses another database."""
+        close()
+
+    ctk.CTkButton(row, text="Convert", fg_color=colors["primary"],
+                  hover_color=colors["primary_hover"], text_color=WHITE,
+                  command=partial(close, "convert")).pack(side="left", padx=(0, 8))
+    ctk.CTkButton(row, text="Delete", width=BUTTON_WIDTH, fg_color=colors["danger"],
+                  hover_color=DANGER_BUTTON_HOVER, text_color=WHITE,
+                  command=partial(close, "delete")).pack(side="left", padx=(0, 8))
+    ctk.CTkButton(row, text="Select another", fg_color=WHITE, hover_color=LIGHT_BUTTON_HOVER,
+                  border_width=1, border_color=colors["border"], text_color=colors["text"],
+                  command=close).pack(side="left")
+    dialog.protocol("WM_DELETE_WINDOW", close)
+    dialog.bind("<Escape>", close_with_key)
+    _show_dialog_and_wait(dialog, parent)
+    parent.grab_set()
+    return result
 
 
 @dataclass
@@ -53,6 +245,7 @@ class XmlImportPreview:
     errors: List[str]
     warnings: List[str] = field(default_factory=list)
     model: Optional[BaseMlmModel] = None
+    report: Optional[ImportReport] = None
 
 
 @dataclass
@@ -89,6 +282,8 @@ class ModelDeepenerApp(ctk.CTk):
     5. Models Overview lists all imported models and opens or deletes them.
     6. Shared helpers create repeated UI elements such as cards, headers, and table cells.
     """
+
+    ASSOCIATION_TABLE_HEADERS = ("Associationname", "Source", "Target", "Multiplicity")
 
     COLUMN_WIDTH_INCLUDE = 100
     COLUMN_WIDTH_NAME = 280
@@ -195,6 +390,7 @@ class ModelDeepenerApp(ctk.CTk):
         self._overlay = Overlay(self)
         self._show_import_page()
         self.after_idle(self._show_configured_window)
+        self.after(2000, self._autosave_models)
 
     def _configure_ttk_style(self):
         """
@@ -329,7 +525,7 @@ class ModelDeepenerApp(ctk.CTk):
         offset_x, offset_y = self._window_drag_offset
         self.geometry(f"+{event.x_root - offset_x}+{event.y_root - offset_y}")
 
-    def _current_monitor_work_area(self):
+    def current_monitor_work_area(self) -> tuple:
         """
         Returns the usable size and position of the window's current monitor.
 
@@ -379,7 +575,7 @@ class ModelDeepenerApp(ctk.CTk):
             return
 
         try:
-            hwnd, left, top, width, height = self._current_monitor_work_area()
+            hwnd, left, top, width, height = self.current_monitor_work_area()
             keep_window_order = 0x0004
             show_window = 0x0040
             ctypes.windll.user32.SetWindowPos(
@@ -440,7 +636,7 @@ class ModelDeepenerApp(ctk.CTk):
         """
         self.state("normal")
         try:
-            hwnd, left, top, width, height = self._current_monitor_work_area()
+            hwnd, left, top, width, height = self.current_monitor_work_area()
             target_width = round(width * 0.60)
             target_height = round(height * 0.60)
             target_left = left + ((width - target_width) // 2)
@@ -476,10 +672,22 @@ class ModelDeepenerApp(ctk.CTk):
 
         Scheduled interface tasks are cancelled before the window and its
         event loop are stopped, so the application does not remain active in
-        the background.
+        the background. If saving fails, the user decides whether to close without
+        saving. The database file then keeps its last saved state.
         """
         if self._is_closing:
             return
+        try:
+            if getattr(self, "_database", None) is not None:
+                self._database.commit()
+        except SAVE_ERRORS as error:
+            close_without_saving = popup_message(
+                self, "Save failed",
+                f"Saving failed. Close without saving?\n\n{save_error_message(error)}",
+                confirm=True,
+            )
+            if not close_without_saving:
+                return
         self._is_closing = True
         try:
             for after_id in self.tk.call("after", "info"):
@@ -1002,7 +1210,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         self._page_header(
             "Upload File or Select Example",
-            "Import a CSV or FMMLx/XML file. Validation starts automatically after a file is selected.",
+            "Import a CSV, FMMLx/XML or PlantUML file. Validation starts automatically after a file is selected.",
         )
 
         body = ctk.CTkFrame(self.content, fg_color="transparent")
@@ -1129,7 +1337,7 @@ class ModelDeepenerApp(ctk.CTk):
             row=1, column=0, columnspan=2, sticky="nsew", pady=(0, 0)
         )
         selection_card.grid_columnconfigure(0, weight=1)
-        selection_card.grid_rowconfigure(3, weight=1)
+        selection_card.grid_rowconfigure(2, weight=1)
 
         selection_header = ctk.CTkFrame(selection_card, fg_color="transparent")
         selection_header.grid(row=0, column=0, sticky="ew", padx=16, pady=(14, 2))
@@ -1230,7 +1438,7 @@ class ModelDeepenerApp(ctk.CTk):
         if self.current_file_path:
             self._validate_current_file()
         else:
-            self._render_empty_preview("Select a CSV or XML file to start.")
+            self._render_empty_preview(f"Select a {supported_formats_text(' or ')} file to start.")
 
     def _reset_current_import_state(self):
         self.current_model = None
@@ -1756,7 +1964,7 @@ class ModelDeepenerApp(ctk.CTk):
         class_objects = [
             obj
             for obj in model.mlm_objects
-            if obj.level > 0 and obj.attr_list
+            if obj.level > 0 and obj.get_regular_attributes()
         ]
         if class_objects:
             return class_objects[0].name
@@ -1853,7 +2061,15 @@ class ModelDeepenerApp(ctk.CTk):
             )
             return
 
-        violations = self.current_model.validate_basemlm_integrity()
+        try:
+            violations = self.current_model.validate_basemlm_integrity()
+        except (AttributeError, TypeError, ValueError) as error:
+            self._show_warning(
+                "Check Constraints",
+                "The model could not be checked. It remains saved, but export is blocked "
+                f"until the constraint check succeeds.\n\n{error}",
+            )
+            return
         if not violations:
             self._show_information(
                 "Check Constraints",
@@ -1874,7 +2090,15 @@ class ModelDeepenerApp(ctk.CTk):
             self._show_information("Export Model", "Create or open a model before exporting.")
             return
 
-        violations = self.current_model.validate_basemlm_integrity()
+        try:
+            violations = self.current_model.validate_basemlm_integrity()
+        except (AttributeError, TypeError, ValueError) as error:
+            self._show_warning(
+                "Check Constraints",
+                "The model could not be checked. It remains saved, but export is blocked "
+                f"until the constraint check succeeds.\n\n{error}",
+            )
+            return
         if violations:
             details = "\n".join(f"- {violation}" for violation in violations)
             self._show_warning(
@@ -1885,7 +2109,7 @@ class ModelDeepenerApp(ctk.CTk):
             return
 
         file_type = (self.current_file_type or os.path.splitext(self.current_file_path or "")[1].lstrip(".")).upper()
-        if file_type == "XML":
+        if file_type in ("XML", PlantUmlImporter.FORMAT_NAME.upper()):
             self._export_current_xml_model()
         elif file_type == "CSV":
             self._export_current_csv_model()
@@ -1896,17 +2120,28 @@ class ModelDeepenerApp(ctk.CTk):
         """
         Saves the currently loaded model as a newly generated XML file.
 
-        The model's existing project path is kept so classes, slots, links,
-        and diagram references continue to point to the correct elements.
+        Export uses the model already loaded in memory, so the original file
+        may have been moved or deleted. Its path is only used to suggest a
+        filename in the save dialog. If no path is set, "model.xml" is suggested.
+        This file does not need to exist; export creates it at the chosen path.
+
+        The model's internal project path (e.g. "Root::MyModel") is kept
+        so classes, slots, links, and diagram references remain valid.
         """
-        if not self.current_file_path or not os.path.exists(self.current_file_path):
-            self._show_error("Export Model", "The source XML file is missing.")
+        if self.current_model is None:
+            self._show_error("Export Model", "No model is loaded.")
             return
         export_options = self._ask_instances_per_class()
         if export_options is None:
             return
         instances_per_class, diagram_mode = export_options
-        source_name = os.path.basename(self.current_file_path)
+        # Suggest the name of the source file as XML, or "model.xml" if no source path is set.
+        # The export creates the file after the user chooses where to save it.
+        source_name = "model.xml"
+        if self.current_file_path:
+            source_stem = os.path.splitext(os.path.basename(self.current_file_path))[0]
+            if source_stem:
+                source_name = f"{source_stem}.xml"
         target_path = self._ask_save_file(
             title="Export Model",
             initial_file=source_name,
@@ -2438,7 +2673,7 @@ class ModelDeepenerApp(ctk.CTk):
         ctk.CTkComboBox(
             filters,
             variable=self.models_type_filter_var,
-            values=["All", "CSV", "XML"],
+            values=["All"] + [importer_class.FORMAT_NAME.upper() for importer_class in supported_importers()],
             width=190,
             height=44,
             corner_radius=7,
@@ -2628,7 +2863,7 @@ class ModelDeepenerApp(ctk.CTk):
             supported_files = sorted(
                 file_name
                 for file_name in file_names
-                if file_name.lower().endswith((".xml", ".csv"))
+                if file_name.lower().endswith(tuple(supported_extensions()))
             )
             if supported_files or folder_path == examples_root:
                 rows.append((folder_path, supported_files))
@@ -2640,17 +2875,30 @@ class ModelDeepenerApp(ctk.CTk):
         If the user cancels the file dialog, nothing changes.
         """
         file_path = self._ask_open_file(
-            file_types=[
-                ("Supported files", "*.csv *.xml"),
-                ("CSV files", "*.csv"),
-                ("XML files", "*.xml"),
-                ("All files", "*.*"),
-            ]
+            file_types=self._import_file_types()
         )
         if file_path:
             self.file_path_var.set(file_path)
             self.current_file_path = file_path
             self._validate_current_file()
+
+    @staticmethod
+    def _import_file_types() -> list[tuple[str, str]]:
+        """Returns the entries of the file dialog for all formats that can be imported."""
+        file_types = [("Supported files", " ".join(f"*{extension}" for extension in supported_extensions()))]
+        for importer_class in supported_importers():
+            patterns = " ".join(f"*{extension}" for extension in importer_class.EXTENSIONS)
+            file_types.append((f"{importer_class.FORMAT_NAME} files", patterns))
+        file_types.append(("All files", "*.*"))
+        return file_types
+
+    @staticmethod
+    def _importer_for_file(file_path: str) -> Optional[ModelImporter]:
+        """Returns the importer for the file, or None if no importer reads its file ending."""
+        try:
+            return importer_for(file_path)
+        except ValueError:
+            return None
 
     def _validate_current_file(self):
         file_path = self.file_path_var.get().strip()
@@ -2667,30 +2915,39 @@ class ModelDeepenerApp(ctk.CTk):
                 text_color=self.colors["muted"],
             )
             self._set_validation_rows([("File", "No file selected")])
-            self._render_empty_preview("Select a CSV or XML file to start.")
+            self._render_empty_preview(f"Select a {supported_formats_text(' or ')} file to start.")
             self._set_create_button_enabled(False)
             return
 
         self._set_validation_badge_visible(False)
         extension = os.path.splitext(file_path)[1].lower()
-        if extension == ".csv":
+        importer = self._importer_for_file(file_path)
+        if isinstance(importer, CsvImporter):
             csv_preview = self._build_csv_preview(file_path)
             self.csv_preview = csv_preview
             self._render_csv_validation(csv_preview)
             self._render_csv_mapping(csv_preview)
             can_create = not csv_preview.errors and csv_preview.header_detected
-        elif extension == ".xml":
+        elif isinstance(importer, XmlImporter):
             xml_preview = self._build_xml_preview(file_path)
             self.xml_preview = xml_preview
             self._render_xml_validation(xml_preview)
             self._render_xml_preview(xml_preview)
             can_create = not xml_preview.errors
+        elif isinstance(importer, PlantUmlImporter):
+            self._set_validation_rows([
+                ("File type", PlantUmlImporter.FORMAT_NAME),
+                ("Status", "Not Validated"),
+                ("Errors", "None"),
+            ])
+            self._render_empty_preview("PlantUML files have no preview. Create the model to import the diagram.")
+            can_create = True
         else:
             self._set_validation_rows([
                 ("File type", extension or "unknown"),
                 ("Errors", "Unsupported file type"),
             ])
-            self._render_empty_preview("Only CSV and XML files are supported.")
+            self._render_empty_preview(f"Only {supported_formats_text(' and ')} files are supported.")
             can_create = False
 
         self._set_create_button_enabled(can_create and self._can_create_current_file())
@@ -2767,80 +3024,6 @@ class ModelDeepenerApp(ctk.CTk):
             dialect.delimiter = max(delimiter_counts, key=delimiter_counts.get)
             return dialect
 
-    @staticmethod
-    def _simple_csv_value_type(value: str) -> str:
-        # Give one cell a simple everyday label, so header cells can be compared with data cells.
-        value = value.strip()
-        if value == "":
-            return "empty"
-        try:
-            int(value)
-            return "int"
-        except ValueError:
-            pass
-        try:
-            float(value)
-            return "float"
-        except ValueError:
-            return "text"
-
-    @staticmethod
-    def _csv_attribute_type(values: List[str]) -> str:
-        # Decide what kind of values a CSV column mostly contains.
-        # Empty cells are ignored because they should not change the column type.
-        populated_values = [
-            value.strip()
-            for value in values
-            if value.strip()
-        ]
-        if populated_values:
-            try:
-                for value in populated_values:
-                    int(value)
-                return "Integer"
-            except ValueError:
-                pass
-            try:
-                for value in populated_values:
-                    float(value)
-                return "Float"
-            except ValueError:
-                pass
-        return "String"
-
-    @staticmethod
-    def _is_simple_header_name(value: str) -> bool:
-        # A plain word like "name" or "age_2" is a good sign that the first row is a header.
-        return re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", value) is not None
-
-    @classmethod
-    def _first_row_looks_like_header(
-            cls,
-            header_row: List[str],
-            data_rows: List[List[str]],
-    ) -> bool:
-        # Check whether the first CSV row looks like column names or like normal data.
-        # This keeps accidental data rows from becoming model attribute names.
-        if not data_rows:
-            return True
-
-        if all(cls._is_simple_header_name(header_value) for header_value in header_row):
-            return True
-
-        for column_index, header_value in enumerate(header_row):
-            column_values = [
-                row[column_index]
-                for row in data_rows
-                if column_index < len(row)
-            ]
-            column_types = {
-                cls._simple_csv_value_type(value)
-                for value in column_values
-            }
-            if cls._simple_csv_value_type(header_value) not in column_types:
-                return True
-        return False
-
     @classmethod
     def _build_csv_preview(cls, file_path: str) -> CsvImportPreview:
         # Build a small summary before importing the CSV for real.
@@ -2849,24 +3032,21 @@ class ModelDeepenerApp(ctk.CTk):
         errors: List[str] = []
 
         try:
-            with open(file_path, "r", newline="", encoding="utf-8-sig") as csv_file:
-                dialect = cls._detect_csv_dialect(csv_file)
-                reader = csv.reader(csv_file, dialect, skipinitialspace=True)
-                rows = [[value.strip().strip('"') for value in row] for row in reader if row]
-                delimiter = dialect.delimiter
+            csv_reader = CsvReader(file_path)
+            delimiter = csv_reader.get_delimiter()
         except FileNotFoundError:
             return CsvImportPreview(file_path, "", [], [], 0, 0, False, warnings, [f"File not found: {file_path}"])
         except (OSError, UnicodeError, csv.Error) as exc:
             # File and CSV reading problems become readable messages in the GUI.
             return CsvImportPreview(file_path, "", [], [], 0, 0, False, warnings, [f"Could not read CSV: {exc}"])
 
-        if not rows:
+        if csv_reader.is_empty():
             return CsvImportPreview(file_path, delimiter, [], [], 0, 0, False, warnings, ["CSV file is empty."])
 
-        header = rows[0]
-        data_rows = rows[1:]
+        header = csv_reader.get_header()
+        data_rows = csv_reader.get_data_rows()
         column_count = len(header)
-        header_detected = cls._first_row_looks_like_header(header, data_rows)
+        header_detected = csv_reader.first_row_looks_like_header()
 
         if column_count == 0:
             errors.append("CSV header must contain at least one column.")
@@ -2897,14 +3077,14 @@ class ModelDeepenerApp(ctk.CTk):
     def _build_xml_preview(file_path: str) -> XmlImportPreview:
         # Try to open the XML model once so the GUI can report problems before the real import.
         try:
-            model = BaseMlmModel(file_path=file_path)
+            model, report = importer_for(file_path).import_file(file_path)
             warnings = []
             if ModelDeepenerApp._count_attributes(model) == 0:
                 warnings.append(
                     "No attributes were attached to model classes. The XML may not contain addAttribute entries, "
                     "or its attribute class names may not match the class names in the model."
                 )
-            return XmlImportPreview(file_path=file_path, errors=[], warnings=warnings, model=model)
+            return XmlImportPreview(file_path=file_path, errors=[], warnings=warnings, model=model, report=report)
         except Exception as exc:
             # Expected import problems are kept as readable messages for the user.
             return XmlImportPreview(file_path=file_path, errors=[str(exc)], model=None)
@@ -3352,7 +3532,7 @@ class ModelDeepenerApp(ctk.CTk):
                 for row in preview.data_rows
                 if column_index < len(row)
             ]
-            data_type = self._csv_attribute_type(values)
+            data_type = CsvReader.column_type(values)
             selected = tk.BooleanVar(value=True)
             self.selected_csv_columns[column_name] = selected
 
@@ -3553,12 +3733,16 @@ class ModelDeepenerApp(ctk.CTk):
 
 
     def _can_create_current_file(self) -> bool:
-        extension = os.path.splitext(self.current_file_path or "")[1].lower()
-        if extension == ".csv":
+        """Return True if the chosen file can be imported as it is selected on the page."""
+        file_path = self.current_file_path
+        if not file_path:
+            file_path = ""
+        importer = self._importer_for_file(file_path)
+        if isinstance(importer, CsvImporter):
             return self._has_selected_columns()
-        if extension == ".xml":
+        if isinstance(importer, XmlImporter):
             return self.xml_preview is not None and not self.xml_preview.errors
-        return False
+        return isinstance(importer, PlantUmlImporter)
 
     def _has_selected_columns(self) -> bool:
         if self.csv_preview is None or self.csv_preview.errors or not self.csv_preview.header_detected:
@@ -3636,15 +3820,18 @@ class ModelDeepenerApp(ctk.CTk):
 
         This block turns the selected CSV/XML file into the current model,
         stores the imported source file, updates Models Overview, and saves
-        the model in the object database.
+        the model in the object database. If the import found problems and the
+        user cancels, nothing is stored and the previous model stays current.
         """
         if not self.current_file_path:
             self._show_error("Import blocked", "Select a file first.")
             return
 
+        previous_model = self.current_model
+        previous_selected_columns = self.current_selected_columns
         try:
-            extension = os.path.splitext(self.current_file_path)[1].lower()
-            if extension == ".csv":
+            importer = self._importer_for_file(self.current_file_path)
+            if isinstance(importer, CsvImporter):
                 selected_columns = [
                     column
                     for column, selected in self.selected_csv_columns.items()
@@ -3658,42 +3845,47 @@ class ModelDeepenerApp(ctk.CTk):
                     )
                     return
 
-                self.current_model = BaseMlmModel(
-                    file_path=self.current_file_path,
-                    selected_csv_columns=selected_columns,
-                )
+                importer.select_columns(selected_columns)
+                self.current_model, import_report = importer.import_file(self.current_file_path)
                 self.current_selected_columns = selected_columns
-            elif extension == ".xml":
-                self.current_model = self.xml_preview.model if self.xml_preview and self.xml_preview.model else BaseMlmModel(
-                    file_path=self.current_file_path
-                )
+            elif isinstance(importer, XmlImporter):
+                if self.xml_preview and self.xml_preview.model:
+                    self.current_model, import_report = self.xml_preview.model, self.xml_preview.report
+                else:
+                    self.current_model, import_report = importer.import_file(self.current_file_path)
+                self.current_selected_columns = []
+            elif importer is not None:
+                self.current_model, import_report = importer.import_file(self.current_file_path)
                 self.current_selected_columns = []
             else:
-                raise ValueError("Only CSV and XML files are supported.")
+                raise ValueError(f"Only {supported_formats_text(' and ')} files are supported.")
         except Exception as exc:
             self._show_error("Import failed", str(exc))
             self.action_unlocked[2] = False
             self._refresh_actions()
             return
 
+        if import_report.has_problems() and not ask_import_problems(self, import_report, self._overlay):
+            self.current_model = previous_model
+            self.current_selected_columns = previous_selected_columns
+            return
+
         self.action_completed[1] = True
         self.action_unlocked[2] = True
-        self.current_file_path = self._persist_imported_source_file(
-            self.current_file_path,
-            extension,
-        )
-        self.current_file_type = extension.lstrip(".").upper()
-        self._store_loaded_model(extension)
+        self.current_file_path = self._persist_imported_source_file(self.current_file_path)
+        self.current_file_type = importer.FORMAT_NAME.upper()
+        self._store_loaded_model(self.current_file_type)
         self._show_model_page()
 
-    def _persist_imported_source_file(
-            self,
-            source_path: Optional[str],
-            extension: str,
-    ) -> Optional[str]:
+    def _persist_imported_source_file(self, source_path: Optional[str]) -> Optional[str]:
+        """Keep a copy of an imported file in the source folder of its format and return the path of the copy.
+
+        A file that already lies in that folder is used as it is. A name that is already taken gets a number.
+        """
         if not source_path:
             return source_path
-        target_dir = "csv_files" if extension == ".csv" else "example_models"
+        importer = importer_for(source_path)
+        target_dir = importer.SOURCE_FOLDER
         os.makedirs(target_dir, exist_ok=True)
 
         source_abs = os.path.abspath(source_path)
@@ -3701,7 +3893,7 @@ class ModelDeepenerApp(ctk.CTk):
         if os.path.dirname(source_abs).lower() == target_abs_dir.lower():
             return source_path
 
-        base_name = os.path.basename(source_path)
+        base_name = importer.source_file_name(source_path)
         name, suffix = os.path.splitext(base_name)
         target_path = os.path.join(target_dir, base_name)
         counter = 1
@@ -3714,12 +3906,12 @@ class ModelDeepenerApp(ctk.CTk):
             target_path = os.path.join(target_dir, f"{name}_{counter}{suffix}")
             counter += 1
 
-        shutil.copy2(source_path, target_path)
+        importer.copy_source_file(source_path, target_path)
         if hasattr(self, "file_path_var"):
             self.file_path_var.set(target_path)
         return target_path
 
-    def _store_loaded_model(self, extension: str) -> None:
+    def _store_loaded_model(self, file_type: str) -> None:
         """Store the current model as a new model in the open database and commit.
 
         Every import becomes a new model with its own OID. If another model already has the same
@@ -3733,15 +3925,11 @@ class ModelDeepenerApp(ctk.CTk):
         name = self._unique_model_name(name)
         uploaded = datetime.now().strftime("%Y-%m-%d %H:%M")
         now_text = self._current_timestamp_text()
-        selected_columns = [
-            column
-            for column, selected in self.selected_csv_columns.items()
-            if selected.get()
-        ] if extension == ".csv" else []
+        selected_columns = self._selected_column_names(file_type)
         loaded = LoadedModel(
             name=name,
             source_file=source_file,
-            file_type=extension.lstrip(".").upper(),
+            file_type=file_type,
             model=self.current_model,
             source_path=self.current_file_path,
             selected_columns=selected_columns,
@@ -3750,8 +3938,32 @@ class ModelDeepenerApp(ctk.CTk):
             last_action=self.ACTION_TITLES[2],
         )
         self._database.store(loaded)
-        self._database.commit()
+        if not self._commit_database():
+            # A model that cannot be saved must not prevent saving the other models.
+            self._database.delete(loaded.get_oid())
+            return
         self.loaded_models.append(loaded)
+
+    def _selected_column_names(self, file_type: str) -> List[str]:
+        """Return the selected columns of a CSV file. Other formats have no columns."""
+        if file_type != CsvImporter.FORMAT_NAME.upper():
+            return []
+        selected_columns = []
+        for column, selected in self.selected_csv_columns.items():
+            if selected.get():
+                selected_columns.append(column)
+        return selected_columns
+
+    def forget_deleted_database(self, name: str) -> bool:
+        """Stop using a database that was deleted. Return True if it was the active database."""
+        if name != self._database_name:
+            return False
+        self._database = None
+        self._database_name = ""
+        self.loaded_models = []
+        self._reset_current_import_state()
+        self._active_database_deleted = True
+        return True
 
     def _unique_model_name(self, name: str) -> str:
         """Return the name, or the name with the next free number if a model already has it.
@@ -3775,12 +3987,39 @@ class ModelDeepenerApp(ctk.CTk):
         user cancels, False is returned: at startup the caller then ends the tool, when switching
         the current database stays open. After a switch the New Model page is shown again.
 
-        There is no question about unsaved changes, because every change to the loaded models
-        is committed at once. Two running instances that open the same database overwrite each
+        Changes are saved before switching, without checking constraints. Two running
+        instances that open the same database overwrite each
         other's commits; there is no lock file against this.
         """
+        if getattr(self, "_database", None) is not None:
+            try:
+                self._database.commit()
+            except SAVE_ERRORS as error:
+                self._show_error("Save failed", "Cannot switch databases before saving:\n"
+                                 + save_error_message(error))
+                return False
         overlay = None if is_startup else self._overlay
         result = ask_for_database(self, self._database_folder, overlay)
+        while result is None and getattr(self, "_active_database_deleted", False):
+            # Keep the UI covered and grabbed until another database is selected
+            # or the user ends the application. Cancel and X mean "Close application".
+            if overlay is not None:
+                overlay.show()
+            try:
+                reopen = popup_message(
+                    self, "Database deleted",
+                    "The active database was deleted. Please open or create another "
+                    "database to continue, or close the application.",
+                    confirm=True, accept_text="Open / create database",
+                    cancel_text="Close application",
+                )
+                if not reopen:
+                    self._close_application()
+                    return False
+                result = ask_for_database(self, self._database_folder, overlay)
+            finally:
+                if overlay is not None and not self._is_closing:
+                    overlay.hide()
         if result is None:
             return False
         database, name = result
@@ -3796,6 +4035,7 @@ class ModelDeepenerApp(ctk.CTk):
         database.
         """
         self._database = database
+        self._active_database_deleted = False
         self._database_name = name
         self.loaded_models = database.get_all()
         self._reset_current_import_state()
@@ -3874,6 +4114,37 @@ class ModelDeepenerApp(ctk.CTk):
     def _current_timestamp_text() -> str:
         return datetime.now().strftime("%Y-%m-%d %H:%M")
 
+    def _commit_database(self) -> bool:
+        """Save the open database. Show a message and return False if saving failed."""
+        try:
+            self._database.commit()
+        except SAVE_ERRORS as error:
+            self._show_error("Save failed", save_error_message(error))
+            return False
+        return True
+
+    def _autosave_models(self) -> None:
+        """Save changed models every two seconds, including invalid intermediate states.
+
+        Constraint checks belong to export, never to saving. Keep the last successful
+        snapshot to avoid rewriting unchanged models. Retry and show failures visibly.
+        """
+        try:
+            if getattr(self, "_database", None) is not None:
+                snapshot = pickle.dumps(self._database.get_all())
+                if snapshot != getattr(self, "_autosave_snapshot", None):
+                    self._database.commit()
+                    self._autosave_snapshot = snapshot
+                self._autosave_error = None
+        except SAVE_ERRORS as error:
+            message = save_error_message(error)
+            if message != getattr(self, "_autosave_error", None):
+                self._autosave_error = message
+                self._show_error("Automatic save failed", message)
+        finally:
+            if not self._is_closing:
+                self.after(2000, self._autosave_models)
+
     def _touch_loaded_model(self, model: Optional[BaseMlmModel]) -> None:
         """Set "Last worked on" of the stored model to the current time and commit.
 
@@ -3885,7 +4156,7 @@ class ModelDeepenerApp(ctk.CTk):
             if loaded.model is model:
                 loaded.last_worked_on = self._current_timestamp_text()
                 # The loaded model is the object in the database, so commit() saves the change.
-                self._database.commit()
+                self._commit_database()
                 break
 
     def _set_last_action(self, action: int) -> None:
@@ -3901,7 +4172,7 @@ class ModelDeepenerApp(ctk.CTk):
             if loaded.model is self.current_model:
                 loaded.last_action = self.last_action_label
                 # The loaded model is the object in the database, so commit() saves the change.
-                self._database.commit()
+                self._commit_database()
                 break
 
     def _populate_model_tree(
@@ -4057,13 +4328,13 @@ class ModelDeepenerApp(ctk.CTk):
         if not query:
             return True
         values = [obj.name, obj.full_name]
-        values.extend(attr.name for attr in obj.attr_list)
-        values.extend(attr.attr_type_str_short for attr in obj.attr_list)
+        values.extend(attr.name for attr in obj.get_regular_attributes())
+        values.extend(attr.attr_type_str_short for attr in obj.get_regular_attributes())
         object_operations = self._operations_for_object(obj)
         values.extend(operation.operation_name for operation in object_operations)
         values.extend(operation.return_type for operation in object_operations)
-        values.extend(slot.name for slot in obj.slot_list)
-        values.extend(str(slot.value) for slot in obj.slot_list)
+        values.extend(slot.name for slot in obj.get_regular_slots())
+        values.extend(str(slot.get_value_as_text()) for slot in obj.get_regular_slots())
         values.extend(parent.name for parent in obj.parent_classes)
         values.extend(
             candidate.name
@@ -4077,6 +4348,8 @@ class ModelDeepenerApp(ctk.CTk):
                     association.name,
                     self._name(association.source_object),
                     self._name(association.target_object),
+                    association.get_source_access_name(),
+                    association.get_target_access_name(),
                     self._association_multiplicity_text(association),
                 ]
             )
@@ -4087,6 +4360,7 @@ class ModelDeepenerApp(ctk.CTk):
                     link.name,
                     self._name(link.source_object),
                     self._name(link.target_object),
+                    *self._link_access_names(link),
                 ]
             )
         if object_operations:
@@ -4100,12 +4374,12 @@ class ModelDeepenerApp(ctk.CTk):
             return
         hit_groups = [
             ("Attributes", "attribute", [
-                attr for attr in obj.attr_list
+                attr for attr in obj.get_regular_attributes()
                 if self._query_matches_values(query, attr.name, attr.attr_type_str_short, attr.inst_level)
             ]),
             ("Slots", "slot", [
-                slot for slot in obj.slot_list
-                if self._query_matches_values(query, slot.name, slot.value, self._slot_type(slot))
+                slot for slot in obj.get_regular_slots()
+                if self._query_matches_values(query, slot.name, slot.get_value_as_text(), self._slot_type(slot))
             ]),
             ("Associations", "association", [
                 association for association in self._associations_for_class(model, obj)
@@ -4114,6 +4388,8 @@ class ModelDeepenerApp(ctk.CTk):
                     association.name,
                     self._name(association.source_object),
                     self._name(association.target_object),
+                    association.get_source_access_name(),
+                    association.get_target_access_name(),
                     self._association_multiplicity_text(association),
                 )
             ]),
@@ -4124,6 +4400,7 @@ class ModelDeepenerApp(ctk.CTk):
                     link.name,
                     self._name(link.source_object),
                     self._name(link.target_object),
+                    *self._link_access_names(link),
                 )
             ]),
             ("Operations", "operation", [
@@ -4173,7 +4450,7 @@ class ModelDeepenerApp(ctk.CTk):
         if view_name == "attribute":
             return f"{hit.name}: {hit.attr_type_str_short}"
         if view_name == "slot":
-            return f"{hit.name}: {self._display_table_value(hit.value)}"
+            return f"{hit.name}: {self._display_table_value(hit.get_value_as_text())}"
         if view_name == "association":
             return f"{hit.name}: {self._name(hit.source_object)} → {self._name(hit.target_object)}"
         if view_name == "link":
@@ -4249,21 +4526,16 @@ class ModelDeepenerApp(ctk.CTk):
             self.detail_subtitle.configure(text=f"Defined on {obj.name}.")
             self._render_detail_table(
                 ("Attribute", "Type", "Slot"),
-                [(slot.name, self._slot_type(slot), slot.value)],
+                [(slot.name, self._slot_type(slot), slot.get_value_as_text())],
             )
         elif view_name == "association":
             _view, _obj, association = payload
             self.detail_title.configure(text=f"Association: {association.name}", text_color="#64748B")
             self.detail_subtitle.configure(text="Matching association.")
             self._render_detail_table(
-                ("Associationname", "Source", "Target", "Multiplicity"),
-                [(
-                    association.name,
-                    self._name(association.source_object),
-                    self._name(association.target_object),
-                    self._association_multiplicity_text(association),
-                )],
-                highlight_column=3,
+                self.ASSOCIATION_TABLE_HEADERS,
+                [self._association_table_row(association)],
+                highlight_column=self.ASSOCIATION_TABLE_HEADERS.index("Multiplicity"),
             )
         elif view_name == "link":
             _view, _obj, link = payload
@@ -4278,7 +4550,7 @@ class ModelDeepenerApp(ctk.CTk):
             _view, obj, operation = payload
             self.detail_title.configure(text=f"Operation: {operation.operation_name}", text_color="#0D9488")
             self.detail_subtitle.configure(text=f"Defined for {obj.name}.")
-            slot_by_name = {slot.name: slot.value for slot in obj.slot_list}
+            slot_by_name = {slot.name: slot.get_value_as_text() for slot in obj.get_regular_slots()}
             self._render_detail_table(
                 ("Operation", "Type", "Slot"),
                 [(operation.operation_name, self._short_type_name(operation.return_type), slot_by_name.get(operation.operation_name, "-"))],
@@ -4397,9 +4669,9 @@ class ModelDeepenerApp(ctk.CTk):
         class_objects = [
             obj
             for obj in model.mlm_objects
-            if obj.level > 0 and obj.attr_list
+            if obj.level > 0 and obj.get_regular_attributes()
         ]
-        attributes = class_objects[0].attr_list if class_objects else []
+        attributes = class_objects[0].get_regular_attributes() if class_objects else []
         objects = [
             obj
             for obj in model.mlm_objects
@@ -4574,7 +4846,7 @@ class ModelDeepenerApp(ctk.CTk):
     def _model_structure_content_text(self, model: BaseMlmModel, obj: BaseMlmObject) -> str:
         operation_count = len(self._operations_for_object(obj)) if obj.level == 0 else len(obj.operations_list)
         parts = [
-            f"{len(obj.attr_list)} attributes",
+            f"{len(obj.get_regular_attributes())} attributes",
             f"{operation_count} operations",
         ]
         associations = self._associations_for_class(model, obj)
@@ -4583,8 +4855,8 @@ class ModelDeepenerApp(ctk.CTk):
         links = self._links_for_object(model, obj)
         if links:
             parts.append(f"{len(links)} links")
-        if obj.slot_list:
-            parts.append(f"{len(obj.slot_list)} slots")
+        if obj.get_regular_slots():
+            parts.append(f"{len(obj.get_regular_slots())} slots")
         return ", ".join(parts)
 
     def _set_model_overview_count(self, count: int):
@@ -4975,8 +5247,8 @@ class ModelDeepenerApp(ctk.CTk):
         for object_index in range(start_index, end_index):
             obj = objects[object_index]
             slot_by_name = {
-                slot.name: slot.value
-                for slot in obj.slot_list
+                slot.name: slot.get_value_as_text()
+                for slot in obj.get_regular_slots()
             }
             row_values = [
                 slot_by_name.get(attr.name, "-")
@@ -5403,10 +5675,10 @@ class ModelDeepenerApp(ctk.CTk):
             text="Select which class details should be shown."
         )
         options = [
-            ("Attributes", bool(obj.attr_list), lambda: self._render_class_attribute_table(obj)),
-            ("Associations", bool(self._associations_for_class(self.current_model, obj)), lambda: self._render_class_association_table(obj)),
-            ("Operations", bool(obj.operations_list), lambda: self._render_class_operation_table(obj)),
-            ("Generalization", bool(self._generalization_rows(obj)), lambda: self._render_class_generalization_table(obj)),
+            ("Attributes", self._has_attribute_rows(obj), partial(self._render_class_attribute_table, obj)),
+            ("Associations", self._has_association_rows(obj), partial(self._render_class_association_table, obj)),
+            ("Operations", bool(obj.operations_list), partial(self._render_class_operation_table, obj)),
+            ("Generalization", bool(self._generalization_rows(obj)), partial(self._render_class_generalization_table, obj)),
         ]
         self._render_detail_option_buttons(options)
         for _label, enabled, callback in options:
@@ -5424,9 +5696,9 @@ class ModelDeepenerApp(ctk.CTk):
             text="Select whether slots or links should be shown."
         )
         options = [
-            ("Slots", bool(obj.slot_list), lambda: self._render_object_value_table(obj)),
-            ("Operations", bool(self._operations_for_object(obj)), lambda: self._render_object_operation_table(obj)),
-            ("Links", bool(self._links_for_object(self.current_model, obj)), lambda: self._render_object_link_table(obj)),
+            ("Slots", bool(obj.get_regular_slots()), partial(self._render_object_value_table, obj)),
+            ("Operations", bool(self._operations_for_object(obj)), partial(self._render_object_operation_table, obj)),
+            ("Links", bool(self._links_for_object(self.current_model, obj)), partial(self._render_object_link_table, obj)),
         ]
         self._render_detail_option_buttons(options)
         for _label, enabled, callback in options:
@@ -5505,6 +5777,48 @@ class ModelDeepenerApp(ctk.CTk):
             if link.source_object is obj or link.target_object is obj
         ]
 
+    def _association_table_row(self, association: BaseMlmAssociation,
+                               inherited_from: Optional[BaseMlmObject] = None) -> tuple:
+        """Returns one row of the association table, with the name of the parent for an inherited association.
+
+        The name that leads to the target is stored as the source access name, and the other way round.
+        """
+        name = association.name
+        if inherited_from is not None:
+            name = f"{name} (inherited from {inherited_from.name})"
+        return (
+            name,
+            self._class_with_access_name(association.source_object, association.get_target_access_name()),
+            self._class_with_access_name(association.target_object, association.get_source_access_name()),
+            self._association_multiplicity_text(association),
+        )
+
+    def _class_with_access_name(self, class_object: BaseMlmObject, access_name: str) -> str:
+        """Returns the class name, followed by the access name in brackets if the two differ."""
+        class_name = self._name(class_object)
+        if access_name.lower() == class_name.lower():
+            return class_name
+        return f"{class_name} ({access_name})"
+
+    def _inherited_associations(self, obj: BaseMlmObject) -> list:
+        """Returns (parent, association) for every association of the parents that obj does not have itself."""
+        known_associations = list(self._associations_for_class(self.current_model, obj))
+        inherited = []
+        for parent in self._all_parent_classes(obj):
+            for association in self._associations_for_class(self.current_model, parent):
+                if association not in known_associations:
+                    known_associations.append(association)
+                    inherited.append((parent, association))
+        return inherited
+
+    @staticmethod
+    def _link_access_names(link: BaseMlmLink) -> list:
+        """Returns the names of the association ends of a link, which are the names of its slot links."""
+        association = link.get_association()
+        if association is None:
+            return []
+        return [association.get_source_access_name(), association.get_target_access_name()]
+
     @staticmethod
     def _association_multiplicity_text(association) -> str:
         source = association.source_multiplicity or "-"
@@ -5552,15 +5866,28 @@ class ModelDeepenerApp(ctk.CTk):
             pending.extend(parent.parent_classes)
         return parents
 
+    def _has_attribute_rows(self, obj: BaseMlmObject) -> bool:
+        """Returns whether the class has attributes of its own or inherits attributes from a parent."""
+        for class_object in [obj] + self._all_parent_classes(obj):
+            if class_object.get_regular_attributes():
+                return True
+        return False
+
+    def _has_association_rows(self, obj: BaseMlmObject) -> bool:
+        """Returns whether the class has associations of its own or inherits associations from a parent."""
+        if self._associations_for_class(self.current_model, obj):
+            return True
+        return bool(self._inherited_associations(obj))
+
     def _render_class_attribute_table(self, obj: BaseMlmObject):
         rows = [
             (attr.name, attr.attr_type_str_short, attr.inst_level)
-            for attr in obj.attr_list
+            for attr in obj.get_regular_attributes()
         ]
         inherited_rows = [
             (attr.name, attr.attr_type_str_short, f"Level {attr.inst_level}, inherited from {parent.name}")
             for parent in self._all_parent_classes(obj)
-            for attr in parent.attr_list
+            for attr in parent.get_regular_attributes()
         ]
         self._render_detail_table(
             ("Attribute", "Type", "Level"),
@@ -5568,19 +5895,21 @@ class ModelDeepenerApp(ctk.CTk):
             muted_row_indexes=set(range(len(rows), len(rows) + len(inherited_rows))),
         )
 
-    def _render_class_association_table(self, obj: BaseMlmObject):
+    def _render_class_association_table(self, obj: BaseMlmObject) -> None:
+        """Show the associations of a class. The inherited ones follow in a muted color."""
+        rows = [
+            self._association_table_row(association)
+            for association in self._associations_for_class(self.current_model, obj)
+        ]
+        inherited_rows = [
+            self._association_table_row(association, inherited_from=parent)
+            for parent, association in self._inherited_associations(obj)
+        ]
         self._render_detail_table(
-            ("Associationname", "Source", "Target", "Multiplicity"),
-            [
-                (
-                    association.name,
-                    self._name(association.source_object),
-                    self._name(association.target_object),
-                    self._association_multiplicity_text(association),
-                )
-                for association in self._associations_for_class(self.current_model, obj)
-            ],
-            highlight_column=3,
+            self.ASSOCIATION_TABLE_HEADERS,
+            rows + inherited_rows,
+            highlight_column=self.ASSOCIATION_TABLE_HEADERS.index("Multiplicity"),
+            muted_row_indexes=set(range(len(rows), len(rows) + len(inherited_rows))),
         )
 
     def _render_class_operation_table(self, obj: BaseMlmObject):
@@ -5602,8 +5931,8 @@ class ModelDeepenerApp(ctk.CTk):
         self._render_detail_table(
             ("Attribute", "Type", "Slot"),
             [
-                (slot.name, self._slot_type(slot), slot.value)
-                for slot in obj.slot_list
+                (slot.name, self._slot_type(slot), slot.get_value_as_text())
+                for slot in obj.get_regular_slots()
             ],
         )
 
@@ -5624,8 +5953,8 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _render_object_operation_table(self, obj: BaseMlmObject):
         slot_by_name = {
-            slot.name: slot.value
-            for slot in obj.slot_list
+            slot.name: slot.get_value_as_text()
+            for slot in obj.get_regular_slots()
         }
         self._render_detail_table(
             ("Operation", "Type", "Slot"),
@@ -6180,7 +6509,9 @@ class ModelDeepenerApp(ctk.CTk):
             return
         if loaded in self.loaded_models:
             self._database.delete(loaded.get_oid())
-            self._database.commit()
+            if not self._commit_database():
+                self._database.store(loaded)
+                return
             self.loaded_models.remove(loaded)
         if self.current_model is loaded.model:
             self.current_model = self.loaded_models[-1].model if self.loaded_models else None
@@ -6203,7 +6534,8 @@ class ModelDeepenerApp(ctk.CTk):
 
     @staticmethod
     def _count_attributes(model: BaseMlmModel) -> int:
-        return sum(len(obj.attr_list) for obj in model.mlm_objects)
+        """Counts the attributes of all objects, without the ends of associations."""
+        return sum(len(obj.get_regular_attributes()) for obj in model.mlm_objects)
 
     @staticmethod
     def _count_higher_level_classes(model: BaseMlmModel) -> int:
@@ -6214,7 +6546,8 @@ class ModelDeepenerApp(ctk.CTk):
 
     @staticmethod
     def _count_slots(model: BaseMlmModel) -> int:
-        return sum(len(obj.slot_list) for obj in model.mlm_objects)
+        """Counts the slots of all objects, without the ones that stand for links."""
+        return sum(len(obj.get_regular_slots()) for obj in model.mlm_objects)
 
     @staticmethod
     def _count_operations(model: BaseMlmModel) -> int:
@@ -6234,7 +6567,7 @@ class ModelDeepenerApp(ctk.CTk):
             matches = [
                 attr
                 for obj in model.mlm_objects
-                for attr in obj.attr_list
+                for attr in obj.get_regular_attributes()
                 if attr.name == slot.name
             ]
             enum_matches = [
@@ -6504,16 +6837,15 @@ class Overlay:
         The overlay is hidden when the dialog is destroyed, no matter how it is closed.
         """
         self.show()
-        dialog.update_idletasks()
-        # Before the dialog is shown, winfo_width() is the size set with geometry() (200 by
-        # default) and winfo_reqwidth() is the size its content needs. The larger one is used.
-        width = max(dialog.winfo_width(), dialog.winfo_reqwidth())
-        height = max(dialog.winfo_height(), dialog.winfo_reqheight())
-        x = self._master.winfo_rootx() + (self._master.winfo_width() - width) // 2
-        y = self._master.winfo_rooty() + (self._master.winfo_height() - height) // 2
-        dialog.geometry(f"+{x}+{y}")
+        center_popup(dialog, self._master)
+        dialog.after(RECENTER_DELAY_MILLISECONDS, center_popup, dialog, self._master)
         dialog.lift()
-        dialog.bind("<Destroy>", lambda event: self._hide_after_close(event, dialog), add="+")
+
+        def hide_after_close(event: tk.Event) -> None:
+            """Hand the event of a closed window to the overlay, together with the dialog it covers."""
+            self._hide_after_close(event, dialog)
+
+        dialog.bind("<Destroy>", hide_after_close, add="+")
 
     def _hide_after_close(self, event: tk.Event, dialog: ctk.CTkToplevel) -> None:
         """Hide the overlay when the dialog itself is destroyed, not one of its widgets."""
@@ -6553,12 +6885,38 @@ class DatabaseDialog(ctk.CTkToplevel):
         self.attributes("-topmost", True)
         self.grid_columnconfigure(0, weight=1)
         self._build_layout()
+        self._scale_database_font()
         self._fill_list()
         self._center()
+        self.after(200, self._center)
         self.bind("<Escape>", lambda _event: self._cancel())
         self.protocol("WM_DELETE_WINDOW", self._cancel)
         # The main window is hidden at startup, so the dialog takes the keyboard focus by hand.
         self.after(150, self._take_focus)
+
+    def _scale_database_font(self) -> None:
+        """Match database names to the name entry, without changing headings.
+
+        CTk uses logical pixels; Tk's listbox needs a negative, scaled pixel
+        size to display the same font at the same size.
+        """
+        scaling = ctk.ScalingTracker.get_widget_scaling(self)
+        entry_font = self._name_entry.cget("font")
+        self._name_list.configure(font=(
+            entry_font.cget("family"),
+            -max(1, round(abs(entry_font.cget("size")) * scaling)),
+        ))
+
+    def _set_scaling(self, new_widget_scaling: float, new_window_scaling: float) -> None:
+        """Adjust the font of the database list when CustomTkinter changes the scaling of the window."""
+        super()._set_scaling(new_widget_scaling, new_window_scaling)
+        if hasattr(self, "_name_list"):
+            self._scale_database_font()
+
+    @property
+    def colors(self) -> Dict[str, str]:
+        """Return the colors of the application, which popups over this dialog use too."""
+        return self._colors
 
     def get_result(self) -> tuple[Database, str] | None:
         """Return the opened database and its name, or None if the user cancelled."""
@@ -6611,6 +6969,11 @@ class DatabaseDialog(ctk.CTkToplevel):
             command=self._open_selected,
         )
         self._open_button.grid(row=2, column=0, sticky="e", padx=18, pady=(8, 0))
+        self._delete_button = ctk.CTkButton(
+            self, text="Delete", width=100, height=36,
+            fg_color=self._colors["danger"], command=self._delete_selected,
+        )
+        self._delete_button.grid(row=2, column=0, sticky="w", padx=18, pady=(8, 0))
 
         self._make_heading("Create a new database", 3)
 
@@ -6681,6 +7044,7 @@ class DatabaseDialog(ctk.CTkToplevel):
         self._name_list.delete(0, tk.END)
         for name in self._folder.get_names():
             self._name_list.insert(tk.END, name)
+        self._delete_button.configure(state="disabled" if self._is_empty() else "normal")
         if self._is_empty():
             self._name_list.grid_remove()
             self._empty_hint.grid()
@@ -6708,11 +7072,51 @@ class DatabaseDialog(ctk.CTkToplevel):
         name = self._name_list.get(selection[0])
         try:
             database = self._folder.open_database(name)
+        except IncompatibleDatabaseError:
+            self._handle_incompatible_database(name)
+            return
         except (KeyError, ValueError) as error:
             self._show_dialog_error(error.args[0])
             self._fill_list()
             return
         self._close_with(database, name)
+
+    def _handle_incompatible_database(self, name: str) -> None:
+        """Update only after the user chooses conversion; keep a recovery backup."""
+        choice = ask_database_conversion(self, name)
+        if choice == "delete":
+            self._delete_selected()
+        elif choice == "convert":
+            try:
+                database, converted_name, report = self._folder.convert_database(name)
+            except Exception as error:
+                self._show_dialog_error(f"Conversion failed. The original database is unchanged. {error}")
+                return
+            popup_message(self, "Database converted", f"Updated '{converted_name}'.\n\n{report}")
+            self._close_with(database, converted_name)
+
+    def _delete_selected(self) -> None:
+        """Confirm deletion. Deleting the active database forces a new selection.
+
+        Cancel and X close this dialog. The caller then offers a new selection
+        or application shutdown while keeping the main window inaccessible.
+        """
+        selection = self._name_list.curselection()
+        if not selection:
+            return
+        name = self._name_list.get(selection[0])
+        if not popup_message(self, "Delete database",
+                f"Do you really want to delete database '{name}' and all models it contains?\n"
+                "This cannot be undone.", confirm=True):
+            return
+        try:
+            self._folder.delete_database(name)
+        except (OSError, KeyError) as error:
+            self._show_dialog_error(str(error))
+            return
+        if self.master.forget_deleted_database(name):
+            self._show_dialog_error("The active database was deleted. Open or create a database to continue.")
+        self._fill_list()
 
     def _create_new(self) -> None:
         """Create a database with the entered name and close the dialog, or show the error."""
@@ -6743,16 +7147,12 @@ class DatabaseDialog(ctk.CTkToplevel):
         self.destroy()
 
     def _center(self) -> None:
-        """Center the dialog on the screen.
+        """Center on the screen at startup, otherwise on the visible main window.
 
-        The screen is used, because the main window is hidden at startup. The position is
-        computed from the size of the dialog content, so the frame and the title bar move the
-        dialog a few pixels away from the exact center.
+        The delayed pass uses the same owner, so it cannot move a switching
+        dialog away from the main window after the overlay has positioned it.
         """
-        self.update_idletasks()
-        x = (self.winfo_screenwidth() - self.winfo_reqwidth()) // 2
-        y = (self.winfo_screenheight() - self.winfo_reqheight()) // 2
-        self.geometry(f"+{x}+{y}")
+        center_popup(self, self.master)
 
     def _take_focus(self) -> None:
         """Give the keyboard focus to the dialog and to the list.
@@ -6768,6 +7168,161 @@ class DatabaseDialog(ctk.CTkToplevel):
             self._name_entry.focus_set()
         else:
             self._name_list.focus_set()
+
+
+class ImportProblemDialog(ctk.CTkToplevel):
+    """Shows the problems of an import in one section per kind and lets the user continue or cancel the import.
+
+    The height of a list follows its content up to a maximum, then the list scrolls.
+    "Continue import" is the default button. Closing the window cancels the import. The dialog
+    only shows the texts of the ImportReport and uses Tk widgets, so it works on every system.
+    """
+
+    DATA_TYPE_TITLE = "Some values do not match their data type"
+    STRUCTURE_TITLE = "The file contains elements that could not be resolved"
+    STRUCTURE_EXPLANATION = "These problems already exist in the file and were not caused by the import."
+    ADAPTED_TITLE = "Some elements were adapted during the import"
+    ADAPTED_EXPLANATION = "These elements have no direct counterpart in the model, so they were changed or left out."
+    SEVERAL_TITLE = "Import problems"
+    LIST_WIDTH = 680
+    LIST_TEXT_WIDTH = 640
+    LIST_PADDING = 20
+    MAX_LIST_HEIGHT = 220
+
+    def __init__(self, master: ModelDeepenerApp, report: ImportReport) -> None:
+        """Build the dialog for the given report."""
+        super().__init__(master)
+        self._report = report
+        self._colors = master.colors
+        self._continue_import = False
+        self.title(self._window_title())
+        self.resizable(False, False)
+        self.transient(master)
+        self.configure(fg_color=self._colors["app_bg"])
+        self._status_label = self._build_layout()
+        self.bind("<Return>", self._continue_with_key)
+        self.bind("<Escape>", self._cancel_with_key)
+        self.protocol("WM_DELETE_WINDOW", self._cancel)
+
+    def should_continue(self) -> bool:
+        """Return True if the user continued the import."""
+        return self._continue_import
+
+    def _build_layout(self) -> ctk.CTkLabel:
+        """Create the widgets and return the label that reports on the saved list."""
+        if self._report.has_conversion_failures():
+            self._add_section(self.DATA_TYPE_TITLE, self._data_type_explanation(),
+                              self._report.get_conversion_summary_lines())
+        if self._report.has_structure_problems():
+            self._add_section(self.STRUCTURE_TITLE, self.STRUCTURE_EXPLANATION,
+                              self._report.get_structure_summary_lines())
+        if self._report.has_adaptations():
+            self._add_section(self.ADAPTED_TITLE, self.ADAPTED_EXPLANATION,
+                              [adaptation.get_description() for adaptation in self._report.get_adaptations()])
+        status_label = ctk.CTkLabel(self, text="", anchor="w", wraplength=self.LIST_WIDTH, justify="left",
+                                    text_color=self._colors["muted"],
+                                    font=ctk.CTkFont(family="Segoe UI", size=12))
+        status_label.pack(fill="x", padx=18, pady=(6, 0))
+
+        row = ctk.CTkFrame(self, fg_color="transparent")
+        row.pack(fill="x", padx=18, pady=(8, 18))
+        continue_button = ctk.CTkButton(row, text="Continue import", height=36, fg_color=self._colors["primary"],
+                                        hover_color=self._colors["primary_hover"], text_color="#FFFFFF",
+                                        command=self._continue)
+        continue_button.pack(side="right")
+        self._make_plain_button(row, "Cancel import", self._cancel).pack(side="right", padx=(0, 8))
+        self._make_plain_button(row, "Export problem list (CSV)", self._save_list).pack(side="left")
+        continue_button.focus_set()
+        return status_label
+
+    def _add_section(self, title: str, explanation: str, lines: list[str]) -> None:
+        """Add a heading, a sentence and a list that fits its content."""
+        ctk.CTkLabel(self, text=title, anchor="w", text_color=self._colors["text"],
+                     font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold")).pack(
+                         fill="x", padx=18, pady=(18, 4))
+        ctk.CTkLabel(self, text=explanation, anchor="w", wraplength=self.LIST_WIDTH, justify="left",
+                     text_color=self._colors["muted"], font=ctk.CTkFont(family="Segoe UI", size=13)).pack(
+                         fill="x", padx=18, pady=(0, 10))
+        list_font = ctk.CTkFont(family="Segoe UI", size=13)
+        list_text = "\n".join(lines)
+        text_box = ctk.CTkTextbox(self, width=self.LIST_WIDTH, height=self._list_height(list_text, list_font),
+                                  wrap="word", text_color=self._colors["text"], font=list_font)
+        text_box.pack(fill="both", padx=18)
+        text_box.insert("1.0", list_text)
+        text_box.configure(state="disabled")
+
+    def _window_title(self) -> str:
+        """Return the title that fits the kinds of problems in the report."""
+        titles = []
+        if self._report.has_conversion_failures():
+            titles.append(self.DATA_TYPE_TITLE)
+        if self._report.has_structure_problems():
+            titles.append(self.STRUCTURE_TITLE)
+        if self._report.has_adaptations():
+            titles.append(self.ADAPTED_TITLE)
+        return titles[0] if len(titles) == 1 else self.SEVERAL_TITLE
+
+    def _make_plain_button(self, parent: ctk.CTkFrame, text: str, command: Callable[[], None]) -> ctk.CTkButton:
+        """Create a white button in the style of the other dialogs."""
+        return ctk.CTkButton(parent, text=text, height=36, fg_color="#FFFFFF", hover_color="#EEF2F7",
+                             border_width=1, border_color=self._colors["border"],
+                             text_color=self._colors["text"], command=command)
+
+    def _data_type_explanation(self) -> str:
+        """Return the sentence that says what happened to the listed values."""
+        count = len(self._report.get_conversion_failures())
+        if count == 1:
+            return "1 value was kept as text because it does not fit the data type of its attribute."
+        return f"{count} values were kept as text because they do not fit the data types of their attributes."
+
+    def _list_height(self, text: str, font: ctk.CTkFont) -> int:
+        """Return the height that shows the text with its wrapped lines, up to the maximum height."""
+        line_count = 0
+        for line in text.split("\n"):
+            line_count += max(1, math.ceil(font.measure(line) / self.LIST_TEXT_WIDTH))
+        return min(self.MAX_LIST_HEIGHT, line_count * font.metrics("linespace") + self.LIST_PADDING)
+
+    def _save_list(self) -> None:
+        """Ask for a file and write all problems to it. The dialog stays open."""
+        file_path = filedialog.asksaveasfilename(
+            parent=self, title="Export problem list (CSV)", initialfile="import_problems.csv",
+            defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
+        )
+        if not file_path:
+            return
+        try:
+            self._report.write_problem_list(file_path)
+        except OSError as error:
+            self._status_label.configure(text=f"The list could not be saved: {error.strerror}")
+            return
+        self._status_label.configure(text=f"List saved: {file_path}")
+
+    def _continue(self) -> None:
+        """Close the dialog and continue the import."""
+        self._continue_import = True
+        self.destroy()
+
+    def _cancel(self) -> None:
+        """Close the dialog and cancel the import."""
+        self._continue_import = False
+        self.destroy()
+
+    def _continue_with_key(self, _event: tk.Event) -> None:
+        """Continue the import with the Return key."""
+        self._continue()
+
+    def _cancel_with_key(self, _event: tk.Event) -> None:
+        """Cancel the import with the Escape key."""
+        self._cancel()
+
+
+def ask_import_problems(master: ModelDeepenerApp, report: ImportReport, overlay: Overlay) -> bool:
+    """Show the problems of an import and return True if the user continues the import."""
+    dialog = ImportProblemDialog(master, report)
+    overlay.cover(dialog)
+    dialog.grab_set()
+    master.wait_window(dialog)
+    return dialog.should_continue()
 
 
 def ask_for_database(

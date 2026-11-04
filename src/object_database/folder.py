@@ -3,17 +3,24 @@
 The name of a database is the file name without the ending .pkl.
 """
 import os
+import tempfile
 
 from src.object_database.database import Database
 from src.object_database.storage import FileStorage
 
 FILE_ENDING = ".pkl"
+BACKUP_ENDING = ".bak"
+FIRST_BACKUP_NUMBER = 2
 ALLOWED_SPECIAL_CHARACTERS = " -_"
 WINDOWS_RESERVED_NAMES = {
     "CON", "PRN", "AUX", "NUL",
     "COM1", "COM2", "COM3", "COM4", "COM5", "COM6", "COM7", "COM8", "COM9",
     "LPT1", "LPT2", "LPT3", "LPT4", "LPT5", "LPT6", "LPT7", "LPT8", "LPT9",
 }
+
+
+class IncompatibleDatabaseError(ValueError):
+    """The database refers to classes unavailable in the current application."""
 
 
 class DatabaseFolder:
@@ -50,6 +57,13 @@ class DatabaseFolder:
             raise KeyError(f"There is no database with the name: {name}")
         try:
             return Database(FileStorage(self._get_path(name)))
+        except (ModuleNotFoundError, AttributeError) as error:
+            raise IncompatibleDatabaseError(
+                f"Database '{name}' is not compatible with this version of the application.\n\n"
+                "The file is unchanged. Open or create another database to continue.\n\n"
+                "To recover these models, export them using the original application version "
+                "and import them here."
+            ) from error
         except ValueError as error:
             # FileStorage.load() raises a ValueError for a different format version.
             raise ValueError(f"Database {name} cannot be read. {error.args[0]}") from error
@@ -69,6 +83,63 @@ class DatabaseFolder:
         database = Database(FileStorage(self._get_path(name)))
         database.commit()
         return database
+
+    def delete_database(self, name: str) -> None:
+        """Permanently remove one existing database, including all its models.
+
+        Only names listed in this folder are accepted; arbitrary paths are rejected.
+        The caller must ask for confirmation and stop using an open database first.
+        """
+        if name not in self.get_names():
+            raise KeyError(f"There is no database with the name: {name}")
+        os.remove(self._get_path(name))
+
+    def convert_database(self, name: str) -> tuple[Database, str, str]:
+        """Update the selected database atomically after verifying a staged conversion.
+
+        Keep a separate .bak recovery file, excluded from the database list.
+        Failures before replacement leave the original database intact.
+        """
+        from src.object_database.migration import convert_legacy_data
+
+        if name not in self.get_names():
+            raise KeyError(f"There is no database with the name: {name}")
+        source_path = self._get_path(name)
+        with open(source_path, "rb") as source:
+            original = source.read()
+        data, report = convert_legacy_data(source_path)
+        descriptor, staged_path = tempfile.mkstemp(dir=self._folder_path, suffix=".migration")
+        os.close(descriptor)
+        try:
+            FileStorage(staged_path).save(data)
+            database = Database(FileStorage(staged_path))
+            # Refuse to overwrite changes made while conversion was in progress.
+            with open(source_path, "rb") as source:
+                if source.read() != original:
+                    raise ValueError("The database changed during conversion. Please try again.")
+            backup_path = self._write_backup(source_path, original)
+            os.replace(staged_path, source_path)
+            # The verified in-memory database must commit to its original filename.
+            database._storage = FileStorage(source_path)
+        finally:
+            for temporary_path in (staged_path, staged_path + ".tmp"):
+                if os.path.exists(temporary_path):
+                    os.remove(temporary_path)
+        return database, name, report + f" Backup: {os.path.basename(backup_path)}."
+
+    @staticmethod
+    def _write_backup(source_path: str, content: bytes) -> str:
+        """Write the content to a new backup file and return its path. An existing backup is never replaced."""
+        backup_path = source_path + BACKUP_ENDING
+        suffix = FIRST_BACKUP_NUMBER
+        while True:
+            try:
+                with open(backup_path, "xb") as backup:
+                    backup.write(content)
+                return backup_path
+            except FileExistsError:
+                backup_path = source_path + f"{BACKUP_ENDING}.{suffix}"
+                suffix += 1
 
     def _check_name(self, name: str) -> None:
         """Check that a cleaned name can be used for a new database.

@@ -4,18 +4,23 @@ from src.basemlm.basemlm_property import BaseMlmProperty
 
 
 class BaseMlmAttribute(BaseMlmProperty):
+    """An attribute of an object. Its type is marked as missing if the model does not contain it.
+    The class attribute is the default for attributes stored without a mark."""
+    _type_missing: bool = False
+
     def __init__(self, attr_name: str, attr_type_str: str, inst_level: int, attr_type_spec: TypeSpec,
                  uses_enum: bool = False, uses_domain_specific_type: bool = False,
                  multiplicity=None):
         super().__init__(name=attr_name, print_name=attr_name)
         self.attr_type_str = attr_type_str
-        self.attr_type_str_short = attr_type_str.split("::")[2]
+        type_path = attr_type_str.split("::")
+        self.attr_type_str_short = type_path[2] if len(type_path) > 2 else attr_type_str
         self.inst_level = inst_level
         self.attr_type_spec = attr_type_spec
         self.uses_enum = False
         self.uses_domain_specific_type = False
         self.attr_category: str = "ATTR"  # used for printing to distinguish with ASSOC ENDs
-        self.owner = None  # Owner of attribute is instance of FmmlxObject, not specified here to avoid circular imports
+        self.owner = None  # Owner of attribute is instance of BaseMlmObject, not specified here to avoid circular imports
         self.slot_collectives: [] = []  # used for property precedence analysis, types may not be used (circ imports)
         self.proposed_inst_level: int = 0
         self.multiplicity = multiplicity
@@ -23,6 +28,14 @@ class BaseMlmAttribute(BaseMlmProperty):
     def set_enum_type(self, enum_type: BaseMlmEnumType):
         self.attr_type_str_short = enum_type.name
         self.uses_enum = True
+
+    def mark_type_missing(self) -> None:
+        """Remember that the model does not contain the type of this attribute."""
+        self._type_missing = True
+
+    def is_type_missing(self) -> bool:
+        """Return True if the model does not contain the type of this attribute."""
+        return self._type_missing
 
     def is_assoc_end(self) -> bool:
         return False if self.attr_category == "ATTR" else True

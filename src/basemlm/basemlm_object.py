@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ElementTree
 from typing import List
 
-from basemlm.basemlm_association import BaseMlmAssociation
 from basemlm.basemlm_property import BaseMlmProperty
 from basemlm.basemlm_type_spec import TypeSpec
 from src.basemlm.model_member import ModelMember
@@ -245,7 +244,7 @@ class BaseMlmObject(ModelMember, TypeSpec):
         slot_found: bool = False
         for slot in self.slot_list:
             if slot.name == new_slot.name:
-                slot.value += "///" + new_slot.value
+                slot.add_value_of(new_slot)
                 slot_found = True
         if not slot_found:
             self.slot_list.append(new_slot)
@@ -341,7 +340,8 @@ class BaseMlmObject(ModelMember, TypeSpec):
         MetaClass elements become classes; other elements become instances.
         Association ends and slot links are exported by their relationship
         commands instead of being duplicated as attributes or ordinary slots.
-        Empty slot expressions are omitted because XModeler cannot parse them.
+        A slot without a value and without an original XML expression is omitted
+        because XModeler cannot parse an empty expression.
         """
         projectName = root.attrib['path']
         diagrams = root.find('Diagrams')
@@ -374,7 +374,7 @@ class BaseMlmObject(ModelMember, TypeSpec):
         for slot in self.slot_list:
             if slot.slot_category == "SLOT-LINK":
                 continue
-            if slot.value == "":
+            if slot.value == "" and not slot.xml_value:
                 continue
             slot_element = ElementTree.SubElement(model, 'changeSlotValue', package=projectName,
                                                   slotName=slot.name, valueToBeParsed=slot.value_for_xml())

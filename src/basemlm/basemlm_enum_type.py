@@ -16,6 +16,10 @@ class BaseMlmEnumType(ModelMember, TypeSpec):
     def get_type_name(self) -> str:
         return self.name
 
+    def has_enum_value(self, enum_value: str) -> bool:
+        """Return True if the enum has this literal."""
+        return enum_value in self.enum_values
+
     def slot_conforms_to_type(self, slot) -> bool:
         # must account for multiple values due to associations
         slot_values: [str] = slot.get_values_as_list()

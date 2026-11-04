@@ -44,7 +44,7 @@ class SlotCollective(BaseMlmProperty):
         return set(self.scope_list)
 
     def get_owner_object(self):
-        """returns an instance of FmmlxObject"""
+        """returns an instance of BaseMlmObject"""
         return self.attribute.get_owner()
 
     def __le__(self, other):
