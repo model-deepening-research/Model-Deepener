@@ -72,19 +72,19 @@ class BaseMlmModel:
         return BaseMlmValidator(self).validate()
 
     def add_mlm_object(self, mlm_object: BaseMlmObject) -> None:
-        """Add a class or an instance to the model."""
+        """Retain an imported class or instance so later references can resolve to the same object."""
         self.mlm_objects.append(mlm_object)
 
     def add_enum(self, enum: BaseMlmEnumType) -> None:
-        """Add an enumeration to the model."""
+        """Retain an enumeration so attribute types and slot literals can be resolved."""
         self.enums.append(enum)
 
     def add_association(self, association: BaseMlmAssociation) -> None:
-        """Add an association to the model."""
+        """Retain a resolved association so links and association ends can refer to it."""
         self.associations.append(association)
 
     def add_link(self, link: BaseMlmLink) -> None:
-        """Add a link to the model."""
+        """Retain an instance relationship so the model can derive its slot links."""
         self.links.append(link)
 
     def set_path_name(self, path_name: str) -> None:
@@ -92,7 +92,7 @@ class BaseMlmModel:
         self.path_name = path_name
 
     def set_model_name(self, model_name: str) -> None:
-        """Set the name of the model."""
+        """Keep the display name supplied by the source independently of its qualified model path."""
         self.model_name = model_name
 
     def set_xml_metadata(self, root_attributes: dict, imports_xml: Optional[ElementTree.Element],
@@ -957,10 +957,11 @@ class BaseMlmModel:
         loc = input()
         return cls(file_path=loc)
 
-    def import_xml(self, xml_file_path: str):
+    def import_xml(self, xml_file_path: str) -> None:
         """Loads XML into an empty model and reports completion when requested."""
-        assert self.path_name == "", ("Multi-level model is already imported! "
-                                      "Overriding of existing model is forbidden.")
+        if self.path_name != "":
+            raise ValueError("Multi-level model is already imported! "
+                             "Overriding of existing model is forbidden.")
         self._import_file(xml_file_path)
         if self.print_progress:
             print("Extraction completed successfully!")

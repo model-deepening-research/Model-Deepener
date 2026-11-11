@@ -57,13 +57,13 @@ class PlantUmlImporterTests(unittest.TestCase):
         return [adaptation.get_description() for adaptation in report.get_adaptations()]
 
     def test_endings_are_registered(self) -> None:
-        """Check that endings are registered."""
+        """Resolve all registered PlantUML endings, including an uppercase extension, to PlantUmlImporter."""
         self.assertEqual(supported_extensions(), [".csv", ".plantuml", ".puml", ".txt", ".xml"])
         self.assertIsInstance(importer_for("a.puml"), PlantUmlImporter)
         self.assertIsInstance(importer_for("a.PLANTUML"), PlantUmlImporter)
 
     def test_only_text_files_with_plantuml_are_accepted(self) -> None:
-        """Check that only text files with plantuml are accepted."""
+        """Accept a TXT file beginning with startuml and reject ordinary, empty and metadata text files."""
         accepted = self._write("a.txt", "\n\n  @startUML\nclass A\n@enduml\n")
         self.assertIsInstance(importer_for(accepted), PlantUmlImporter)
         for name, text in (("notes.txt", "Some notes about @startuml\n"), ("empty.txt", ""), ("metadata.txt", "x: 1\n")):
@@ -72,7 +72,7 @@ class PlantUmlImporterTests(unittest.TestCase):
                 importer_for(path)
 
     def test_empty_text_file_reads_the_neighbor_image(self) -> None:
-        """Check that empty text file reads the neighbor image."""
+        """Reject an empty source without an image and recover its Order class after adding PNG metadata."""
         path = self._write("Shop/plantuml.txt", "")
         with self.assertRaises(ValueError):
             importer_for(path)
@@ -83,12 +83,12 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertEqual([obj.get_name() for obj in model.get_objects()], ["Order"])
 
     def test_model_name_comes_from_the_folder_or_the_file(self) -> None:
-        """Check that model name comes from the folder or the file."""
+        """Use the folder for plantuml.txt and normalize punctuation in ordinary diagram filenames."""
         self.assertEqual(PlantUmlReader.get_model_name(os.path.join("x", "AirTravel", "plantuml.txt")), "AirTravel")
         self.assertEqual(PlantUmlReader.get_model_name(os.path.join("x", "my-model.puml")), "my_model")
 
     def test_association_class_replaces_the_association(self) -> None:
-        """Check that association class replaces the association."""
+        """Split FlightExecution-Passenger through Ticket while retaining a clean import report."""
         path = self._write("AirTravel/plantuml.txt", AIR_TRAVEL)
         model, report = importer_for(path).import_file(path)
         pairs = [(a.get_source_object().get_name(), a.get_target_object().get_name()) for a in model.get_associations()]
@@ -96,7 +96,7 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertFalse(report.has_problems())
 
     def test_rules_for_classes_and_generalization(self) -> None:
-        """Check that rules for classes and generalization."""
+        """Preserve an abstract class, typed array attributes and both spellings of child-to-parent inheritance."""
         model, _report = self._import("abstract class A {\n Int n\n String[] tags\n}\nA <|-- B\nC --|> A")
         objects = {obj.get_name(): obj for obj in model.get_objects()}
         self.assertTrue(objects["A"].is_abstract())
@@ -106,14 +106,14 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertEqual(attributes, {"n": "Integer", "tags": "String"})
 
     def test_relation_to_an_enum_becomes_an_attribute(self) -> None:
-        """Check that relation to an enum becomes an attribute."""
+        """Convert Card-to-Suit into a Suit attribute and retain its Hearts and Spades literals."""
         model, _report = self._import("enum Suit <<enum>> {\n Hearts\n Spades\n}\nclass Card\nCard --> Suit")
         card = [obj for obj in model.get_objects() if obj.get_name() == "Card"][0]
         self.assertEqual([(a.get_name(), a.get_attr_type()) for a in card.get_regular_attributes()], [("suit", "Suit")])
         self.assertEqual(model.get_enum_types()[0].enum_values, ["Hearts", "Spades"])
 
     def test_adaptations_are_reported_and_not_structure_problems(self) -> None:
-        """Check that adaptations are reported and not structure problems."""
+        """Report missing or unknown types, malformed bounds and lost constraints only as adaptations."""
         model, report = self._import('class A {\n name\n Foo x\n}\nA "0..1*" -- "1" B\nA <|-- C : {total; disjoint}')
         self.assertTrue(report.has_adaptations())
         self.assertTrue(report.has_problems())
@@ -125,7 +125,7 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertEqual(len(model.get_objects()), 3)
 
     def test_unusual_lines_do_not_stop_the_import(self) -> None:
-        """Check that unusual lines do not stop the import."""
+        """Skip malformed declarations with hints while retaining the recognizable classes."""
         lines = ["class", "class A {", "{static}", "= 5", " : ", "a(b", "(", ")", "}", "}", "<>", "<> d", "d -- ", "A -- : x",
                  "note", '"', "A <|-- A", "A -- A : <", "enum E", "A --> E : >", "A *-- ", "(A, B) .. C", "C .. (A, Z)",
                  "class B {", "x(y z w, : )", "unterminated"]
@@ -134,25 +134,25 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertTrue(report.has_adaptations())
 
     def test_empty_diagram_gives_an_empty_model(self) -> None:
-        """Check that empty diagram gives an empty model."""
+        """Read an empty PUML file without inventing any classes."""
         path = self._write("empty.puml", "")
         model, _report = importer_for(path).import_file(path)
         self.assertEqual(model.get_objects(), [])
 
     def test_constructor_uses_the_importer(self) -> None:
-        """Check that constructor uses the importer."""
+        """Construct the three AirTravel classes through the compatible model constructor."""
         path = self._write("AirTravel/plantuml.txt", AIR_TRAVEL)
         self.assertEqual(len(BaseMlmModel(path).get_objects()), 3)
 
     def test_converted_xml_keeps_what_the_export_loses(self) -> None:
-        """Check that converted xml keeps what the export loses."""
+        """Retain abstract=true and unbounded array multiplicity in the direct PlantUML XML result."""
         path = self._write("m.puml", "@startuml\nabstract class A {\n Int[] n\n}\n@enduml\n")
         root = ElementTree.fromstring(PlantUmlImporter().convert_to_xml(path))
         self.assertEqual(root.find("Model/addMetaClass").get("abstract"), "true")
         self.assertEqual(root.find("Model/addAttribute").get("multiplicity"), "Seq{0,-1,false,false}")
 
     def test_copy_of_the_source_holds_the_text(self) -> None:
-        """Check that copy of the source holds the text."""
+        """Copy recovered PNG source into Shop.txt and reimport it with the same model name."""
         path = self._write("Shop/plantuml.txt", "")
         with open(os.path.join(os.path.dirname(path), "plantuml.png"), "wb") as file:
             file.write(png_with_text("@startuml\nclass Order\n@enduml"))
@@ -164,7 +164,7 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertEqual(importer_for(target).import_file(target)[0].get_model_name(), "Shop")
 
     def test_problem_list_contains_the_adaptations(self) -> None:
-        """Check that problem list contains the adaptations."""
+        """Write a missing attribute type adaptation and its explanation to the exported problem CSV."""
         _model, report = self._import("class A {\n name\n}")
         target = os.path.join(self._directory.name, "list.csv")
         report.write_problem_list(target)

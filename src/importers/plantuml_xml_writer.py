@@ -82,23 +82,6 @@ class PlantUmlXmlWriter:
         ElementTree.indent(root, space=XML_INDENT)
         return XML_DECLARATION + ElementTree.tostring(root, encoding="unicode") + "\n"
 
-    def _qualified(self, name: str) -> str:
-        """Return the full path of a class or enum, for example Root::Cruise::Ship."""
-        return f"{self._package}::{name}"
-
-    def _is_class_or_enum(self, type_name: str) -> bool:
-        """Return True if the name belongs to a class or an enum of the diagram."""
-        return self._diagram.has_enum(type_name) or self._diagram.has_class(type_name)
-
-    def _resolve_type(self, type_name: str, owner_name: str) -> str:
-        """Map a PlantUML type name to an XML type path. An unknown type becomes a String."""
-        if self._is_class_or_enum(type_name):
-            return self._qualified(type_name)
-        if type_name.lower() in PRIMITIVE_TYPES:
-            return PRIMITIVE_TYPES[type_name.lower()]
-        self._diagram.add_adaptation(UNKNOWN_TYPE, owner_name, f"Unknown type '{type_name}' replaced by String.")
-        return STRING_TYPE
-
     def _write_classes(self, parent: ElementTree.Element) -> None:
         """Write each class, written abstract class A in PlantUML, as an addMetaClass element."""
         for uml_class in self._diagram.get_classes():
@@ -115,6 +98,10 @@ class PlantUmlXmlWriter:
                     "class": self._qualified(uml_class.get_name()), "new": self._qualified(uml_class.get_parent()),
                     "old": "", "package": self._package})
 
+    def _qualified(self, name: str) -> str:
+        """Return the full path of a class or enum, for example Root::Cruise::Ship."""
+        return f"{self._package}::{name}"
+
     def _write_enums(self, parent: ElementTree.Element) -> None:
         """Write each enum, written enum Color { RED } in PlantUML, with addEnumeration and addEnumerationValue."""
         for uml_enum in self._diagram.get_enums():
@@ -130,12 +117,25 @@ class PlantUmlXmlWriter:
                 self._write_attribute(parent, uml_class, attribute)
 
     def _write_attribute(self, parent: ElementTree.Element, uml_class: UmlClass, attribute: UmlAttribute) -> None:
-        """Write one addAttribute element."""
+        """Preserve one property with its resolved type path and declared value bounds in XML."""
         ElementTree.SubElement(parent, "addAttribute", {
             "class": self._qualified(uml_class.get_name()), "level": "0",
             "multiplicity": multiplicity_to_xml(attribute.get_multiplicity()),
             "name": attribute.get_name(), "package": self._package,
             "type": self._resolve_type(attribute.get_type_name(), uml_class.get_name())})
+
+    def _resolve_type(self, type_name: str, owner_name: str) -> str:
+        """Map a PlantUML type name to an XML type path. An unknown type becomes a String."""
+        if self._is_class_or_enum(type_name):
+            return self._qualified(type_name)
+        if type_name.lower() in PRIMITIVE_TYPES:
+            return PRIMITIVE_TYPES[type_name.lower()]
+        self._diagram.add_adaptation(UNKNOWN_TYPE, owner_name, f"Unknown type '{type_name}' replaced by String.")
+        return STRING_TYPE
+
+    def _is_class_or_enum(self, type_name: str) -> bool:
+        """Return True if the name belongs to a class or an enum of the diagram."""
+        return self._diagram.has_enum(type_name) or self._diagram.has_class(type_name)
 
     def _write_operations(self, parent: ElementTree.Element) -> None:
         """Write each operation, written int add(int a) in PlantUML, as an addOperation element."""

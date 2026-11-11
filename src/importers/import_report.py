@@ -16,27 +16,27 @@ class ConversionFailure:
         self._expected_type = expected_type
 
     def get_object_name(self) -> str:
-        """Return the name of the object that owns the slot."""
+        """Return the name of the object that owns the slot, so the dialog and CSV list can identify the failed value without accessing stored fields."""
         return self._object_name
 
     def get_slot_name(self) -> str:
-        """Return the name of the slot."""
+        """Return the name of the slot, so the dialog and CSV list can identify the failed value without accessing stored fields."""
         return self._slot_name
 
     def get_class_attribute(self) -> str:
-        """Return the attribute in the form Class.Attribute."""
+        """Return the attribute in the form Class.Attribute, so the dialog and CSV list can identify the failed value without accessing stored fields."""
         return self._class_attribute
 
     def get_raw_value(self) -> str:
-        """Return the value exactly as it is written in the file."""
+        """Return the value exactly as it is written in the file, so the dialog and CSV list can identify the failed value without accessing stored fields."""
         return self._raw_value
 
     def get_readable_value(self) -> str:
-        """Return the value as text that a person can read."""
+        """Return the value as text that a person can read, so the dialog and CSV list can identify the failed value without accessing stored fields."""
         return self._readable_value
 
     def get_expected_type(self) -> str:
-        """Return the type that the attribute asks for."""
+        """Return the type that the attribute asks for, so the dialog and CSV list can identify the failed value without accessing stored fields."""
         return self._expected_type
 
 
@@ -50,11 +50,11 @@ class StructureProblemType:
         self._consequence = consequence
 
     def get_name(self) -> str:
-        """Return the name of this kind with a capital first letter, for the problem list."""
+        """Return the name of this kind with a capital first letter, for the problem list, so the report can explain how unresolved elements affect the imported model."""
         return self._singular[0].upper() + self._singular[1:]
 
     def get_summary_line(self, count: int) -> str:
-        """Return a line like "2 instances without class (skipped)"."""
+        """Return a line like "2 instances without class (skipped)", so the report can explain how unresolved elements affect the imported model."""
         if count == 1:
             name = self._singular
         else:
@@ -86,19 +86,19 @@ class StructureProblem:
         self._raw_value = raw_value
 
     def get_problem_type(self) -> StructureProblemType:
-        """Return the kind of problem."""
+        """Return the kind of problem, so the report can identify unresolved model references without accessing stored fields."""
         return self._problem_type
 
     def get_object_name(self) -> str:
-        """Return the name of the element."""
+        """Return the name of the element, so the report can identify unresolved model references without accessing stored fields."""
         return self._object_name
 
     def get_class_attribute(self) -> str:
-        """Return the attribute in the form Class.Attribute, or an empty text if there is none."""
+        """Return the attribute in the form Class.Attribute, or an empty text if there is none, so the report can identify unresolved model references without accessing stored fields."""
         return self._class_attribute
 
     def get_raw_value(self) -> str:
-        """Return the reference that has no target."""
+        """Return the reference that has no target, so the report can identify unresolved model references without accessing stored fields."""
         return self._raw_value
 
 
@@ -112,7 +112,7 @@ class ImportAdaptation:
         self._description = description
 
     def get_problem_type(self) -> str:
-        """Return the kind of change."""
+        """Return the kind of change, so the dialog and CSV list can explain how the source was adapted."""
         return self._problem_type
 
     def get_object_name(self) -> str:
@@ -120,7 +120,7 @@ class ImportAdaptation:
         return self._object_name
 
     def get_description(self) -> str:
-        """Return the text for the user."""
+        """Return the text for the user, so the dialog and CSV list can explain how the source was adapted."""
         return self._description
 
 
@@ -144,15 +144,15 @@ class ImportReport:
         self._adaptations: list[ImportAdaptation] = []
 
     def add_conversion_failure(self, failure: ConversionFailure) -> None:
-        """Add a value that does not fit its type."""
+        """Retain a failed value so the dialog and CSV list can identify its slot and expected type."""
         self._conversion_failures.append(failure)
 
     def add_structure_problem(self, problem: StructureProblem) -> None:
-        """Add an element that could not be resolved."""
+        """Retain an unresolved reference so users can see which model element was skipped or incomplete."""
         self._structure_problems.append(problem)
 
     def add_adaptation(self, adaptation: ImportAdaptation) -> None:
-        """Add a change that the import made."""
+        """Retain a format adaptation so the user can review semantic changes before accepting the model."""
         self._adaptations.append(adaptation)
 
     def has_problems(self) -> bool:

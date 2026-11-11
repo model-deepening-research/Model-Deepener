@@ -49,8 +49,11 @@ class CsvReader:
         return [value.strip().strip('"') for value in self._rows[0]]
 
     def get_data_rows(self) -> List[List[str]]:
-        """Return all rows after the first one."""
-        return self._rows[1:]
+        """Return independent data rows so callers cannot change the reader's stored cells."""
+        rows = []
+        for row in self._rows[1:]:
+            rows.append(list(row))
+        return rows
 
     def first_row_looks_like_header(self) -> bool:
         """Check whether the first row holds column names or normal data.

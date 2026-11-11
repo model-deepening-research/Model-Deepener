@@ -46,7 +46,7 @@ ASSOCIATION_CLASS_REVERSED_PATTERN = re.compile(r'^(\w+)\s*\.+\s*\(\s*(\w+)\s*,\
 NOTE_PATTERN = re.compile(r'^note\s+"([^"]*)"\s+as\s+(\w+)$')
 # Recognizes an n-ary diamond, for example: <> Exam
 DIAMOND_PATTERN = re.compile(r'^<>\s+(\w+)$')
-# Recognizes a multiplicity, for example: 1, * or 0..*
+# Recognizes multiplicity syntax, for example: 1 or 0..*. Bounds are checked separately.
 MULTIPLICITY_PATTERN = re.compile(r'^(\d+|\*)(?:\.\.(\d+|\*))?$')
 # Recognizes an extra in curly brackets, for example: {static}
 CURLY_EXTRA_PATTERN = re.compile(r"\{[^}]*\}")
@@ -55,7 +55,7 @@ CONST_PATTERN = re.compile(r"\bconst\b")
 
 
 def parse_multiplicity(text: str) -> Optional[UmlMultiplicity]:
-    """Turn 0..*, 1 or * into a multiplicity. Text that is not a multiplicity gives None."""
+    """Read numeric lower bounds and optional upper bounds; reject reversed ranges and star lower bounds."""
     match = MULTIPLICITY_PATTERN.match(text.strip())
     if match is None:
         return None
@@ -64,13 +64,14 @@ def parse_multiplicity(text: str) -> Optional[UmlMultiplicity]:
     if upper_text is None:
         upper_text = lower_text
     if lower_text == "*":
-        lower = 0
-    else:
-        lower = int(lower_text)
+        return None
+    lower = int(lower_text)
     if upper_text == "*":
         upper = MANY
     else:
         upper = int(upper_text)
+    if upper != MANY and lower > upper:
+        return None
     return UmlMultiplicity(lower, upper)
 
 
@@ -81,8 +82,8 @@ class PlantUmlReader:
     folder, because PlantUML stores the source of a diagram in that image. The reader only collects
     what is written in the text. The PlantUmlNormalizer rewrites it afterwards.
 
-    The methods follow the order of the reading: the text, classes, enums, attributes, operations,
-    relation lines, association classes, and last the rare notes and diamonds.
+    Reading starts with source text, then dispatches body and top-level lines. Helpers follow
+    their first caller, so the supported syntax can be read along the parsing flow.
     """
 
     def __init__(self, path: str) -> None:
@@ -105,31 +106,6 @@ class PlantUmlReader:
             return DEFAULT_MODEL_NAME
         return model_name
 
-    @classmethod
-    def is_plantuml_text_file(cls, path: str) -> bool:
-        """Check whether a .txt file holds PlantUML.
-
-        Its first text must be @startuml. An empty plantuml.txt counts if the plantuml.png next to
-        it contains a diagram.
-        """
-        try:
-            text = cls._read_text_file(path)
-        except OSError:
-            return False
-        if text.strip() == "":
-            return cls._read_neighbor_image(path) is not None
-        return text.lstrip().lower().startswith(START_KEYWORD)
-
-    def read_text(self) -> str:
-        """Return the PlantUML text of the file. An empty file without an image has an empty text."""
-        text = self._read_text_file(self._path)
-        if text.strip() != "":
-            return text
-        image_text = self._read_neighbor_image(self._path)
-        if image_text is None or image_text == "":
-            return text
-        return image_text
-
     def read_diagram(self) -> PlantUmlDiagram:
         """Read the text up to @enduml line by line and return the collected diagram.
 
@@ -146,6 +122,16 @@ class PlantUmlReader:
             else:
                 self._read_top_level_line(line)
         return self._diagram
+
+    def read_text(self) -> str:
+        """Return the PlantUML text of the file. An empty file without an image has an empty text."""
+        text = self._read_text_file(self._path)
+        if text.strip() != "":
+            return text
+        image_text = self._read_neighbor_image(self._path)
+        if image_text is None or image_text == "":
+            return text
+        return image_text
 
     @staticmethod
     def _read_text_file(path: str) -> str:
@@ -197,6 +183,97 @@ class PlantUmlReader:
             content = zlib.decompress(content)
         return content.decode("utf-8", "replace")
 
+    def _read_body_line(self, line: str) -> None:
+        """Read a line in the body of a class or enum: the closing }, a literal, an operation or an attribute.
+
+        An enum line such as RED becomes an addEnumerationValue element in the XML.
+        """
+        if line == BODY_END:
+            self._current_class = None
+            self._current_enum = None
+        elif self._current_enum is not None:
+            self._current_enum.add_literal(line)
+        else:
+            line = line.lstrip("+-#~").strip()
+            if "(" in line:
+                self._read_operation(line)
+            else:
+                self._read_attribute(line)
+
+    def _read_operation(self, line: str) -> None:
+        """Recognize an operation, written int add(int a, int b) or add(a : int) : int.
+
+        In the XML it becomes an addOperation element with an empty body.
+        """
+        match = OPERATION_PATTERN.match(line)
+        if match is None:
+            self._diagram.add_adaptation(NOT_UNDERSTOOD, self._current_class.get_name(),
+                                         f"Operation not understood and skipped: '{line}'")
+            return
+        type_before, name, parameter_text, type_after = match.groups()
+        if type_after is not None:
+            return_type = type_after
+        else:
+            return_type = type_before
+        parameters = self._read_parameters(parameter_text)
+        self._current_class.add_operation(UmlOperation(name, parameters, return_type))
+
+    @staticmethod
+    def _read_parameters(parameter_text: str) -> List[UmlParameter]:
+        """Read a parameter list. Each one is written a : int, int a, or as a single word."""
+        parameters = []
+        for parameter in parameter_text.split(","):
+            parameter = parameter.strip()
+            if parameter == "":
+                continue
+            if ":" in parameter:
+                name, type_name = parameter.split(":", 1)
+                parameters.append(UmlParameter(name.strip(), type_name.strip()))
+            elif " " in parameter:
+                type_name, name = parameter.split()[-2:]
+                parameters.append(UmlParameter(name, type_name))
+            else:
+                parameters.append(UmlParameter(parameter, None))
+        return parameters
+
+    def _read_attribute(self, line: str) -> None:
+        """Recognize an attribute, written String name, name : String, name, or tags : String[].
+
+        The extras {static}, {frozen}, const and = value are ignored. Without a type String is used,
+        and Type[] means 0..*. In the XML it becomes an addAttribute element.
+        """
+        text = self._remove_attribute_extras(line)
+        class_name = self._current_class.get_name()
+        if text == "":
+            self._diagram.add_adaptation(NOT_UNDERSTOOD, class_name, f"Line not understood and skipped: '{line}'")
+            return
+        name, type_name = self._split_attribute(text, class_name)
+        multiplicity = EXACTLY_ONE
+        if type_name.endswith(ARRAY_SUFFIX):
+            type_name = type_name[:-len(ARRAY_SUFFIX)]
+            multiplicity = ZERO_TO_MANY
+        self._current_class.add_attribute(UmlAttribute(name, type_name, multiplicity))
+
+    @staticmethod
+    def _remove_attribute_extras(line: str) -> str:
+        """Return an attribute line without {static}, {frozen}, const and a start value such as = 5."""
+        text = CURLY_EXTRA_PATTERN.sub("", line)
+        text = text.split("=")[0]
+        return CONST_PATTERN.sub("", text).strip()
+
+    def _split_attribute(self, text: str, class_name: str) -> Tuple[str, str]:
+        """Return the name and the type of an attribute. A missing type is reported and becomes String."""
+        if ":" in text:
+            name, type_name = text.split(":", 1)
+            return name.strip(), type_name.strip()
+        parts = text.split()
+        if len(parts) == 1:
+            name = parts[0]
+            self._diagram.add_adaptation(ATTRIBUTE_WITHOUT_TYPE, class_name,
+                                         f"Attribute '{class_name}.{name}' has no type; String is used.")
+            return name, DEFAULT_ATTRIBUTE_TYPE
+        return parts[-1], parts[-2]
+
     def _read_top_level_line(self, line: str) -> None:
         """Hand a line outside a class body to the first step that recognizes it.
 
@@ -246,95 +323,6 @@ class PlantUmlReader:
         if opens_body is not None and closes_body is None:
             self._current_enum = uml_enum
         return True
-
-    def _read_body_line(self, line: str) -> None:
-        """Read a line in the body of a class or enum: the closing }, a literal, an operation or an attribute.
-
-        An enum line such as RED becomes an addEnumerationValue element in the XML.
-        """
-        if line == BODY_END:
-            self._current_class = None
-            self._current_enum = None
-        elif self._current_enum is not None:
-            self._current_enum.add_literal(line)
-        elif "(" in line:
-            self._read_operation(line)
-        else:
-            self._read_attribute(line)
-
-    def _read_attribute(self, line: str) -> None:
-        """Recognize an attribute, written String name, name : String, name, or tags : String[].
-
-        The extras {static}, {frozen}, const and = value are ignored. Without a type String is used,
-        and Type[] means 0..*. In the XML it becomes an addAttribute element.
-        """
-        text = self._remove_attribute_extras(line)
-        class_name = self._current_class.get_name()
-        if text == "":
-            self._diagram.add_adaptation(NOT_UNDERSTOOD, class_name, f"Line not understood and skipped: '{line}'")
-            return
-        name, type_name = self._split_attribute(text, class_name)
-        multiplicity = EXACTLY_ONE
-        if type_name.endswith(ARRAY_SUFFIX):
-            type_name = type_name[:-len(ARRAY_SUFFIX)]
-            multiplicity = ZERO_TO_MANY
-        self._current_class.add_attribute(UmlAttribute(name, type_name, multiplicity))
-
-    @staticmethod
-    def _remove_attribute_extras(line: str) -> str:
-        """Return an attribute line without {static}, {frozen}, const and a start value such as = 5."""
-        text = CURLY_EXTRA_PATTERN.sub("", line)
-        text = text.split("=")[0]
-        return CONST_PATTERN.sub("", text).strip()
-
-    def _split_attribute(self, text: str, class_name: str) -> Tuple[str, str]:
-        """Return the name and the type of an attribute. A missing type is reported and becomes String."""
-        if ":" in text:
-            name, type_name = text.split(":", 1)
-            return name.strip(), type_name.strip()
-        parts = text.split()
-        if len(parts) == 1:
-            name = parts[0]
-            self._diagram.add_adaptation(ATTRIBUTE_WITHOUT_TYPE, class_name,
-                                         f"Attribute '{class_name}.{name}' has no type; String is used.")
-            return name, DEFAULT_ATTRIBUTE_TYPE
-        return parts[-1], parts[-2]
-
-    def _read_operation(self, line: str) -> None:
-        """Recognize an operation, written int add(int a, int b) or add(a : int) : int.
-
-        In the XML it becomes an addOperation element with an empty body.
-        """
-        match = OPERATION_PATTERN.match(line)
-        if match is None:
-            self._diagram.add_adaptation(NOT_UNDERSTOOD, self._current_class.get_name(),
-                                         f"Operation not understood and skipped: '{line}'")
-            return
-        type_before, name, parameter_text, type_after = match.groups()
-        if type_after is not None:
-            return_type = type_after
-        else:
-            return_type = type_before
-        parameters = self._read_parameters(parameter_text)
-        self._current_class.add_operation(UmlOperation(name, parameters, return_type))
-
-    @staticmethod
-    def _read_parameters(parameter_text: str) -> List[UmlParameter]:
-        """Read a parameter list. Each one is written a : int, int a, or as a single word."""
-        parameters = []
-        for parameter in parameter_text.split(","):
-            parameter = parameter.strip()
-            if parameter == "":
-                continue
-            if ":" in parameter:
-                name, type_name = parameter.split(":", 1)
-                parameters.append(UmlParameter(name.strip(), type_name.strip()))
-            elif " " in parameter:
-                type_name, name = parameter.split()[-2:]
-                parameters.append(UmlParameter(name, type_name))
-            else:
-                parameters.append(UmlParameter(parameter, None))
-        return parameters
 
     def _read_relation_line(self, line: str) -> bool:
         """Recognize a relation, written A -- B, A --> B, A <|-- B, A "1" *-- "0..*" B or A o-- B : label.
@@ -389,3 +377,18 @@ class PlantUmlReader:
             return False
         self._diagram.add_diamond(match.group(1))
         return True
+
+    @classmethod
+    def is_plantuml_text_file(cls, path: str) -> bool:
+        """Check whether a .txt file holds PlantUML.
+
+        Its first text must be @startuml. An empty plantuml.txt counts if the plantuml.png next to
+        it contains a diagram.
+        """
+        try:
+            text = cls._read_text_file(path)
+        except OSError:
+            return False
+        if text.strip() == "":
+            return cls._read_neighbor_image(path) is not None
+        return text.lstrip().lower().startswith(START_KEYWORD)

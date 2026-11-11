@@ -25,7 +25,6 @@ from src.importers.slot_value_converter import SlotValueConverter
 PATH_SEPARATOR = "::"
 UNKNOWN_LEVEL = "99"
 NOT_ABSTRACT = "false"
-SEQ_START = "Seq{"
 BUILT_IN_PACKAGES = ("XCore", "Auxiliary")
 MINIMUM_TYPE_PATH_LENGTH = 3
 
@@ -150,19 +149,19 @@ class XmlImporter(ModelImporter):
             pending_instances = still_pending
         for instance_object in pending_instances:
             self._report.add_structure_problem(StructureProblem(
-                INSTANCE_WITHOUT_CLASS, instance_object.name, "", instance_object.class_of_object.full_name))
+                INSTANCE_WITHOUT_CLASS, instance_object.get_name(), "", instance_object.get_meta_class().get_full_name()))
         return mlm_objects
 
     def _add_instance_with_class(self, instance_object: BaseMlmObject, mlm_objects: List[BaseMlmObject]) -> bool:
         """Connect an instance to its class and add it to the objects. Return False if the class is not there."""
-        class_of_object = self._find_object_by_full_name(instance_object.class_of_object.full_name, mlm_objects)
+        class_of_object = self._find_object_by_full_name(instance_object.get_meta_class().get_full_name(), mlm_objects)
         if class_of_object is None:
             return False
-        declared_level = instance_object.level
+        declared_level = instance_object.get_level()
         instance_object.set_class_of_object(class_of_object)
-        instance_object.level = declared_level
+        instance_object.set_level(declared_level)
         if self._model.print_progress:
-            print(f"Object {instance_object.name} extracted.")
+            print(f"Object {instance_object.get_name()} extracted.")
         mlm_objects.append(instance_object)
         return True
 
@@ -202,7 +201,7 @@ class XmlImporter(ModelImporter):
     def _find_object_by_full_name(full_object_name: str, mlm_objects: List[BaseMlmObject]) -> Optional[BaseMlmObject]:
         """Return the object with this full name, or None if the list does not contain it."""
         for mlm_object in mlm_objects:
-            if mlm_object.full_name == full_object_name:
+            if mlm_object.get_full_name() == full_object_name:
                 return mlm_object
         return None
 
@@ -227,7 +226,7 @@ class XmlImporter(ModelImporter):
             enums_tmp.append(BaseMlmEnumType(enum_element.getAttribute("name")))
         for enum_value_element in self._document.getElementsByTagName("addEnumerationValue"):
             for enum_tmp in enums_tmp:
-                if enum_value_element.getAttribute("enum_name") == enum_tmp.name:
+                if enum_value_element.getAttribute("enum_name") == enum_tmp.get_name():
                     enum_tmp.add_enum_value(enum_value_element.getAttribute("enum_value_name"))
         return enums_tmp
 
@@ -254,7 +253,7 @@ class XmlImporter(ModelImporter):
         class_name = attribute_element.getAttribute("class").split(PATH_SEPARATOR)[-1]
         problem_type = UNKNOWN_ATTRIBUTE_TYPE if PATH_SEPARATOR in type_str else ATTRIBUTE_TYPE_WITHOUT_PATH
         self._report.add_structure_problem(StructureProblem(
-            problem_type, class_name, f"{class_name}.{attribute.name}", type_str))
+            problem_type, class_name, f"{class_name}.{attribute.get_name()}", type_str))
 
     def _find_attribute_type(self, type_str: str) -> Optional[TypeSpec]:
         """Return the type named in the XML file, or None if the model does not contain it."""
@@ -268,13 +267,17 @@ class XmlImporter(ModelImporter):
     def _is_class_or_enum_name(self, name: str) -> bool:
         """Return True if an object or an enum of the model has this name."""
         for element in self._model.get_objects() + self._model.get_enum_types():
-            if element.name == name:
+            if element.get_name() == name:
                 return True
         return False
 
     @staticmethod
     def _parse_attribute_multiplicity(multiplicity_value: str) -> Optional[Multiplicity]:
-        """Read an XModeler ``Seq`` multiplicity used by an attribute."""
+        """Read Seq{lower,upper,hasUpperBound,...}, where false or upper=-1 means unbounded.
+
+        Normalize unbounded upper values to -1 so attributes and association ends share the
+        same representation. Missing or unrecognized attribute multiplicities remain unset.
+        """
         if not multiplicity_value:
             return None
         match = ATTRIBUTE_MULTIPLICITY_PATTERN.search(multiplicity_value)
@@ -282,7 +285,10 @@ class XmlImporter(ModelImporter):
             return None
         lower_bound = int(match.group(1))
         upper_bound = int(match.group(2))
-        is_unbounded = match.group(3).lower() == "true"
+        has_upper_bound = match.group(3).lower() == "true"
+        is_unbounded = upper_bound == -1 or not has_upper_bound
+        if is_unbounded:
+            upper_bound = -1
         return Multiplicity(lower_bound, upper_bound, unbound=is_unbounded)
 
     def _find_object_named_in_xml(self, xml_object_name: str) -> Optional[BaseMlmObject]:
@@ -292,12 +298,12 @@ class XmlImporter(ModelImporter):
         This finds the same class in both cases.
         """
         for mlm_object in self._model.get_objects():
-            if xml_object_name == mlm_object.full_name:
+            if xml_object_name == mlm_object.get_full_name():
                 return mlm_object
         short_name = xml_object_name.split(PATH_SEPARATOR)[-1]
         matching_objects = []
         for mlm_object in self._model.get_objects():
-            if short_name == mlm_object.name:
+            if short_name == mlm_object.get_name():
                 matching_objects.append(mlm_object)
         if len(matching_objects) == 1:
             return matching_objects[0]
@@ -323,7 +329,7 @@ class XmlImporter(ModelImporter):
                                              operations_element.getAttribute("type"))
             new_operation.xml_attributes = self._attributes_of(operations_element)
             for mlm_object in self._model.get_objects():
-                if operations_element.getAttribute("class") == mlm_object.full_name:
+                if operations_element.getAttribute("class") == mlm_object.get_full_name():
                     mlm_object.add_operation(new_operation)
 
     def _retrieve_all_constraints(self) -> None:
@@ -333,7 +339,7 @@ class XmlImporter(ModelImporter):
                                                constraint_element.getAttribute("instLevel"))
             new_constraint.xml_attributes = self._attributes_of(constraint_element)
             for mlm_object in self._model.get_objects():
-                if constraint_element.getAttribute("class") == mlm_object.full_name:
+                if constraint_element.getAttribute("class") == mlm_object.get_full_name():
                     mlm_object.add_constraint(new_constraint)
 
     def _retrieve_all_associations(self) -> None:
@@ -343,7 +349,7 @@ class XmlImporter(ModelImporter):
             self._set_end_objects(new_association, association_element)
             if new_association.get_source_object() is None or new_association.get_target_object() is None:
                 self._report.add_structure_problem(StructureProblem(
-                    ASSOCIATION_WITHOUT_CLASS, new_association.name, "", self._ends_text(association_element)))
+                    ASSOCIATION_WITHOUT_CLASS, new_association.get_name(), "", self._ends_text(association_element)))
                 continue
             self._model.add_association(new_association)
 
@@ -363,16 +369,21 @@ class XmlImporter(ModelImporter):
 
     @staticmethod
     def _association_bounds(multiplicity_value: str) -> Tuple[int, int]:
-        """Return the lower and upper bound of a multiplicity like Seq{0,-1,false,false}."""
-        parts = multiplicity_value[len(SEQ_START):-1].split(",")
-        return int(parts[0]), int(parts[1])
+        """Read association bounds using the same hasUpperBound flag as attributes.
+
+        An unbounded end returns -1 even if the XML retains a numeric upper value with false.
+        """
+        multiplicity = XmlImporter._parse_attribute_multiplicity(multiplicity_value)
+        if multiplicity is None:
+            raise ValueError(f"Invalid association multiplicity: '{multiplicity_value}'.")
+        return multiplicity.get_lower_bound(), multiplicity.get_upper_bound()
 
     def _set_end_objects(self, connection: Union[BaseMlmAssociation, BaseMlmLink], element: Element) -> None:
         """Set the source and target object of an association or link from the names in its XML element."""
         for mlm_object in self._model.get_objects():
-            if element.getAttribute("classSource") == mlm_object.full_name:
+            if element.getAttribute("classSource") == mlm_object.get_full_name():
                 connection.set_source_object(mlm_object)
-            if element.getAttribute("classTarget") == mlm_object.full_name:
+            if element.getAttribute("classTarget") == mlm_object.get_full_name():
                 connection.set_target_object(mlm_object)
 
     @staticmethod
@@ -392,7 +403,7 @@ class XmlImporter(ModelImporter):
                     or new_link.get_target_object() is None):
                 problem_type = LINK_WITHOUT_ASSOCIATION if new_link.get_association() is None else LINK_WITHOUT_OBJECT
                 self._report.add_structure_problem(StructureProblem(
-                    problem_type, new_link.name, "", self._ends_text(link_element)))
+                    problem_type, new_link.get_name(), "", self._ends_text(link_element)))
                 continue
             self._model.add_link(new_link)
 
@@ -405,7 +416,7 @@ class XmlImporter(ModelImporter):
         """
         matching_associations = []
         for association in self._model.get_associations():
-            if association.name == link_name:
+            if association.get_name() == link_name:
                 matching_associations.append(association)
         if len(matching_associations) != 1:
             matching_associations = []

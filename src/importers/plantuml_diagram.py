@@ -13,6 +13,7 @@ ASSOCIATION_CLASS = "Association class"
 N_ARY_ASSOCIATION = "N-ary association"
 CONSTRAINT_NOT_EXPORTED = "Constraint not exported"
 SEVERAL_PARENTS = "Several parents"
+ATTRIBUTE_ALREADY_ASSOCIATION = "Attribute already represented by association"
 NOT_UNDERSTOOD = "Line not understood"
 
 MANY = -1
@@ -40,19 +41,19 @@ class UmlMultiplicity:
         self._upper = upper
 
     def get_lower(self) -> int:
-        """Return the lower bound."""
+        """Return the lower bound, so the normalizer and XML writer can validate or serialize the declared bounds."""
         return self._lower
 
     def get_upper(self) -> int:
-        """Return the upper bound, which is MANY for *."""
+        """Return the upper bound, which is MANY for *, so the normalizer and XML writer can validate or serialize the declared bounds."""
         return self._upper
 
     def is_at_most_one(self) -> bool:
-        """Return True if the upper bound is 0 or 1."""
+        """Return True if the upper bound is 0 or 1, so the normalizer and XML writer can validate or serialize the declared bounds."""
         return self._upper in (0, 1)
 
     def get_text(self) -> str:
-        """Return the multiplicity as it is written in PlantUML."""
+        """Return the multiplicity as it is written in PlantUML, so the normalizer and XML writer can validate or serialize the declared bounds."""
         if self._upper == MANY:
             upper_text = "*"
         else:
@@ -76,15 +77,15 @@ class UmlAttribute:
         self._multiplicity = multiplicity
 
     def get_name(self) -> str:
-        """Return the name of the attribute."""
+        """Return the name of the attribute, so normalization can resolve the property type and the writer can describe its values."""
         return self._name
 
     def get_type_name(self) -> str:
-        """Return the type as it is written in PlantUML, for example String."""
+        """Return the type as it is written in PlantUML, for example String, so normalization can resolve the property type and the writer can describe its values."""
         return self._type_name
 
     def get_multiplicity(self) -> UmlMultiplicity:
-        """Return how many values the attribute can hold."""
+        """Return how many values the attribute can hold, so normalization can resolve the property type and the writer can describe its values."""
         return self._multiplicity
 
 
@@ -97,11 +98,11 @@ class UmlParameter:
         self._type_name = type_name
 
     def get_name(self) -> str:
-        """Return the name of the parameter."""
+        """Return the name of the parameter, so the XML writer can construct the operation signature."""
         return self._name
 
     def get_type_name(self) -> Optional[str]:
-        """Return the type, or None if the parameter is a single word."""
+        """Return the type, or None if the parameter is a single word, so the XML writer can construct the operation signature."""
         return self._type_name
 
 
@@ -111,11 +112,11 @@ class UmlOperation:
     def __init__(self, name: str, parameters: List[UmlParameter], return_type: Optional[str]) -> None:
         """Remember the signature of the operation."""
         self._name = name
-        self._parameters = parameters
+        self._parameters = list(parameters)
         self._return_type = return_type
 
     def get_name(self) -> str:
-        """Return the name of the operation."""
+        """Return the name of the operation, so the XML writer can preserve the declared operation signature."""
         return self._name
 
     def get_parameters(self) -> List[UmlParameter]:
@@ -123,7 +124,7 @@ class UmlOperation:
         return list(self._parameters)
 
     def get_return_type(self) -> Optional[str]:
-        """Return the type of the result, or None if no type was written."""
+        """Return the type of the result, or None if no type was written, so the XML writer can preserve the declared operation signature."""
         return self._return_type
 
 
@@ -139,15 +140,15 @@ class UmlClass:
         self._parent: Optional[str] = None
 
     def get_name(self) -> str:
-        """Return the name of the class."""
+        """Return the name of the class, so normalization and XML output can resolve this class and its members."""
         return self._name
 
     def is_abstract(self) -> bool:
-        """Return True if the class is abstract."""
+        """Return True if the class is abstract, so normalization and XML output can resolve this class and its members."""
         return self._is_abstract
 
     def set_abstract(self, is_abstract: bool) -> None:
-        """Set whether the class is abstract."""
+        """Record whether instances of this class are forbidden so the XML writer preserves that restriction."""
         self._is_abstract = is_abstract
 
     def get_attributes(self) -> List[UmlAttribute]:
@@ -155,11 +156,11 @@ class UmlClass:
         return list(self._attributes)
 
     def add_attribute(self, attribute: UmlAttribute) -> None:
-        """Add an attribute at the end of the class."""
+        """Keep a parsed property in declaration order for later type conversion and XML output."""
         self._attributes.append(attribute)
 
     def remove_attribute(self, attribute: UmlAttribute) -> None:
-        """Remove an attribute from the class."""
+        """Discard a property after its meaning has been transferred to an association."""
         self._attributes.remove(attribute)
 
     def get_operations(self) -> List[UmlOperation]:
@@ -167,15 +168,15 @@ class UmlClass:
         return list(self._operations)
 
     def add_operation(self, operation: UmlOperation) -> None:
-        """Add an operation at the end of the class."""
+        """Keep an operation signature in declaration order for XML output."""
         self._operations.append(operation)
 
     def get_parent(self) -> Optional[str]:
-        """Return the name of the parent class, or None if the class has no parent."""
+        """Return the name of the parent class, or None if the class has no parent, so normalization and XML output can resolve this class and its members."""
         return self._parent
 
     def set_parent(self, parent: str) -> None:
-        """Set the name of the parent class."""
+        """Set the name of the parent class, so normalization and XML output can resolve this class and its members."""
         self._parent = parent
 
 
@@ -188,7 +189,7 @@ class UmlEnum:
         self._literals: List[str] = []
 
     def get_name(self) -> str:
-        """Return the name of the enumeration."""
+        """Return the name of the enumeration, so type resolution and XML output can preserve the declared enumeration."""
         return self._name
 
     def get_literals(self) -> List[str]:
@@ -196,7 +197,7 @@ class UmlEnum:
         return list(self._literals)
 
     def add_literal(self, literal: str) -> None:
-        """Add a literal at the end of the enumeration."""
+        """Add a literal at the end of the enumeration, so type resolution and XML output can preserve the declared enumeration."""
         self._literals.append(literal)
 
 
@@ -222,59 +223,59 @@ class UmlAssociation:
         self._target_navigable = True
 
     def get_source(self) -> str:
-        """Return the name of the source class."""
+        """Return the name of the source class, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._source
 
     def get_target(self) -> str:
-        """Return the name of the target class."""
+        """Return the name of the target class, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._target
 
     def get_source_multiplicity(self) -> Optional[UmlMultiplicity]:
-        """Return the multiplicity at the source class, or None if nothing was written."""
+        """Return the multiplicity at the source class, or None if nothing was written, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._source_multiplicity
 
     def set_source_multiplicity(self, multiplicity: UmlMultiplicity) -> None:
-        """Set the multiplicity at the source class."""
+        """Set the multiplicity at the source class, so normalization and XML output can preserve the relationship ends and navigation."""
         self._source_multiplicity = multiplicity
 
     def get_target_multiplicity(self) -> Optional[UmlMultiplicity]:
-        """Return the multiplicity at the target class, or None if nothing was written."""
+        """Return the multiplicity at the target class, or None if nothing was written, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._target_multiplicity
 
     def set_target_multiplicity(self, multiplicity: UmlMultiplicity) -> None:
-        """Set the multiplicity at the target class."""
+        """Set the multiplicity at the target class, so normalization and XML output can preserve the relationship ends and navigation."""
         self._target_multiplicity = multiplicity
 
     def get_name(self) -> Optional[str]:
-        """Return the name of the association, or None if it has none."""
+        """Return the name of the association, or None if it has none, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._name
 
     def get_source_role(self) -> Optional[str]:
-        """Return the name under which the target reaches the source."""
+        """Return the name under which the target reaches the source, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._source_role
 
     def set_source_role(self, role: str) -> None:
-        """Set the name under which the target reaches the source."""
+        """Set the name under which the target reaches the source, so normalization and XML output can preserve the relationship ends and navigation."""
         self._source_role = role
 
     def get_target_role(self) -> Optional[str]:
-        """Return the name under which the source reaches the target."""
+        """Return the name under which the source reaches the target, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._target_role
 
     def set_target_role(self, role: str) -> None:
-        """Set the name under which the source reaches the target."""
+        """Set the name under which the source reaches the target, so normalization and XML output can preserve the relationship ends and navigation."""
         self._target_role = role
 
     def is_source_navigable(self) -> bool:
-        """Return True if the source can be reached from the target."""
+        """Return True if the source can be reached from the target, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._source_navigable
 
     def is_target_navigable(self) -> bool:
-        """Return True if the target can be reached from the source."""
+        """Return True if the target can be reached from the source, so normalization and XML output can preserve the relationship ends and navigation."""
         return self._target_navigable
 
     def set_navigability(self, source_navigable: bool, target_navigable: bool) -> None:
-        """Set in which directions the association can be navigated."""
+        """Set in which directions the association can be navigated, so normalization and XML output can preserve the relationship ends and navigation."""
         self._source_navigable = source_navigable
         self._target_navigable = target_navigable
 
@@ -297,31 +298,31 @@ class RawRelation:
         self._label = label
 
     def get_left(self) -> str:
-        """Return the name on the left side of the arrow."""
+        """Return the name on the left side of the arrow, so the normalizer can apply the rule matching the original relationship syntax."""
         return self._left
 
     def get_left_multiplicity(self) -> Optional[str]:
-        """Return the multiplicity text on the left side, or None if nothing was written."""
+        """Return the multiplicity text on the left side, or None if nothing was written, so the normalizer can apply the rule matching the original relationship syntax."""
         return self._left_multiplicity
 
     def get_arrow(self) -> str:
-        """Return the arrow, for example *-- or -->."""
+        """Return the arrow, for example *-- or -->, so the normalizer can apply the rule matching the original relationship syntax."""
         return self._arrow
 
     def get_right_multiplicity(self) -> Optional[str]:
-        """Return the multiplicity text on the right side, or None if nothing was written."""
+        """Return the multiplicity text on the right side, or None if nothing was written, so the normalizer can apply the rule matching the original relationship syntax."""
         return self._right_multiplicity
 
     def get_right(self) -> str:
-        """Return the name on the right side of the arrow."""
+        """Return the name on the right side of the arrow, so the normalizer can apply the rule matching the original relationship syntax."""
         return self._right
 
     def get_label(self) -> Optional[str]:
-        """Return the text after the colon, or None if there is none."""
+        """Return the text after the colon, or None if there is none, so the normalizer can apply the rule matching the original relationship syntax."""
         return self._label
 
     def is_generalization(self) -> bool:
-        """Return True for an arrow with a triangle, such as <|-- or --|>."""
+        """Return True for an arrow with a triangle, such as <|-- or --|>, so the normalizer can apply the rule matching the original relationship syntax."""
         return "|" in self._arrow
 
 
@@ -345,19 +346,19 @@ class PlantUmlDiagram:
         self._adaptations: List[ImportAdaptation] = []
 
     def get_name(self) -> str:
-        """Return the name of the model."""
+        """Return the name of the model, so the reader, normalizer and writer can share the diagram through its public interface."""
         return self._name
 
     def get_classes(self) -> List[UmlClass]:
-        """Return all classes in the order in which they were added."""
+        """Return all classes in the order in which they were added, so the reader, normalizer and writer can share the diagram through its public interface."""
         return list(self._classes.values())
 
     def has_class(self, name: str) -> bool:
-        """Return True if there is a class with this name."""
+        """Return True if there is a class with this name, so the reader, normalizer and writer can share the diagram through its public interface."""
         return name in self._classes
 
     def get_class(self, name: str) -> UmlClass:
-        """Return the class with this name, which must exist."""
+        """Return the class with this name, which must exist, so the reader, normalizer and writer can share the diagram through its public interface."""
         return self._classes[name]
 
     def get_or_create_class(self, name: str) -> UmlClass:
@@ -367,15 +368,15 @@ class PlantUmlDiagram:
         return self._classes[name]
 
     def get_enums(self) -> List[UmlEnum]:
-        """Return all enumerations in the order in which they were added."""
+        """Return all enumerations in the order in which they were added, so the reader, normalizer and writer can share the diagram through its public interface."""
         return list(self._enums.values())
 
     def has_enum(self, name: str) -> bool:
-        """Return True if there is an enumeration with this name."""
+        """Return True if there is an enumeration with this name, so the reader, normalizer and writer can share the diagram through its public interface."""
         return name in self._enums
 
     def add_enum(self, uml_enum: UmlEnum) -> None:
-        """Add an enumeration. A second one with the same name replaces the first."""
+        """Add an enumeration. A second one with the same name replaces the first, so the reader, normalizer and writer can share the diagram through its public interface."""
         self._enums[uml_enum.get_name()] = uml_enum
 
     def get_associations(self) -> List[UmlAssociation]:
@@ -383,7 +384,7 @@ class PlantUmlDiagram:
         return list(self._associations)
 
     def add_association(self, association: UmlAssociation) -> None:
-        """Add an association at the end of the list."""
+        """Add an association at the end of the list, so the reader, normalizer and writer can share the diagram through its public interface."""
         self._associations.append(association)
 
     def remove_association(self, association: UmlAssociation) -> None:
@@ -391,45 +392,45 @@ class PlantUmlDiagram:
         self._associations.remove(association)
 
     def get_relations(self) -> List[RawRelation]:
-        """Return a copy of the relation lines in the order of the text."""
+        """Return a copy of the relation lines in the order of the text, so the reader, normalizer and writer can share the diagram through its public interface."""
         return list(self._relations)
 
     def add_relation(self, relation: RawRelation) -> None:
-        """Add a relation line."""
+        """Add a relation line, so the reader, normalizer and writer can share the diagram through its public interface."""
         self._relations.append(relation)
 
     def get_association_classes(self) -> List[Tuple[str, str, str]]:
-        """Return tuples of the association class and the two classes it connects."""
+        """Return tuples of the association class and the two classes it connects, so the reader, normalizer and writer can share the diagram through its public interface."""
         return list(self._association_classes)
 
     def add_association_class(self, middle: str, end_a: str, end_b: str) -> None:
-        """Add an association class and the two classes it connects."""
+        """Add an association class and the two classes it connects, so the reader, normalizer and writer can share the diagram through its public interface."""
         self._association_classes.append((middle, end_a, end_b))
 
     def get_diamonds(self) -> List[str]:
-        """Return a copy of the names of the n-ary diamonds."""
+        """Return a copy of the names of the n-ary diamonds, so the reader, normalizer and writer can share the diagram through its public interface."""
         return list(self._diamonds)
 
     def add_diamond(self, name: str) -> None:
-        """Add the name of an n-ary diamond."""
+        """Add the name of an n-ary diamond, so the reader, normalizer and writer can share the diagram through its public interface."""
         self._diamonds.append(name)
 
     def has_note(self, alias: str) -> bool:
-        """Return True if there is a note with this alias."""
+        """Return True if there is a note with this alias, so the reader, normalizer and writer can share the diagram through its public interface."""
         return alias in self._notes
 
     def get_note_text(self, alias: str) -> str:
-        """Return the text of the note with this alias."""
+        """Return the text of the note with this alias, so the reader, normalizer and writer can share the diagram through its public interface."""
         return self._notes[alias]
 
     def add_note(self, alias: str, text: str) -> None:
-        """Add a note. A second one with the same alias replaces the first."""
+        """Add a note. A second one with the same alias replaces the first, so the reader, normalizer and writer can share the diagram through its public interface."""
         self._notes[alias] = text
 
     def get_adaptations(self) -> List[ImportAdaptation]:
-        """Return a copy of the adaptations in the order in which they are shown to the user."""
+        """Return a copy of the adaptations in the order in which they are shown to the user, so the reader, normalizer and writer can share the diagram through its public interface."""
         return list(self._adaptations)
 
     def add_adaptation(self, problem_type: str, object_name: str, description: str) -> None:
-        """Add a note for the user about something that was changed or left out."""
+        """Add a note for the user about something that was changed or left out, so the reader, normalizer and writer can share the diagram through its public interface."""
         self._adaptations.append(ImportAdaptation(problem_type, object_name, description))

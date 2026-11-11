@@ -16,7 +16,7 @@ from src.object_database.persistent import Persistent
 from src.object_database.storage import FORMAT_VERSION
 
 
-def legacy_fixture() -> None:
+def legacy_fixture() -> bytes:
     """Build the content of a stored database in the former format."""
     modules = {}
     classes = []
@@ -56,7 +56,7 @@ class MigrationTests(unittest.TestCase):
     """Checks the conversion of a database in the former format."""
 
     def test_convert_overwrites_database_and_preserves_backup_and_references(self) -> None:
-        """Check that convert overwrites database and preserves backup and references."""
+        """Convert legacy objects while preserving backup bytes, identities, metadata and later saving."""
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "Old.pkl"
             original = legacy_fixture()
@@ -88,7 +88,7 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(folder.open_database("Old").get(1).name, "Saved after conversion")
 
     def test_failed_write_removes_new_file_and_preserves_original(self) -> None:
-        """Check that failed write removes new file and preserves original."""
+        """Keep the original legacy bytes and database listing when the staged save runs out of space."""
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "Old.pkl"
             original = legacy_fixture()
@@ -101,7 +101,7 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(folder.get_names(), ["Old"])
 
     def test_failed_final_replacement_preserves_original_and_cleans_staging(self) -> None:
-        """Check that failed final replacement preserves original and cleans staging."""
+        """Keep the original and its backup while removing staged files after a final replacement error."""
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "Old.pkl"
             original = legacy_fixture()
@@ -123,7 +123,7 @@ class MigrationTests(unittest.TestCase):
                              ["Old.pkl", "Old.pkl.bak"])
 
     def test_unsupported_legacy_class_does_not_create_a_partial_database(self) -> None:
-        """Check that unsupported legacy class does not create a partial database."""
+        """Reject an unknown legacy type before replacing or adding any database."""
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / "Old.pkl"
             original = legacy_fixture().replace(b"FmmlxModel", b"OtherModel")
@@ -135,7 +135,7 @@ class MigrationTests(unittest.TestCase):
             self.assertEqual(folder.get_names(), ["Old"])
 
     def test_failed_constraint_check_blocks_export_without_discarding_model(self) -> None:
-        """Check that failed constraint check blocks export without discarding model."""
+        """Warn instead of exporting when validation raises, retaining the active model."""
         model = Mock()
         model.validate_basemlm_integrity.side_effect = AttributeError("Incomplete type")
         ui = types.SimpleNamespace(current_model=model, _show_warning=Mock(),
@@ -146,7 +146,7 @@ class MigrationTests(unittest.TestCase):
         self.assertIs(ui.current_model, model)
 
     def test_conversion_is_only_started_after_explicit_choice(self) -> None:
-        """Check that conversion is only started after explicit choice."""
+        """Start migration only for Convert, route Delete separately and ignore the other choice."""
         for choice in ("other", "delete", "convert"):
             with self.subTest(choice=choice):
                 folder = Mock()

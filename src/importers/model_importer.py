@@ -21,7 +21,7 @@ class ModelImporter(ABC):
 
     @classmethod
     def can_read(cls, path: str) -> bool:
-        """Return whether this importer reads the file. By default its file ending is enough."""
+        """Accept the path without inspecting it; importer_for checks the registered ending first."""
         return True
 
     def source_file_name(self, path: str) -> str:
@@ -50,8 +50,14 @@ _IMPORTERS: dict[str, Type[ModelImporter]] = {}
 
 
 def register_importer(importer_class: Type[ModelImporter]) -> None:
-    """Make the importer available for its file endings."""
+    """Register all endings atomically, rejecting conflicts with an existing format."""
+    extensions = []
     for extension in importer_class.EXTENSIONS:
+        extension = extension.lower()
+        if extension in _IMPORTERS or extension in extensions:
+            raise ValueError(f"An importer is already registered for the file ending '{extension}'.")
+        extensions.append(extension)
+    for extension in extensions:
         _IMPORTERS[extension] = importer_class
 
 

@@ -13,7 +13,7 @@ class DatabaseWorkflowTests(unittest.TestCase):
     """Checks how the application works with its database."""
 
     def test_missing_legacy_classes_are_not_reported_as_file_corruption(self) -> None:
-        """Check that missing legacy classes are not reported as file corruption."""
+        """Report an unavailable legacy class as incompatibility while keeping the database file listed."""
         with tempfile.TemporaryDirectory() as directory:
             folder = DatabaseFolder(directory)
             folder.create_database("Legacy")
@@ -24,7 +24,7 @@ class DatabaseWorkflowTests(unittest.TestCase):
             self.assertEqual(folder.get_names(), ["Legacy"])
 
     def test_cancel_after_active_deletion_offers_application_shutdown(self) -> None:
-        """Check that cancel after active deletion offers application shutdown."""
+        """Offer shutdown when database selection is cancelled after deleting the active database."""
         ui = SimpleNamespace(
             _database=None, _active_database_deleted=True,
             _database_folder=Mock(), _overlay=Mock(), _is_closing=False,
@@ -37,7 +37,7 @@ class DatabaseWorkflowTests(unittest.TestCase):
             self.assertEqual(prompt.call_args.kwargs["cancel_text"], "Close application")
 
     def test_delete_removes_only_selected_database_and_rejects_paths(self) -> None:
-        """Check that delete removes only selected database and rejects paths."""
+        """Delete only the named database and reject an attempted relative path."""
         with tempfile.TemporaryDirectory() as directory:
             folder = DatabaseFolder(directory)
             folder.create_database("Keep")
@@ -48,7 +48,7 @@ class DatabaseWorkflowTests(unittest.TestCase):
             self.assertEqual(folder.get_names(), ["Keep"])
 
     def test_autosave_preserves_invalid_intermediate_state(self) -> None:
-        """Check that autosave preserves invalid intermediate state."""
+        """Save changed invalid model state, restore it and avoid another write when it stays unchanged."""
         with tempfile.TemporaryDirectory() as directory:
             folder = DatabaseFolder(directory)
             database = folder.create_database("Work")
@@ -67,14 +67,14 @@ class DatabaseWorkflowTests(unittest.TestCase):
                 commit.assert_not_called()
 
     def test_autosave_does_not_recreate_deleted_active_database(self) -> None:
-        """Check that autosave does not recreate deleted active database."""
+        """Schedule the next autosave without writing when no active database remains."""
         ui = SimpleNamespace(_database=None, _is_closing=False, after=Mock(),
                              _autosave_models=Mock())
         ModelDeepenerApp._autosave_models(ui)
         ui.after.assert_called_once()
 
     def test_only_valid_models_can_be_exported(self) -> None:
-        """Check that only valid models can be exported."""
+        """Export a model without violations and warn instead when constraint violations are present."""
         for violations in ([], ["Invalid classification"]):
             with self.subTest(violations=violations):
                 model = Mock()

@@ -1,7 +1,8 @@
 """Rewrites a PlantUML diagram so that it only uses concepts the XModeler format knows."""
 from typing import Dict, List, Optional, Set, Tuple
 
-from src.importers.plantuml_diagram import (ASSOCIATION_CLASS, COMPOSITION_WHOLE_END, CONSTRAINT_NOT_EXPORTED,
+from src.importers.plantuml_diagram import (ASSOCIATION_CLASS, ATTRIBUTE_ALREADY_ASSOCIATION,
+                                            COMPOSITION_WHOLE_END, CONSTRAINT_NOT_EXPORTED,
                                             EXACTLY_ONE, INVALID_MULTIPLICITY, MISSING_MULTIPLICITY, N_ARY_ASSOCIATION,
                                             PlantUmlDiagram, RawRelation, SEVERAL_PARENTS, UmlAssociation, UmlAttribute,
                                             UmlClass, UmlMultiplicity, ZERO_TO_MANY, lower_first, to_identifier)
@@ -14,11 +15,9 @@ FIRST_NUMBER_FOR_UNIQUE_NAME = 2
 
 
 class PlantUmlNormalizer:
-    """Applies the rewriting rules to one diagram, one step after the other.
+    """Rewrite prerequisites first: classes before relations, associations before association classes.
 
-    The steps go through the diagram in their own order, but the user reads the hints in the order
-    of the diagram lines. So a step stores each hint with the position of its line, and all hints
-    are added to the diagram together once the steps that create them are done.
+    Assign roles last, when every association is known. Hints are grouped by relation position.
     """
 
     def __init__(self, diagram: PlantUmlDiagram) -> None:
@@ -37,26 +36,6 @@ class PlantUmlNormalizer:
             self._diamond_legs[name] = []
         self._sort_relations()
 
-    def normalize(self) -> None:
-        """Run all rules in their fixed order on the diagram.
-
-        Each step needs the classes from the first step. Association classes need the associations.
-        N-ary associations come before attributes with a class as type, because this order decides
-        the order of the associations in the XML and which association already exists.
-        """
-        self._create_classes()
-        self._set_generalizations()
-        self._convert_associations()
-        self._convert_compositions()
-        self._resolve_association_classes()
-        self._convert_enum_relations()
-        self._resolve_n_ary_associations()
-        self._convert_class_typed_attributes()
-        self._report_constraints()
-        self._add_hints_to_diagram()
-        self._fill_missing_multiplicities()
-        self._assign_role_names()
-
     def _sort_relations(self) -> None:
         """Sort the relation lines into diamond legs, generalizations, enum relations and associations."""
         for position, relation in enumerate(self._diagram.get_relations()):
@@ -71,38 +50,21 @@ class PlantUmlNormalizer:
             else:
                 self._association_relations.append((position, relation))
 
-    def _add_hint(self, position: int, problem_type: str, object_name: str, description: str) -> None:
-        """Store a hint for the user together with the position of the line it belongs to."""
-        if position not in self._hints:
-            self._hints[position] = []
-        self._hints[position].append((problem_type, object_name, description))
-
-    def _add_hints_to_diagram(self) -> None:
-        """Add the stored hints to the diagram in the order of their lines."""
-        for position in sorted(self._hints):
-            for problem_type, object_name, description in self._hints[position]:
-                self._diagram.add_adaptation(problem_type, object_name, description)
-
-    def _association_class_position(self, index: int) -> int:
-        """Return the hint position of an association class: after all relation lines."""
-        return len(self._diagram.get_relations()) + index
-
-    def _diamond_position(self, index: int) -> int:
-        """Return the hint position of a diamond: after all association classes."""
-        return self._association_class_position(len(self._diagram.get_association_classes())) + index
-
-    def _read_multiplicity(self, text: Optional[str], position: int) -> Optional[UmlMultiplicity]:
-        """Return the multiplicity of a text such as 0..*. None means that nothing was written.
-
-        An invalid text becomes 0..* and is reported, so that the import can continue.
-        """
-        if text is None or text.strip() == "":
-            return None
-        multiplicity = parse_multiplicity(text)
-        if multiplicity is None:
-            self._add_hint(position, INVALID_MULTIPLICITY, "", f"Invalid multiplicity '{text}' replaced by 0..*.")
-            return ZERO_TO_MANY
-        return multiplicity
+    def normalize(self) -> None:
+        """Apply prerequisite rules before dependent conversions, then complete bounds and roles."""
+        self._create_classes()
+        self._set_generalizations()
+        self._convert_associations()
+        self._convert_aggregations()
+        self._convert_compositions()
+        self._resolve_association_classes()
+        self._convert_enum_relations()
+        self._convert_class_typed_attributes()
+        self._resolve_n_ary_associations()
+        self._report_constraints()
+        self._add_hints_to_diagram()
+        self._fill_missing_multiplicities()
+        self._assign_role_names()
 
     def _create_classes(self) -> None:
         """Create the classes that are only used and never declared.
@@ -137,6 +99,29 @@ class PlantUmlNormalizer:
             self._diagram.get_or_create_class(relation.get_left())
             self._diagram.get_or_create_class(relation.get_right())
 
+    @staticmethod
+    def _child_and_parent(relation: RawRelation) -> Tuple[str, str]:
+        """Return the child and the parent. The triangle of the arrow points at the parent."""
+        if relation.get_arrow().startswith(GENERALIZATION_ARROW_START):
+            return relation.get_right(), relation.get_left()
+        return relation.get_left(), relation.get_right()
+
+    def _diamond_class_name(self, diamond: str, legs: List[RawRelation]) -> str:
+        """Return the name of the new class: all participants in a row, or the diamond without any."""
+        class_name = ""
+        for leg in legs:
+            class_name += self._diamond_participant(leg, diamond)
+        if class_name == "":
+            return diamond
+        return class_name
+
+    @staticmethod
+    def _diamond_participant(leg: RawRelation, diamond: str) -> str:
+        """Return the class on the other side of the diamond."""
+        if leg.get_left() == diamond:
+            return leg.get_right()
+        return leg.get_left()
+
     def _set_generalizations(self) -> None:
         """Set the parents, written Parent <|-- Child or Child --|> Parent.
 
@@ -152,12 +137,11 @@ class PlantUmlNormalizer:
                 self._add_hint(position, SEVERAL_PARENTS, child,
                                f"'{child}' has more than one parent; only '{child_class.get_parent()}' is kept.")
 
-    @staticmethod
-    def _child_and_parent(relation: RawRelation) -> Tuple[str, str]:
-        """Return the child and the parent. The triangle of the arrow points at the parent."""
-        if relation.get_arrow().startswith(GENERALIZATION_ARROW_START):
-            return relation.get_right(), relation.get_left()
-        return relation.get_left(), relation.get_right()
+    def _add_hint(self, position: int, problem_type: str, object_name: str, description: str) -> None:
+        """Store a hint for the user together with the position of the line it belongs to."""
+        if position not in self._hints:
+            self._hints[position] = []
+        self._hints[position].append((problem_type, object_name, description))
 
     def _convert_associations(self) -> None:
         """Take over associations, written A "1" -- "0..*" B : label, and their direction.
@@ -173,6 +157,19 @@ class PlantUmlNormalizer:
             self._set_navigability(association, relation.get_arrow())
             self._diagram.add_association(association)
             self._association_of_position[position] = association
+
+    def _read_multiplicity(self, text: Optional[str], position: int) -> Optional[UmlMultiplicity]:
+        """Return the multiplicity of a text such as 0..*. None means that nothing was written.
+
+        An invalid text becomes 0..* and is reported, so that the import can continue.
+        """
+        if text is None or text.strip() == "":
+            return None
+        multiplicity = parse_multiplicity(text)
+        if multiplicity is None:
+            self._add_hint(position, INVALID_MULTIPLICITY, "", f"Invalid multiplicity '{text}' replaced by 0..*.")
+            return ZERO_TO_MANY
+        return multiplicity
 
     @staticmethod
     def _association_name(label: Optional[str]) -> Optional[str]:
@@ -194,12 +191,18 @@ class PlantUmlNormalizer:
         elif points_left and not points_right:
             association.set_navigability(True, False)
 
+    def _convert_aggregations(self) -> None:
+        """Keep A o-- B as the ordinary association already built by _convert_associations.
+
+        XML has no aggregation marker. No further change to its bounds or navigation is needed.
+        """
+
     def _convert_compositions(self) -> None:
-        """Turn compositions and aggregations into normal associations.
+        """Represent compositions as ordinary associations and check the whole end.
 
         A "1" *-- "0..*" B and B --* A are compositions with the whole A. In the XML they become a
-        normal addAssociation. The whole has at most one, and without a value exactly one. An
-        aggregation such as A o-- B needs no change, because its diamond is not taken over.
+        normal addAssociation. A missing whole end becomes exactly one; a larger bound is kept
+        with a warning, so the user's declared multiplicity is not silently changed.
         """
         for position, relation in self._association_relations:
             arrow = relation.get_arrow()
@@ -245,10 +248,14 @@ class PlantUmlNormalizer:
             return
         base = self._choose_base_association(candidates, middle, end_a, end_b, position)
         self._diagram.remove_association(base)
-        self._diagram.add_association(UmlAssociation(
-            base.get_source(), middle, EXACTLY_ONE, base.get_target_multiplicity(), base.get_name()))
-        self._diagram.add_association(UmlAssociation(
-            middle, base.get_target(), base.get_source_multiplicity(), EXACTLY_ONE, base.get_name()))
+        source_association = UmlAssociation(
+            base.get_source(), middle, EXACTLY_ONE, base.get_target_multiplicity(), base.get_name())
+        target_association = UmlAssociation(
+            middle, base.get_target(), base.get_source_multiplicity(), EXACTLY_ONE, base.get_name())
+        source_association.set_navigability(base.is_source_navigable(), base.is_target_navigable())
+        target_association.set_navigability(base.is_source_navigable(), base.is_target_navigable())
+        self._diagram.add_association(source_association)
+        self._diagram.add_association(target_association)
 
     def _associations_between(self, class_a: str, class_b: str) -> List[UmlAssociation]:
         """Return all associations that link the two classes, in any direction."""
@@ -273,6 +280,10 @@ class PlantUmlNormalizer:
                            f"Association class {middle}: {len(candidates)} associations {end_a}-{end_b}; "
                            f"the one {chosen} is used.")
         return base
+
+    def _association_class_position(self, index: int) -> int:
+        """Return the hint position of an association class: after all relation lines."""
+        return len(self._diagram.get_relations()) + index
 
     def _convert_enum_relations(self) -> None:
         """Turn a relation to an enum, written Car --> "0..1" Color : paint, into an attribute.
@@ -314,14 +325,67 @@ class PlantUmlNormalizer:
         """Turn an attribute with a class as its type, written Engine motor in class Car, into an association.
 
         In the XML this becomes an addAssociation element with the role name motor instead of an
-        addAttribute element. If the two classes already have an association, the attribute is dropped.
+        addAttribute element. A matching role or label already represents the attribute. A single
+        attribute of this type can also name the role of a unique unlabelled association.
+        Both cases are explained in the report instead of adding another association.
         """
         for uml_class in self._diagram.get_classes():
-            for attribute in uml_class.get_attributes():
+            attributes = uml_class.get_attributes()
+            for attribute in attributes:
                 if self._diagram.has_class(attribute.get_type_name()):
                     uml_class.remove_attribute(attribute)
-                    if len(self._associations_between(uml_class.get_name(), attribute.get_type_name())) == 0:
+                    if self._association_covers_attribute(uml_class, attribute):
+                        self._diagram.add_adaptation(
+                            ATTRIBUTE_ALREADY_ASSOCIATION, uml_class.get_name(),
+                            f"Attribute '{uml_class.get_name()}.{attribute.get_name()}' is already represented "
+                            "by an association with the same role or label; the attribute is omitted.")
+                    elif self._reuse_unlabelled_association(uml_class, attribute, attributes):
+                        self._diagram.add_adaptation(
+                            ATTRIBUTE_ALREADY_ASSOCIATION, uml_class.get_name(),
+                            f"Attribute '{uml_class.get_name()}.{attribute.get_name()}' is represented by the "
+                            f"unique unlabelled association to '{attribute.get_type_name()}'; the attribute "
+                            f"is omitted and its name is used as the role '{attribute.get_name()}'.")
+                    else:
                         self._add_association_for_attribute(uml_class, attribute)
+
+    def _association_covers_attribute(self, uml_class: UmlClass, attribute: UmlAttribute) -> bool:
+        """Match a class attribute only to the same label or the role reached from its owner."""
+        for association in self._associations_between(uml_class.get_name(), attribute.get_type_name()):
+            if association.get_name() == attribute.get_name():
+                return True
+            if association.get_source() == uml_class.get_name():
+                if association.get_target_role() == attribute.get_name():
+                    return True
+            if association.get_target() == uml_class.get_name():
+                if association.get_source_role() == attribute.get_name():
+                    return True
+        return False
+
+    def _reuse_unlabelled_association(self, uml_class: UmlClass, attribute: UmlAttribute,
+                                     attributes: List[UmlAttribute]) -> bool:
+        """Use the sole attribute's name on one unlabelled relationship, preserving its bounds and direction.
+
+        Count the original attributes so removing earlier properties cannot make an ambiguous type unique.
+        On a reversed relationship, the role reached from the owner belongs to the source end.
+        """
+        attribute_count = 0
+        for candidate in attributes:
+            if candidate.get_type_name() == attribute.get_type_name():
+                attribute_count += 1
+        if attribute_count != 1:
+            return False
+        unlabelled = []
+        for association in self._associations_between(uml_class.get_name(), attribute.get_type_name()):
+            if association.get_name() is None:
+                unlabelled.append(association)
+        if len(unlabelled) != 1:
+            return False
+        association = unlabelled[0]
+        if association.get_source() == uml_class.get_name():
+            association.set_target_role(attribute.get_name())
+        else:
+            association.set_source_role(attribute.get_name())
+        return True
 
     def _add_association_for_attribute(self, uml_class: UmlClass, attribute: UmlAttribute) -> None:
         """Add the association for an attribute, which can only be navigated from the class to its type."""
@@ -348,21 +412,9 @@ class PlantUmlNormalizer:
                 position, N_ARY_ASSOCIATION, class_name,
                 f"N-ary association '{diamond}' turned into class '{class_name}'; please check the multiplicities.")
 
-    def _diamond_class_name(self, diamond: str, legs: List[RawRelation]) -> str:
-        """Return the name of the new class: all participants in a row, or the diamond without any."""
-        class_name = ""
-        for leg in legs:
-            class_name += self._diamond_participant(leg, diamond)
-        if class_name == "":
-            return diamond
-        return class_name
-
-    @staticmethod
-    def _diamond_participant(leg: RawRelation, diamond: str) -> str:
-        """Return the class on the other side of the diamond."""
-        if leg.get_left() == diamond:
-            return leg.get_right()
-        return leg.get_left()
+    def _diamond_position(self, index: int) -> int:
+        """Return the hint position of a diamond: after all association classes."""
+        return self._association_class_position(len(self._diagram.get_association_classes())) + index
 
     @staticmethod
     def _diamond_participant_multiplicity(leg: RawRelation, diamond: str) -> Optional[str]:
@@ -398,6 +450,12 @@ class PlantUmlNormalizer:
             if self._diagram.has_note(middle):
                 self._add_hint(self._association_class_position(index), CONSTRAINT_NOT_EXPORTED, middle,
                                f"Constraint '{self._diagram.get_note_text(middle)}' on ({end_a}, {end_b}) is not exported.")
+
+    def _add_hints_to_diagram(self) -> None:
+        """Add the stored hints to the diagram in the order of their lines."""
+        for position in sorted(self._hints):
+            for problem_type, object_name, description in self._hints[position]:
+                self._diagram.add_adaptation(problem_type, object_name, description)
 
     def _fill_missing_multiplicities(self) -> None:
         """Complete associations without a multiplicity, written A -- B.
@@ -444,11 +502,6 @@ class PlantUmlNormalizer:
             wish = lower_first(association.get_target())
         association.set_target_role(self._unique_name(wish, association.get_name(), used))
 
-    def _assign_source_role(self, association: UmlAssociation, used: Set[str]) -> None:
-        """Set the name under which the target reaches the source."""
-        wish = lower_first(association.get_source())
-        association.set_source_role(self._unique_name(wish, association.get_name(), used))
-
     @staticmethod
     def _unique_name(wish: str, association_name: Optional[str], used: Set[str]) -> str:
         """Return the wished name. If it is taken, add the association name, then a number."""
@@ -462,3 +515,11 @@ class PlantUmlNormalizer:
             number += 1
         used.add(candidate)
         return candidate
+
+    def _assign_source_role(self, association: UmlAssociation, used: Set[str]) -> None:
+        """Name the source reached from the target, preserving a role supplied by an attribute."""
+        if association.get_source_role() is not None:
+            used.add(association.get_source_role())
+            return
+        wish = lower_first(association.get_source())
+        association.set_source_role(self._unique_name(wish, association.get_name(), used))

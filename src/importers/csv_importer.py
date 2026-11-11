@@ -54,13 +54,13 @@ class CsvImporter(ModelImporter):
         self._selected_columns: Optional[List[str]] = None
 
     def select_columns(self, columns: List[str]) -> None:
-        """Choose the columns that become attributes. By default all columns do."""
-        self._selected_columns = columns
+        """Keep an independent selection so only these columns become model attributes."""
+        self._selected_columns = list(columns)
 
     def import_into(self, model: BaseMlmModel, path: str) -> ImportReport:
         """Fill the given empty model with the content of the CSV file and return the problems found."""
         report = ImportReport()
-        converter = SlotValueConverter(model, report)
+        converter = SlotValueConverter(model, report, read_xml_expressions=False)
         reader = CsvReader(path)
         model.set_model_name(os.path.basename(path))
         self._check_file(reader)
@@ -92,17 +92,21 @@ class CsvImporter(ModelImporter):
     @staticmethod
     def _check_file(reader: CsvReader) -> None:
         """Stop the import if the file has no rows, no valid header, or a row of the wrong length."""
-        assert not reader.is_empty(), "CSV file must contain at least one row."
+        if reader.is_empty():
+            raise ValueError("CSV file must contain at least one row.")
         number_of_columns = len(reader.get_header())
-        assert number_of_columns > 0, "CSV header must contain at least one column."
-        assert reader.first_row_looks_like_header(), (
-            "CSV header does not look valid. The first row seems to contain data instead of attribute names."
-        )
+        if number_of_columns == 0:
+            raise ValueError("CSV header must contain at least one column.")
+        if not reader.first_row_looks_like_header():
+            raise ValueError(
+                "CSV header does not look valid. The first row seems to contain data instead of attribute names."
+            )
         # The header is row 1, so the data rows start with the next number.
         for row_number, row in enumerate(reader.get_data_rows(), start=FIRST_DATA_ROW_NUMBER):
-            assert len(row) == number_of_columns, (
-                f"CSV row {row_number} has {len(row)} values, but the header has {number_of_columns} values."
-            )
+            if len(row) != number_of_columns:
+                raise ValueError(
+                    f"CSV row {row_number} has {len(row)} values, but the header has {number_of_columns} values."
+                )
 
     def _create_attributes(self, model: BaseMlmModel, mlm_class: BaseMlmObject, header_row: List[str],
                            data_rows: List[List[str]]) -> List[BaseMlmAttribute]:
@@ -134,7 +138,7 @@ class CsvImporter(ModelImporter):
         for column_number, value in enumerate(row):
             attribute = attributes[column_number]
             if not self._is_empty_csv_cell(value, attribute):
-                slot = BaseMlmSlot(attribute.name, value, xml_value=self._csv_xml_value(value))
+                slot = BaseMlmSlot(attribute.get_name(), value, xml_value=self._csv_xml_value(value))
                 slot.set_owner_object(mlm_instance)
                 slot.set_attribute(attribute)
                 converter.convert(slot)
@@ -147,7 +151,8 @@ class CsvImporter(ModelImporter):
         Without a selected column the class would have no attributes. All wrong names are collected
         first, so that the error shows them at once.
         """
-        assert len(selected_csv_columns) > 0, "At least one CSV column must be selected."
+        if len(selected_csv_columns) == 0:
+            raise ValueError("At least one CSV column must be selected.")
 
         selected_column_numbers = []
         missing_column_names = []
@@ -158,7 +163,8 @@ class CsvImporter(ModelImporter):
             else:
                 selected_column_numbers.append(column_number)
 
-        assert not missing_column_names, f"Selected CSV columns were not found: {missing_column_names}"
+        if missing_column_names:
+            raise ValueError(f"Selected CSV columns were not found: {missing_column_names}")
 
         selected_header_row = self._cells_at(header_row, selected_column_numbers)
         selected_data_rows = []

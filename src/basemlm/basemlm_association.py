@@ -91,14 +91,9 @@ class BaseMlmAssociation(BaseMlmConnection):
         projectName = root.attrib['path']
         model = root.find('Model')
 
-        # transform of cardinalities
-        multSourceToTarget = 'Seq{' + str(self.target_multiplicity.min_multiplicity) + ',' + str(
-            self.target_multiplicity.max_multiplicity) + ',' + str(
-            self.target_multiplicity.unbound).lower() + ',false}'
-
-        multTargetToSource = 'Seq{' + str(self.source_multiplicity.min_multiplicity) + ',' + str(
-            self.source_multiplicity.max_multiplicity) + ',' + str(
-            self.source_multiplicity.unbound).lower() + ',false}'
+        # New associations use the same hasUpperBound representation as exported attributes.
+        multSourceToTarget = self.target_multiplicity.to_xml()
+        multTargetToSource = self.source_multiplicity.to_xml()
 
         # adapt class names to new projectname
         classSourceName = projectName + "::" + self.source_object.name

@@ -50,7 +50,7 @@ class ImporterTests(unittest.TestCase):
         return slot, report
 
     def test_importer_is_found_by_file_ending(self) -> None:
-        """Check that importer is found by file ending."""
+        """Resolve CSV and uppercase XML endings to their formats and reject an unsupported PDF."""
         self.assertIsInstance(importer_for("a.csv"), CsvImporter)
         self.assertIsInstance(importer_for("a.XML"), XmlImporter)
         self.assertEqual(supported_extensions(), [".csv", ".plantuml", ".puml", ".txt", ".xml"])
@@ -58,7 +58,7 @@ class ImporterTests(unittest.TestCase):
             importer_for("a.pdf")
 
     def test_valid_values_get_their_type_and_no_value_counts_as_failed(self) -> None:
-        """Check that valid values get their type and no value counts as failed."""
+        """Convert valid XML primitives and dates to Python values without reporting a mismatch."""
         cases = [
             ("Root::XCore::Integer", "42", int, 42),
             ("Root::XCore::Integer", "00123", int, 123),
@@ -88,7 +88,7 @@ class ImporterTests(unittest.TestCase):
                 self.assertIsInstance(model.parse_attribute_type(attribute_type), expected_class)
 
     def test_value_that_does_not_fit_is_reported_with_readable_text(self) -> None:
-        """Check that value that does not fit is reported with readable text."""
+        """Keep an invalid integer expression as readable text while retaining its raw expression in the report."""
         slot, report = self._import_slot("Root::XCore::Integer", "[78].asString()")
         self.assertEqual(slot.get_value(), "N")
         self.assertEqual(slot.xml_value, "[78].asString()")
@@ -96,7 +96,7 @@ class ImporterTests(unittest.TestCase):
         self.assertEqual(report.get_conversion_failures()[0].get_raw_value(), "[78].asString()")
 
     def test_report_is_returned_and_not_kept_on_the_model(self) -> None:
-        """Check that report is returned and not kept on the model."""
+        """Return an invalid XML slot in the report without adding report state to the model."""
         path = self._write("model.xml", XML_HEAD + typed_slot("Root::XCore::Integer", "abc") + XML_TAIL)
         model, report = importer_for(path).import_file(path)
         self.assertTrue(report.has_conversion_failures())
@@ -104,7 +104,7 @@ class ImporterTests(unittest.TestCase):
         self.assertFalse(hasattr(model, "get_import_report"))
 
     def test_constructor_builds_the_same_model_as_the_importer(self) -> None:
-        """Check that constructor builds the same model as the importer."""
+        """Create identical CSV object names through both APIs and honor the selected age column."""
         path = self._write("data.csv", "name,age\nAnna,25\nBen,31\n")
         imported, _report = importer_for(path).import_file(path)
         constructed = BaseMlmModel(path)
@@ -114,7 +114,7 @@ class ImporterTests(unittest.TestCase):
         self.assertEqual([attr.get_name() for attr in selected.get_objects()[0].get_all_attributes()], ["age"])
 
     def test_csv_values_get_the_type_of_their_column(self) -> None:
-        """Check that csv values get the type of their column."""
+        """Keep ZIP codes as strings while converting CSV flags and counts to bool and int."""
         path = self._write("data.csv", "zip,flag,count\n00123,TRUE,1\n456,false,2\n")
         model, report = importer_for(path).import_file(path)
         first_row = model.get_objects()[1].get_all_slots()
@@ -122,7 +122,7 @@ class ImporterTests(unittest.TestCase):
         self.assertFalse(report.has_problems())
 
     def test_header_check_is_in_the_reader(self) -> None:
-        """Check that header check is in the reader."""
+        """Accept a name-and-age header and reject a first row that has the same data kinds as later rows."""
         self.assertTrue(CsvReader(self._write("a.csv", "name,age\nAnna,25\n")).first_row_looks_like_header())
         self.assertFalse(CsvReader(self._write("b.csv", "Anna,25,Essen\nBen,31,Duisburg\n")).first_row_looks_like_header())
 

@@ -26,10 +26,11 @@ CHARACTER_LIST_EXPRESSION = re.compile(r"\[\s*(\d+\s*(,\s*\d+\s*)*)?\]\.asString
 class SlotValueConverter:
     """Converts slot values of one model and adds values that do not fit their type to the report."""
 
-    def __init__(self, model: BaseMlmModel, report: ImportReport) -> None:
-        """Remember the model, which is needed to recognize its objects, and the report for failed values."""
+    def __init__(self, model: BaseMlmModel, report: ImportReport, read_xml_expressions: bool = True) -> None:
+        """Keep the model and report; only XML input may contain executable-format value expressions."""
         self._model = model
         self._report = report
+        self._read_xml_expressions = read_xml_expressions
 
     def convert(self, slot: BaseMlmSlot) -> None:
         """Converts the raw value of a slot to the type of its attribute.
@@ -51,7 +52,9 @@ class SlotValueConverter:
             slot.set_converted_value(readable_value)
 
     def _get_readable_text(self, raw_value: str) -> str:
-        """Returns the text of a character list. Any other expression stays as it is."""
+        """Decode character lists only for XML; CSV input and unrecognized text remain literal."""
+        if not self._read_xml_expressions:
+            return raw_value
         try:
             return self._parse_string(raw_value)
         except ValueError:
@@ -72,12 +75,15 @@ class SlotValueConverter:
         list is an empty text for a String and means no value for every other type. Expressions
         of unknown types, like a MonetaryValue, stay unchanged, and so does text that is no known
         object of an object type. A ValueError means that the expression does not fit a base type.
+        CSV String cells stay literal; character-list and date expressions are decoded only for XML.
         """
         if slot_value == NO_VALUE_EXPRESSION:
             return None
         if isinstance(type_spec, StringType):
+            if not self._read_xml_expressions:
+                return slot_value
             return self._parse_string(slot_value)
-        if slot_value == EMPTY_CHARACTER_LIST:
+        if self._read_xml_expressions and slot_value == EMPTY_CHARACTER_LIST:
             return None
         if isinstance(type_spec, IntegerType):
             return self._parse_integer(slot_value)
@@ -86,6 +92,8 @@ class SlotValueConverter:
         if isinstance(type_spec, BooleanType):
             return self._parse_boolean(slot_value)
         if isinstance(type_spec, DateType):
+            if not self._read_xml_expressions:
+                raise ValueError("CSV values cannot contain XModeler date expressions.")
             return self._parse_date(slot_value)
         if isinstance(type_spec, BaseMlmEnumType):
             return self._parse_enum_value(slot_value, type_spec)
@@ -164,6 +172,6 @@ class SlotValueConverter:
     def _is_object_reference(self, slot_value: str) -> bool:
         """Checks for the full name of an object in this model, like Root::Model::Object."""
         for mlm_object in self._model.get_objects():
-            if mlm_object.full_name == slot_value:
+            if mlm_object.get_full_name() == slot_value:
                 return True
         return False

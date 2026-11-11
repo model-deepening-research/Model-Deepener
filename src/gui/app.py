@@ -303,7 +303,7 @@ class ModelDeepenerApp(ctk.CTk):
         3: "Conduct Model Deepening Analysis",
     }
 
-    def __init__(self):
+    def __init__(self) -> None:
         """
         Builds the application window and initializes its complete GUI state.
 
@@ -563,7 +563,7 @@ class ModelDeepenerApp(ctk.CTk):
             work_area.bottom - work_area.top,
         )
 
-    def _toggle_maximize_window(self):
+    def _toggle_maximize_window(self) -> None:
         """
         Switches between the maximized and normal window sizes.
 
@@ -627,7 +627,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         self.after(100, restore_when_visible)
 
-    def _shrink_window(self):
+    def _shrink_window(self) -> None:
         """
         Reduces the window to 60 percent and centers it on its current monitor.
 
@@ -1192,7 +1192,7 @@ class ModelDeepenerApp(ctk.CTk):
             return text
         return f"{text[:max_length - 3]}..."
 
-    def _show_import_page(self):
+    def _show_import_page(self) -> None:
         """
         Shows the New Model page.
 
@@ -1961,6 +1961,7 @@ class ModelDeepenerApp(ctk.CTk):
 
     @staticmethod
     def _model_overview_display_name(model: BaseMlmModel) -> str:
+        """Prefer the first attributed class name, falling back to the model path or a generic label."""
         class_objects = [
             obj
             for obj in model.mlm_objects
@@ -2052,7 +2053,7 @@ class ModelDeepenerApp(ctk.CTk):
             command=self._export_current_model_placeholder,
         ).grid(row=0, column=3, sticky="e")
 
-    def _check_current_constraints(self):
+    def _check_current_constraints(self) -> None:
         """Check the current model and show whether BaseMLM constraints are valid."""
         if self.current_model is None:
             self._show_information(
@@ -2077,7 +2078,10 @@ class ModelDeepenerApp(ctk.CTk):
             )
             return
 
-        details = "\n".join(f"- {violation}" for violation in violations)
+        lines = []
+        for violation in violations:
+            lines.append(f"- {violation}")
+        details = "\n".join(lines)
         self._show_warning(
             "Check Constraints",
             "The model is not valid. The following constraints are violated:\n\n"
@@ -2586,7 +2590,7 @@ class ModelDeepenerApp(ctk.CTk):
                 ])
         os.utime(target_path, None)
 
-    def _show_models_overview_page(self):
+    def _show_models_overview_page(self) -> None:
         """
         Shows the Models Overview page.
 
@@ -2852,25 +2856,26 @@ class ModelDeepenerApp(ctk.CTk):
         self._overlay.cover(dialog)
 
     @staticmethod
-    def _collect_example_files(examples_root: str):
+    def _collect_example_files(examples_root: str) -> list[tuple[str, list[str]]]:
+        """List supported example files by folder while omitting Python cache directories."""
         rows = []
         for folder_path, subfolders, file_names in os.walk(examples_root):
-            subfolders[:] = sorted(
-                folder
-                for folder in subfolders
-                if folder not in {"__pycache__"}
-            )
-            supported_files = sorted(
-                file_name
-                for file_name in file_names
-                if file_name.lower().endswith(tuple(supported_extensions()))
-            )
+            visible_folders = []
+            for folder in subfolders:
+                if folder != "__pycache__":
+                    visible_folders.append(folder)
+            subfolders[:] = sorted(visible_folders)
+            supported_files = []
+            for file_name in file_names:
+                if file_name.lower().endswith(tuple(supported_extensions())):
+                    supported_files.append(file_name)
+            supported_files.sort()
             if supported_files or folder_path == examples_root:
                 rows.append((folder_path, supported_files))
         return rows
 
     def _browse_file(self) -> None:
-        """Ask for a CSV or XML file over the darkened main window and validate it.
+        """Ask for a CSV, XML or PlantUML file and validate its selection.
 
         If the user cancels the file dialog, nothing changes.
         """
@@ -2885,10 +2890,15 @@ class ModelDeepenerApp(ctk.CTk):
     @staticmethod
     def _import_file_types() -> list[tuple[str, str]]:
         """Returns the entries of the file dialog for all formats that can be imported."""
-        file_types = [("Supported files", " ".join(f"*{extension}" for extension in supported_extensions()))]
+        all_patterns = []
+        for extension in supported_extensions():
+            all_patterns.append(f"*{extension}")
+        file_types = [("Supported files", " ".join(all_patterns))]
         for importer_class in supported_importers():
-            patterns = " ".join(f"*{extension}" for extension in importer_class.EXTENSIONS)
-            file_types.append((f"{importer_class.FORMAT_NAME} files", patterns))
+            patterns = []
+            for extension in importer_class.EXTENSIONS:
+                patterns.append(f"*{extension}")
+            file_types.append((f"{importer_class.FORMAT_NAME} files", " ".join(patterns)))
         file_types.append(("All files", "*.*"))
         return file_types
 
@@ -2900,7 +2910,8 @@ class ModelDeepenerApp(ctk.CTk):
         except ValueError:
             return None
 
-    def _validate_current_file(self):
+    def _validate_current_file(self) -> None:
+        """Validate the chosen format and enable creation only when its selection is usable."""
         file_path = self.file_path_var.get().strip()
         self.current_file_path = file_path or None
         self.csv_preview = None
@@ -3026,6 +3037,7 @@ class ModelDeepenerApp(ctk.CTk):
 
     @classmethod
     def _build_csv_preview(cls, file_path: str) -> CsvImportPreview:
+        """Read CSV metadata and collect blocking errors before showing the column selection."""
         # Build a small summary before importing the CSV for real.
         # The GUI uses this summary to explain what the selected file contains.
         warnings: List[str] = []
@@ -3075,6 +3087,7 @@ class ModelDeepenerApp(ctk.CTk):
 
     @staticmethod
     def _build_xml_preview(file_path: str) -> XmlImportPreview:
+        """Import XML once so validation and creation can share its model and problem report."""
         # Try to open the XML model once so the GUI can report problems before the real import.
         try:
             model, report = importer_for(file_path).import_file(file_path)
@@ -3513,7 +3526,8 @@ class ModelDeepenerApp(ctk.CTk):
                     anchor="center",
                 )
 
-    def _render_csv_mapping(self, preview: CsvImportPreview):
+    def _render_csv_mapping(self, preview: CsvImportPreview) -> None:
+        """Build the column selection and sample rows for the validated CSV preview."""
         self.selected_csv_columns.clear()
         self.all_columns_selected_var.set(True)
 
@@ -3814,68 +3828,55 @@ class ModelDeepenerApp(ctk.CTk):
             ),
         ).place(relx=0.5, rely=0.5, anchor="center")
 
-    def _create_model(self):
-        """
-        Creates the model after validation succeeds.
+    def _create_model(self) -> None:
+        """Import CSV, XML or PlantUML and display the candidate only after it is saved.
 
-        This block turns the selected CSV/XML file into the current model,
-        stores the imported source file, updates Models Overview, and saves
-        the model in the object database. If the import found problems and the
-        user cancels, nothing is stored and the previous model stays current.
+        Cancellation, source-copy errors and database failures leave the previous model and
+        workflow state in place. The report can be reviewed before any source is copied.
         """
         if not self.current_file_path:
             self._show_error("Import blocked", "Select a file first.")
             return
-
-        previous_model = self.current_model
-        previous_selected_columns = self.current_selected_columns
         try:
             importer = self._importer_for_file(self.current_file_path)
-            if isinstance(importer, CsvImporter):
-                selected_columns = [
-                    column
-                    for column, selected in self.selected_csv_columns.items()
-                    if selected.get()
-                ]
-
-                if not selected_columns:
-                    self._show_error(
-                        "Import blocked",
-                        "Select at least one CSV column.",
-                    )
-                    return
-
-                importer.select_columns(selected_columns)
-                self.current_model, import_report = importer.import_file(self.current_file_path)
-                self.current_selected_columns = selected_columns
-            elif isinstance(importer, XmlImporter):
-                if self.xml_preview and self.xml_preview.model:
-                    self.current_model, import_report = self.xml_preview.model, self.xml_preview.report
-                else:
-                    self.current_model, import_report = importer.import_file(self.current_file_path)
-                self.current_selected_columns = []
-            elif importer is not None:
-                self.current_model, import_report = importer.import_file(self.current_file_path)
-                self.current_selected_columns = []
-            else:
+            if importer is None:
                 raise ValueError(f"Only {supported_formats_text(' and ')} files are supported.")
-        except Exception as exc:
-            self._show_error("Import failed", str(exc))
-            self.action_unlocked[2] = False
-            self._refresh_actions()
+            model, import_report, selected_columns = self._read_import_candidate(importer)
+            if import_report.has_problems():
+                if not ask_import_problems(self, import_report, self._overlay):
+                    return
+            source_path = self._persist_imported_source_file(self.current_file_path)
+            file_type = importer.FORMAT_NAME.upper()
+            if not self._store_loaded_model(file_type, model, source_path, selected_columns):
+                return
+        except Exception as error:
+            self._show_error("Import failed", f"The model could not be imported or saved. {error}")
             return
 
-        if import_report.has_problems() and not ask_import_problems(self, import_report, self._overlay):
-            self.current_model = previous_model
-            self.current_selected_columns = previous_selected_columns
-            return
-
+        self.current_model = model
+        self.current_selected_columns = selected_columns
+        self.current_file_path = source_path
+        self.current_file_type = file_type
+        self.file_path_var.set(source_path)
         self.action_completed[1] = True
         self.action_unlocked[2] = True
-        self.current_file_path = self._persist_imported_source_file(self.current_file_path)
-        self.current_file_type = importer.FORMAT_NAME.upper()
-        self._store_loaded_model(self.current_file_type)
         self._show_model_page()
+
+    def _read_import_candidate(self, importer: ModelImporter) -> tuple[BaseMlmModel, ImportReport, List[str]]:
+        """Build a candidate without replacing the active model, reusing an available XML preview."""
+        selected_columns = []
+        if isinstance(importer, CsvImporter):
+            for column, selected in self.selected_csv_columns.items():
+                if selected.get():
+                    selected_columns.append(column)
+            if not selected_columns:
+                raise ValueError("Select at least one CSV column.")
+            importer.select_columns(selected_columns)
+        elif isinstance(importer, XmlImporter):
+            if self.xml_preview and self.xml_preview.model:
+                return self.xml_preview.model, self.xml_preview.report, selected_columns
+        model, report = importer.import_file(self.current_file_path)
+        return model, report, selected_columns
 
     def _persist_imported_source_file(self, source_path: Optional[str]) -> Optional[str]:
         """Keep a copy of an imported file in the source folder of its format and return the path of the copy.
@@ -3907,52 +3908,43 @@ class ModelDeepenerApp(ctk.CTk):
             counter += 1
 
         importer.copy_source_file(source_path, target_path)
-        if hasattr(self, "file_path_var"):
-            self.file_path_var.set(target_path)
         return target_path
 
-    def _store_loaded_model(self, file_type: str) -> None:
-        """Store the current model as a new model in the open database and commit.
+    def _store_loaded_model(self, file_type: str, model: BaseMlmModel,
+                            source_path: str, selected_columns: List[str]) -> bool:
+        """Save a candidate with a new OID before exposing it in the overview or active view.
 
-        Every import becomes a new model with its own OID. If another model already has the same
-        name, the next free number is added to the name. The model is then shown in the Models
-        Overview.
+        A failed commit removes the candidate from the in-memory database. The caller keeps
+        the previous active model and receives False when the save error was already shown.
         """
-        if self.current_model is None or self.current_file_path is None:
-            return
-        source_file = os.path.basename(self.current_file_path)
-        name = self.current_model.path_name.split("::")[-1] if self.current_model.path_name else os.path.splitext(source_file)[0]
+        source_file = os.path.basename(source_path)
+        if model.path_name:
+            name = model.path_name.split("::")[-1]
+        else:
+            name = os.path.splitext(source_file)[0]
         name = self._unique_model_name(name)
-        uploaded = datetime.now().strftime("%Y-%m-%d %H:%M")
-        now_text = self._current_timestamp_text()
-        selected_columns = self._selected_column_names(file_type)
         loaded = LoadedModel(
             name=name,
             source_file=source_file,
             file_type=file_type,
-            model=self.current_model,
-            source_path=self.current_file_path,
-            selected_columns=selected_columns,
-            uploaded=uploaded,
-            last_worked_on=now_text,
+            model=model,
+            source_path=source_path,
+            selected_columns=list(selected_columns),
+            uploaded=datetime.now().strftime("%Y-%m-%d %H:%M"),
+            last_worked_on=self._current_timestamp_text(),
             last_action=self.ACTION_TITLES[2],
         )
         self._database.store(loaded)
-        if not self._commit_database():
-            # A model that cannot be saved must not prevent saving the other models.
+        try:
+            self._database.commit()
+        except Exception as error:
             self._database.delete(loaded.get_oid())
-            return
+            if isinstance(error, SAVE_ERRORS):
+                self._show_error("Save failed", save_error_message(error))
+                return False
+            raise
         self.loaded_models.append(loaded)
-
-    def _selected_column_names(self, file_type: str) -> List[str]:
-        """Return the selected columns of a CSV file. Other formats have no columns."""
-        if file_type != CsvImporter.FORMAT_NAME.upper():
-            return []
-        selected_columns = []
-        for column, selected in self.selected_csv_columns.items():
-            if selected.get():
-                selected_columns.append(column)
-        return selected_columns
+        return True
 
     def forget_deleted_database(self, name: str) -> bool:
         """Stop using a database that was deleted. Return True if it was the active database."""
@@ -4325,22 +4317,25 @@ class ModelDeepenerApp(ctk.CTk):
         self.model_tree.item(parent_id, open=True)
 
     def _object_matches_search(self, model: BaseMlmModel, obj: BaseMlmObject, query: str) -> bool:
+        """Search names, properties and relationships to decide whether an object matches the query."""
         if not query:
             return True
         values = [obj.name, obj.full_name]
-        values.extend(attr.name for attr in obj.get_regular_attributes())
-        values.extend(attr.attr_type_str_short for attr in obj.get_regular_attributes())
+        for attr in obj.get_regular_attributes():
+            values.append(attr.name)
+            values.append(attr.attr_type_str_short)
         object_operations = self._operations_for_object(obj)
-        values.extend(operation.operation_name for operation in object_operations)
-        values.extend(operation.return_type for operation in object_operations)
-        values.extend(slot.name for slot in obj.get_regular_slots())
-        values.extend(str(slot.get_value_as_text()) for slot in obj.get_regular_slots())
-        values.extend(parent.name for parent in obj.parent_classes)
-        values.extend(
-            candidate.name
-            for candidate in model.mlm_objects
-            if obj in candidate.parent_classes
-        )
+        for operation in object_operations:
+            values.append(operation.operation_name)
+            values.append(operation.return_type)
+        for slot in obj.get_regular_slots():
+            values.append(slot.name)
+            values.append(slot.get_value_as_text())
+        for parent in obj.parent_classes:
+            values.append(parent.name)
+        for candidate in model.mlm_objects:
+            if obj in candidate.parent_classes:
+                values.append(candidate.name)
         for association in self._associations_for_class(model, obj):
             values.append("association")
             values.extend(
@@ -4367,9 +4362,13 @@ class ModelDeepenerApp(ctk.CTk):
             values.append("operation")
         if self._generalization_rows(obj):
             values.extend(["generalization", "superclass", "subclass"])
-        return any(query in str(value).lower() for value in values if value is not None)
+        for value in values:
+            if value is not None and query in str(value).lower():
+                return True
+        return False
 
-    def _insert_object_search_hits(self, parent_id: str, model: BaseMlmModel, obj: BaseMlmObject, query: str):
+    def _insert_object_search_hits(self, parent_id: str, model: BaseMlmModel, obj: BaseMlmObject, query: str) -> None:
+        """Add matching properties and relationships below an object in the search tree."""
         if not query:
             return
         hit_groups = [
@@ -4443,10 +4442,15 @@ class ModelDeepenerApp(ctk.CTk):
             self.tree_item_view[item_id] = "enum_value"
 
     @staticmethod
-    def _query_matches_values(query: str, *values) -> bool:
-        return any(query in str(value).lower() for value in values if value is not None)
+    def _query_matches_values(query: str, *values: Any) -> bool:
+        """Accept a search hit when any nonempty display value contains the query."""
+        for value in values:
+            if value is not None and query in str(value).lower():
+                return True
+        return False
 
-    def _search_hit_text(self, view_name: str, hit) -> str:
+    def _search_hit_text(self, view_name: str, hit: Any) -> str:
+        """Format the selected kind of search hit for its tree label."""
         if view_name == "attribute":
             return f"{hit.name}: {hit.attr_type_str_short}"
         if view_name == "slot":
@@ -4510,7 +4514,8 @@ class ModelDeepenerApp(ctk.CTk):
         else:
             self._render_empty_detail_state()
 
-    def _render_search_hit_details(self, payload: tuple):
+    def _render_search_hit_details(self, payload: tuple) -> None:
+        """Show the detail view belonging to the selected property or relationship search hit."""
         view_name = payload[0] if payload else ""
         if view_name == "attribute":
             _view, obj, attr = payload
@@ -4655,7 +4660,8 @@ class ModelDeepenerApp(ctk.CTk):
         for obj in model.mlm_objects:
             obj._active_model = model
 
-    def _show_model_overview_load_options(self, model: BaseMlmModel):
+    def _show_model_overview_load_options(self, model: BaseMlmModel) -> None:
+        """Build the attribute and object selection controls before loading an overview."""
         self._detail_load_token = getattr(self, "_detail_load_token", 0) + 1
 
         self.detail_title.configure(
@@ -4734,7 +4740,11 @@ class ModelDeepenerApp(ctk.CTk):
         count_buttons.grid(row=2, column=1, sticky="w", padx=(0, 18), pady=(0, 12))
         self._model_overview_count_buttons = {}
         object_count_options = (5, 10, 15, 20, 50, 100)
-        default_count = next((count for count in object_count_options if total_objects >= count), None)
+        default_count = None
+        for count in object_count_options:
+            if total_objects >= count:
+                default_count = count
+                break
         for index, count in enumerate(object_count_options):
             enabled = total_objects >= count
             button = ctk.CTkButton(
@@ -4844,6 +4854,7 @@ class ModelDeepenerApp(ctk.CTk):
         )
 
     def _model_structure_content_text(self, model: BaseMlmModel, obj: BaseMlmObject) -> str:
+        """Summarize the properties and relationships available on one model object."""
         operation_count = len(self._operations_for_object(obj)) if obj.level == 0 else len(obj.operations_list)
         parts = [
             f"{len(obj.get_regular_attributes())} attributes",
@@ -5236,7 +5247,8 @@ class ModelDeepenerApp(ctk.CTk):
             attributes: List[BaseMlmAttribute],
             objects: List[BaseMlmObject],
             start_index: int,
-    ):
+    ) -> None:
+        """Prepare one bounded batch of slot rows and schedule the next batch without blocking the UI."""
         self._detail_batch_after_id = None
         if token != getattr(self, "_detail_load_token", None):
             return
@@ -5274,7 +5286,7 @@ class ModelDeepenerApp(ctk.CTk):
             self._schedule_detail_batch(
                 token,
                 1,
-                lambda: self._prepare_model_overview_batch(
+                partial(self._prepare_model_overview_batch,
                     token=token,
                     attributes=attributes,
                     objects=objects,
@@ -5666,7 +5678,8 @@ class ModelDeepenerApp(ctk.CTk):
         )
         self._render_detail_rows([])
 
-    def _render_class_details(self, obj: BaseMlmObject):
+    def _render_class_details(self, obj: BaseMlmObject) -> None:
+        """Show the available attribute, relationship, operation and inheritance views of a class."""
         self.detail_title.configure(
             text=f"Class: {obj.name}",
             text_color="#2563EB",
@@ -5687,7 +5700,8 @@ class ModelDeepenerApp(ctk.CTk):
                 return
         self._render_detail_table(("Name", "Type", "Slot"), [])
 
-    def _render_object_details(self, obj: BaseMlmObject):
+    def _render_object_details(self, obj: BaseMlmObject) -> None:
+        """Show the slot, link and operation views available for one instance."""
         self.detail_title.configure(
             text=f"Object: {obj.name}",
             text_color="#16A34A",
@@ -5879,16 +5893,16 @@ class ModelDeepenerApp(ctk.CTk):
             return True
         return bool(self._inherited_associations(obj))
 
-    def _render_class_attribute_table(self, obj: BaseMlmObject):
-        rows = [
-            (attr.name, attr.attr_type_str_short, attr.inst_level)
-            for attr in obj.get_regular_attributes()
-        ]
-        inherited_rows = [
-            (attr.name, attr.attr_type_str_short, f"Level {attr.inst_level}, inherited from {parent.name}")
-            for parent in self._all_parent_classes(obj)
-            for attr in parent.get_regular_attributes()
-        ]
+    def _render_class_attribute_table(self, obj: BaseMlmObject) -> None:
+        """Show declared attributes followed by muted attributes inherited from parent classes."""
+        rows = []
+        for attr in obj.get_regular_attributes():
+            rows.append((attr.name, attr.attr_type_str_short, attr.inst_level))
+        inherited_rows = []
+        for parent in self._all_parent_classes(obj):
+            for attr in parent.get_regular_attributes():
+                level = f"Level {attr.inst_level}, inherited from {parent.name}"
+                inherited_rows.append((attr.name, attr.attr_type_str_short, level))
         self._render_detail_table(
             ("Attribute", "Type", "Level"),
             rows + inherited_rows,
@@ -5927,7 +5941,8 @@ class ModelDeepenerApp(ctk.CTk):
             self._generalization_rows(obj),
         )
 
-    def _render_object_value_table(self, obj: BaseMlmObject):
+    def _render_object_value_table(self, obj: BaseMlmObject) -> None:
+        """Display regular slot values together with their resolved types."""
         self._render_detail_table(
             ("Attribute", "Type", "Slot"),
             [
@@ -5951,7 +5966,8 @@ class ModelDeepenerApp(ctk.CTk):
             highlight_column=3,
         )
 
-    def _render_object_operation_table(self, obj: BaseMlmObject):
+    def _render_object_operation_table(self, obj: BaseMlmObject) -> None:
+        """Display operations available to the instance through its class."""
         slot_by_name = {
             slot.name: slot.get_value_as_text()
             for slot in obj.get_regular_slots()
@@ -6535,19 +6551,29 @@ class ModelDeepenerApp(ctk.CTk):
     @staticmethod
     def _count_attributes(model: BaseMlmModel) -> int:
         """Counts the attributes of all objects, without the ends of associations."""
-        return sum(len(obj.get_regular_attributes()) for obj in model.mlm_objects)
+        count = 0
+        for obj in model.mlm_objects:
+            count += len(obj.get_regular_attributes())
+        return count
 
     @staticmethod
     def _count_higher_level_classes(model: BaseMlmModel) -> int:
         """
         Counts classes above level 1 for the separate higher-level metric card.
         """
-        return sum(1 for obj in model.mlm_objects if obj.level > 1)
+        count = 0
+        for obj in model.mlm_objects:
+            if obj.level > 1:
+                count += 1
+        return count
 
     @staticmethod
     def _count_slots(model: BaseMlmModel) -> int:
         """Counts the slots of all objects, without the ones that stand for links."""
-        return sum(len(obj.get_regular_slots()) for obj in model.mlm_objects)
+        count = 0
+        for obj in model.mlm_objects:
+            count += len(obj.get_regular_slots())
+        return count
 
     @staticmethod
     def _count_operations(model: BaseMlmModel) -> int:
@@ -6559,22 +6585,24 @@ class ModelDeepenerApp(ctk.CTk):
 
     @staticmethod
     def _slot_type(slot: BaseMlmSlot) -> str:
+        """Resolve the display type from the slot attribute or available model metadata."""
         if slot.attribute is not None:
             return ModelDeepenerApp._clean_display_value(slot.attribute.attr_type_str_short)
         owner = getattr(slot, "owner", None)
         model = getattr(owner, "_active_model", None)
         if model is not None:
-            matches = [
-                attr
-                for obj in model.mlm_objects
-                for attr in obj.get_regular_attributes()
-                if attr.name == slot.name
-            ]
-            enum_matches = [
-                attr
-                for attr in matches
-                if any(enum.name == ModelDeepenerApp._clean_display_value(attr.attr_type_str_short) for enum in model.enums)
-            ]
+            matches = []
+            for obj in model.mlm_objects:
+                for attr in obj.get_regular_attributes():
+                    if attr.name == slot.name:
+                        matches.append(attr)
+            enum_matches = []
+            for attr in matches:
+                type_name = ModelDeepenerApp._clean_display_value(attr.attr_type_str_short)
+                for enum in model.enums:
+                    if enum.name == type_name:
+                        enum_matches.append(attr)
+                        break
             if enum_matches:
                 return ModelDeepenerApp._clean_display_value(enum_matches[0].attr_type_str_short)
             if matches:

@@ -17,6 +17,15 @@ class Multiplicity:
     def is_unbounded(self) -> bool:
         return self.unbound
 
+    def to_xml(self) -> str:
+        """Write XModeler bounds with hasUpperBound, using -1 and false for an unbounded end."""
+        upper = self.max_multiplicity
+        has_upper_bound = "true"
+        if self.unbound or upper == -1:
+            upper = -1
+            has_upper_bound = "false"
+        return f"Seq{{{self.min_multiplicity},{upper},{has_upper_bound},false}}"
+
     def is_exactly_one(self) -> bool:
         if self.min_multiplicity == 1 and self.max_multiplicity == 1:
             return True

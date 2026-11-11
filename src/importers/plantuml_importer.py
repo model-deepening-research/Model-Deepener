@@ -25,27 +25,6 @@ class PlantUmlImporter(ModelImporter):
     SOURCE_FOLDER = "plantuml_files"
     FORMAT_NAME = "PlantUML"
 
-    @classmethod
-    def can_read(cls, path: str) -> bool:
-        """Return True for the PlantUML endings and for .txt files that hold PlantUML."""
-        if os.path.splitext(path)[1].lower() == TEXT_EXTENSION:
-            return PlantUmlReader.is_plantuml_text_file(path)
-        return True
-
-    def source_file_name(self, path: str) -> str:
-        """Return the name of the kept copy, which is the name of the model."""
-        return f"{PlantUmlReader.get_model_name(path)}{TEXT_EXTENSION}"
-
-    def copy_source_file(self, source_path: str, target_path: str) -> None:
-        """Write the PlantUML text, because the text of an empty file comes from an image."""
-        with open(target_path, "w", encoding="utf-8", newline="") as file:
-            file.write(PlantUmlReader(source_path).read_text())
-
-    def convert_to_xml(self, path: str) -> str:
-        """Return the XML text that the PlantUML file is converted to."""
-        diagram = self._read_and_rewrite(path)
-        return PlantUmlXmlWriter(diagram).to_xml_string()
-
     def import_into(self, model: BaseMlmModel, path: str) -> ImportReport:
         """Fill the given empty model with the diagram and return the problems and adaptations found.
 
@@ -73,6 +52,27 @@ class PlantUmlImporter(ModelImporter):
             with open(xml_path, "w", encoding="utf-8", newline="") as file:
                 file.write(xml_text)
             return XmlImporter().import_into(model, xml_path)
+
+    @classmethod
+    def can_read(cls, path: str) -> bool:
+        """Inspect TXT contents; otherwise trust the ending already selected by the importer registry."""
+        if os.path.splitext(path)[1].lower() == TEXT_EXTENSION:
+            return PlantUmlReader.is_plantuml_text_file(path)
+        return True
+
+    def source_file_name(self, path: str) -> str:
+        """Return the name of the kept copy, which is the name of the model."""
+        return f"{PlantUmlReader.get_model_name(path)}{TEXT_EXTENSION}"
+
+    def copy_source_file(self, source_path: str, target_path: str) -> None:
+        """Write the PlantUML text, because the text of an empty file comes from an image."""
+        with open(target_path, "w", encoding="utf-8", newline="") as file:
+            file.write(PlantUmlReader(source_path).read_text())
+
+    def convert_to_xml(self, path: str) -> str:
+        """Return the XML text that the PlantUML file is converted to."""
+        diagram = self._read_and_rewrite(path)
+        return PlantUmlXmlWriter(diagram).to_xml_string()
 
 
 register_importer(PlantUmlImporter)
