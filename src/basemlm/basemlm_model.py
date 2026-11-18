@@ -33,12 +33,14 @@ class BaseMlmModel:
     """
 
     def __init__(self, file_path: str = "", print_progress: bool = False,
-                 selected_csv_columns: Optional[List[str]] = None):
+                 selected_csv_columns: Optional[List[str]] = None, is_adapted: bool = False):
         """
         Creates an empty model and optionally imports a file with the importer for its file ending.
 
         XModeler version details, imported type references, and diagram data
         are retained so a later export can reproduce the source information.
+
+        is_adapted means is_marked when something is changed in import
         """
         self.path_name = ""
         self.mlm_objects: List[BaseMlmObject] = []
@@ -52,6 +54,15 @@ class BaseMlmModel:
         self.print_progress = print_progress
         if file_path != "":
             self._import_file(file_path, selected_csv_columns)
+        self.is_adapted = is_adapted
+
+
+    def get_is_adapted(self) -> bool:
+        return self.is_adapted
+
+    def set_is_adapted(self, is_adapted: bool):
+        self.is_adapted = is_adapted
+
 
     def _import_file(self, file_path: str, selected_csv_columns: Optional[List[str]] = None) -> None:
         """Fills this model with the importer for the file. The import report is not kept."""
@@ -1074,7 +1085,7 @@ class BaseMlmModel:
                        for end in src_assoc_ends):
                 return False
 
-            if not any(end.get_association == assoc and end.get_attr_type() == src_object.get_name()
+            if not any(end.get_association() == assoc and end.get_attr_type() == src_object.get_name()
                        for end in tgt_assoc_ends):
                 return False
         return True
