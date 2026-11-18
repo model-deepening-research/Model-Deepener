@@ -167,6 +167,15 @@ class ImportReport:
         """Return a copy of the adaptations, so that only the report can change its list."""
         return list(self._adaptations)
 
+    def get_adaptation_summary_lines(self) -> list[str]:
+        """Return distinct adaptation descriptions with their occurrence counts."""
+        counts: dict[str, int] = {}
+        for adaptation in self._adaptations:
+            description = adaptation.get_description()
+            counts[description] = counts.get(description, 0) + 1
+        return [f"{description} ({count}×)" if count > 1 else description
+                for description, count in counts.items()]
+
     def has_structure_problems(self) -> bool:
         """Return True if an element could not be resolved."""
         return len(self._structure_problems) > 0

@@ -1,0 +1,112 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="mode" nsURI="http://cs.york.ac.uk/" nsPrefix="mde">
+  <eClassifiers xsi:type="ecore:EClass" name="MediaLibrary">
+    <eAnnotations source="gmf.diagram"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="devices" upperBound="-1"
+        eType="#//Device" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="users" upperBound="-1"
+        eType="#//User" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="collections" upperBound="-1"
+        eType="#//MediaCollection" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="User">
+    <eAnnotations source="gmf.node">
+      <details key="label" value="name"/>
+      <details key="figure" value="mode.EllipseFigure"/>
+      <details key="border.color" value="0,0,0"/>
+      <details key="size" value="140,65"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="ownedCollections" upperBound="-1"
+        eType="#//MediaCollection" eOpposite="#//MediaCollection/ownedUser">
+      <eAnnotations source="gmf.link">
+        <details key="target.decoration" value="closedarrow"/>
+        <details key="label" value="owns"/>
+        <details key="color" value="97,97,97"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MediaCollection">
+    <eAnnotations source="gmf.node">
+      <details key="label" value="name"/>
+      <details key="border.color" value="0,0,0"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="mediaArtifacts" lowerBound="1"
+        upperBound="-1" eType="#//MediaArtifact" containment="true" eOpposite="#//MediaArtifact/collection">
+      <eAnnotations source="gmf.compartment">
+        <details key="layout" value="list"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="synchronisedDevices" upperBound="-1"
+        eType="#//Device" eOpposite="#//Device/synchronisedCollections">
+      <eAnnotations source="gmf.link">
+        <details key="target.decoration" value="closedarrow"/>
+        <details key="label" value="syncs with"/>
+        <details key="color" value="97,97,97"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="ownedUser" eType="#//User"
+        eOpposite="#//User/ownedCollections"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MediaArtifact" abstract="true">
+    <eAnnotations source="gmf.node">
+      <details key="label" value="name"/>
+      <details key="border.color" value="0,0,0"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="identifier" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString" iD="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="source" lowerBound="1"
+        eType="#//MediaSourceType"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="collection" lowerBound="1"
+        eType="#//MediaCollection" eOpposite="#//MediaCollection/mediaArtifacts"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Video" eSuperTypes="#//MediaArtifact">
+    <eAnnotations source="gmf.node">
+      <details key="color" value="139,202,217"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="length" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Music" eSuperTypes="#//MediaArtifact">
+    <eAnnotations source="gmf.node">
+      <details key="color" value="242,153,133"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="length" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="AudioBook" eSuperTypes="#//MediaArtifact">
+    <eAnnotations source="gmf.node">
+      <details key="color" value="242,223,126"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="length" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="EBook" eSuperTypes="#//MediaArtifact">
+    <eAnnotations source="gmf.node">
+      <details key="color" value="162,217,137"/>
+    </eAnnotations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Device">
+    <eAnnotations source="gmf.node">
+      <details key="label" value="name"/>
+      <details key="figure" value="mode.DiamondFigure"/>
+      <details key="size" value="140,65"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="type" lowerBound="1" eType="#//DeviceType"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="synchronisedCollections"
+        upperBound="-1" eType="#//MediaCollection" eOpposite="#//MediaCollection/synchronisedDevices"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="MediaSourceType">
+    <eLiterals name="ExternalArtifact"/>
+    <eLiterals name="MediaStore" value="1"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="DeviceType">
+    <eLiterals name="Computer"/>
+    <eLiterals name="Smartphone" value="1"/>
+    <eLiterals name="Tablet" value="2"/>
+  </eClassifiers>
+</ecore:EPackage>

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="familytree" nsURI="http://familytree/0.1" nsPrefix="de.familytree">
+  <eClassifiers xsi:type="ecore:EClass" name="Person" abstract="true">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="firstName" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        defaultValueLiteral="?"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="secondName" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        defaultValueLiteral="?"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="children" upperBound="-1"
+        eType="#//Person" eOpposite="#//Person/parents"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="parents" upperBound="2"
+        eType="#//Person" eOpposite="#//Person/children"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="dayOfBirth" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="nameOfBirth" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="relationshipStatus" lowerBound="1"
+        eType="#//RelationshipStatus"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="died" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"
+        defaultValueLiteral="false"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="dayOfDeath" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="locationOfBirth" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="inRelationWith" eType="#//Person"
+        eOpposite="#//Person/inRelationTo"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="inRelationTo" eType="#//Person"
+        eOpposite="#//Person/inRelationWith"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="imagePaths" upperBound="-1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="FamilyTree">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="members" upperBound="-1"
+        eType="#//Person" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Woman" eSuperTypes="#//Person"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Man" eSuperTypes="#//Person"/>
+  <eClassifiers xsi:type="ecore:EEnum" name="RelationshipStatus">
+    <eLiterals name="Single" value="2"/>
+    <eLiterals name="Widowed" value="4"/>
+    <eLiterals name="Divorced" value="3"/>
+    <eLiterals name="Liaised" value="1"/>
+    <eLiterals name="Married"/>
+  </eClassifiers>
+</ecore:EPackage>

@@ -10,7 +10,7 @@ from typing import Tuple
 from src.basemlm.basemlm_model import BaseMlmModel
 from src.importers import PlantUmlImporter, importer_for, supported_extensions
 from src.importers.import_report import ImportReport
-from src.importers.plantuml_reader import PlantUmlReader
+from src.importers.plantuml_import.plantuml_reader import PlantUmlReader
 
 AIR_TRAVEL = """@startuml
 class FlightExecution {
@@ -58,7 +58,7 @@ class PlantUmlImporterTests(unittest.TestCase):
 
     def test_endings_are_registered(self) -> None:
         """Resolve all registered PlantUML endings, including an uppercase extension, to PlantUmlImporter."""
-        self.assertEqual(supported_extensions(), [".csv", ".plantuml", ".puml", ".txt", ".xml"])
+        self.assertEqual(supported_extensions(), [".csv", ".ecore", ".plantuml", ".puml", ".txt", ".xmi", ".xml"])
         self.assertIsInstance(importer_for("a.puml"), PlantUmlImporter)
         self.assertIsInstance(importer_for("a.PLANTUML"), PlantUmlImporter)
 
@@ -68,7 +68,7 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertIsInstance(importer_for(accepted), PlantUmlImporter)
         for name, text in (("notes.txt", "Some notes about @startuml\n"), ("empty.txt", ""), ("metadata.txt", "x: 1\n")):
             path = self._write(name, text)
-            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "must be a CSV, PlantUML or XML file"):
+            with self.subTest(name=name), self.assertRaisesRegex(ValueError, "must be a CSV, Ecore, PlantUML, UML-XMI or XML file"):
                 importer_for(path)
 
     def test_empty_text_file_reads_the_neighbor_image(self) -> None:
@@ -83,9 +83,25 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertEqual([obj.get_name() for obj in model.get_objects()], ["Order"])
 
     def test_model_name_comes_from_the_folder_or_the_file(self) -> None:
-        """Use the folder for plantuml.txt and normalize punctuation in ordinary diagram filenames."""
+        """Use the folder for plantuml.txt and the exact stem for other files."""
         self.assertEqual(PlantUmlReader.get_model_name(os.path.join("x", "AirTravel", "plantuml.txt")), "AirTravel")
-        self.assertEqual(PlantUmlReader.get_model_name(os.path.join("x", "my-model.puml")), "my_model")
+        self.assertEqual(PlantUmlReader.get_model_name(os.path.join("x", "my-model.puml")), "my-model")
+        model, _ = self._import("class A", "models/plantuml/AirTravel.txt")
+        self.assertEqual(model.get_model_name(), "AirTravel")
+        self.assertEqual(model.path_name, "Root::AirTravel")
+
+    def test_primitive_type_name_conflicts_are_reported(self) -> None:
+        """Report class and enum collisions even when no attribute uses them."""
+        model, report = self._import("class Date\nenum String {\n X\n}\nclass A {\n Date stamp\n String text\n}")
+        attrs = {a.get_name(): a for obj in model.get_objects() if obj.get_name() == "A"
+                 for a in obj.get_regular_attributes()}
+        self.assertEqual(attrs["stamp"].attr_type_str, "Root::Auxiliary::Date")
+        self.assertEqual(attrs["text"].attr_type_str, "Root::XCore::String")
+        conflicts = [a for a in report.get_adaptations() if a.get_problem_type() == "Primitive type name conflict"]
+        self.assertEqual({a.get_object_name() for a in conflicts}, {"Date", "String"})
+        self.assertTrue(all("takes precedence" in a.get_description() for a in conflicts))
+        _, unused_report = self._import("class Boolean")
+        self.assertEqual(len(unused_report.get_adaptations()), 1)
 
     def test_association_class_replaces_the_association(self) -> None:
         """Split FlightExecution-Passenger through Ticket while retaining a clean import report."""
@@ -104,6 +120,41 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertEqual([p.get_name() for p in objects["C"].get_parents()], ["A"])
         attributes = {a.get_name(): a.get_attr_type() for a in objects["A"].get_regular_attributes()}
         self.assertEqual(attributes, {"n": "Integer", "tags": "String"})
+
+    def test_attribute_and_association_levels_are_integers(self) -> None:
+        """Create typed attribute and association-end levels with their owners."""
+        model, _ = self._import('class A {\n String name\n}\nA "1" -- "1" B')
+        for obj in model.get_objects():
+            self.assertIs(type(obj.level), int)
+            for attr in obj.get_all_attributes():
+                self.assertIs(type(attr.get_inst_level()), int)
+                self.assertIs(attr.get_owner(), obj)
+                self.assertTrue(attr.valid_inst_level())
+
+    def test_role_names_are_unique_across_inheritance(self) -> None:
+        """Name parent roles before child roles regardless of declaration order."""
+        model, _ = self._import('class Child\nclass Parent\nclass Route\nParent <|-- Child\n'
+                                'Route -- Child : dropOff\nRoute -- Parent : pickup')
+        by_name = {a.name: a for a in model.get_associations()}
+        self.assertEqual(by_name['pickup'].get_target_access_name(), 'route')
+        self.assertEqual(by_name['dropOff'].get_target_access_name(), 'route1')
+        child = next(obj for obj in model.get_objects() if obj.name == 'Child')
+        self.assertTrue(child.only_unique_attribute_names())
+
+    def test_parent_role_avoids_attributes_in_descendants(self) -> None:
+        """Reserve descendant attribute names when choosing an inherited role."""
+        model, _ = self._import('class Parent\nclass Child {\n String route\n}\nclass Route\n'
+                                'Parent <|-- Child\nRoute -- Parent')
+        association = model.get_associations()[0]
+        self.assertEqual(association.get_target_access_name(), 'route1')
+        child = next(obj for obj in model.get_objects() if obj.name == 'Child')
+        self.assertTrue(child.only_unique_attribute_names())
+
+    def test_sibling_roles_can_share_a_name(self) -> None:
+        """Keep identical role names when no class inherits both roles."""
+        model, _ = self._import('class Parent\nclass First\nclass Second\nclass Route\n'
+                                'Parent <|-- First\nParent <|-- Second\nRoute -- First\nRoute -- Second')
+        self.assertEqual([a.get_target_access_name() for a in model.get_associations()], ['route', 'route'])
 
     def test_relation_to_an_enum_becomes_an_attribute(self) -> None:
         """Convert Card-to-Suit into a Suit attribute and retain its Hearts and Spades literals."""
@@ -145,11 +196,58 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertEqual(len(BaseMlmModel(path).get_objects()), 3)
 
     def test_converted_xml_keeps_what_the_export_loses(self) -> None:
-        """Retain abstract=true and unbounded array multiplicity in the direct PlantUML XML result."""
+        """Retain abstract=true and use exactly one for array attributes."""
         path = self._write("m.puml", "@startuml\nabstract class A {\n Int[] n\n}\n@enduml\n")
-        root = ElementTree.fromstring(PlantUmlImporter().convert_to_xml(path))
+        model, report = PlantUmlImporter().import_file(path)
+        output = os.path.join(self._directory.name, "export.xml")
+        model.export_xml(output)
+        root = ElementTree.parse(output).getroot()
         self.assertEqual(root.find("Model/addMetaClass").get("abstract"), "true")
-        self.assertEqual(root.find("Model/addAttribute").get("multiplicity"), "Seq{0,-1,false,false}")
+        self.assertEqual(root.find("Model/addAttribute").get("multiplicity"), "Seq{1,1,true,false}")
+
+    def test_type_resolution_and_class_reference(self) -> None:
+        """Resolve primitives, enums, classes and unknown types in order."""
+        model, report = self._import("enum Color {\n RED\n}\nclass Engine\nclass Car {\n String title\n Color color\n Engine motor\n Unknown other\n DateTime stamp\n}")
+        objects = {obj.get_name(): obj for obj in model.get_objects()}
+        attrs = {attr.get_name(): attr for attr in objects["Car"].get_regular_attributes()}
+        self.assertIs(attrs["motor"].get_type_spec(), objects["Engine"])
+        self.assertEqual(attrs["motor"].attr_type_str, f"Root::{model.get_model_name()}::Engine")
+        self.assertIs(attrs["color"].get_type_spec(), model.get_enum_types()[0])
+        self.assertEqual(attrs["stamp"].get_attr_type(), "Date")
+        self.assertEqual(attrs["other"].get_attr_type(), "String")
+        self.assertTrue(any("Unknown type 'Unknown'" in a.get_description() for a in report.get_adaptations()))
+        self.assertEqual(model.get_associations(), [])
+
+    def test_type_precedence_with_name_collisions(self) -> None:
+        """Prefer primitives to enums and enums to classes with the same name."""
+        model, _ = self._import("enum String {\n X\n}\nenum Shared {\n Y\n}\nclass Shared\nclass A {\n String title\n Shared value\n}")
+        attrs = {a.get_name(): a for o in model.get_objects() if o.get_name() == "A" for a in o.get_regular_attributes()}
+        self.assertEqual(attrs["title"].attr_type_str, "Root::XCore::String")
+        self.assertIs(attrs["value"].get_type_spec(), next(e for e in model.get_enum_types() if e.get_name() == "Shared"))
+
+    def test_reading_direction_and_default_association_name(self) -> None:
+        """Use the label direction and ignore arrowheads for exported navigation."""
+        model, _ = self._import('A "1" --> "0..*" B : travels <\nB <-- C : drives >\nC -- D')
+        first, second, third = model.get_associations()
+        self.assertEqual((first.get_source_object().get_name(), first.get_target_object().get_name(), first.get_name()),
+                         ("B", "A", "travels"))
+        self.assertEqual((first.source_multiplicity.get_lower_bound(), first.target_multiplicity.get_lower_bound()), (0, 1))
+        self.assertEqual((second.get_source_object().get_name(), second.get_target_object().get_name(), second.get_name()),
+                         ("B", "C", "drives"))
+        self.assertEqual(third.get_name(), "associated_to")
+        target = os.path.join(self._directory.name, "direction.xml")
+        model.export_xml(target)
+        for association in ElementTree.parse(target).getroot().findall("Model/addAssociation"):
+            self.assertEqual(association.get("sourceVisibleFromTarget"), "true")
+            self.assertEqual(association.get("targetVisibleFromSource"), "true")
+
+    def test_operations_and_arrays_reported(self) -> None:
+        """Skip all operations with one hint and report each array."""
+        model, report = self._import("class A {\n String[] tags\n int f()\n int g()\n}")
+        hints = [a.get_description() for a in report.get_adaptations()]
+        self.assertEqual(sum("Operations are skipped" in h for h in hints), 1)
+        self.assertTrue(any("[]" in h for h in hints))
+        self.assertEqual(str(model.get_objects()[0].get_regular_attributes()[0].multiplicity), "(1..1)")
 
     def test_copy_of_the_source_holds_the_text(self) -> None:
         """Copy recovered PNG source into Shop.txt and reimport it with the same model name."""

@@ -1,0 +1,122 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="BankingSystem" nsURI="http:///sysc5709/bank.ecore" nsPrefix="sysc5709.bank">
+  <eAnnotations source="http://www.eclipse.org/OCL/Import">
+    <details key="ecore" value="http://www.eclipse.org/emf/2002/Ecore#/"/>
+  </eAnnotations>
+  <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore">
+    <details key="invocationDelegates" value="http://www.eclipse.org/emf/2002/Ecore/OCL/Pivot"/>
+    <details key="settingDelegates" value="http://www.eclipse.org/emf/2002/Ecore/OCL/Pivot"/>
+    <details key="validationDelegates" value="http://www.eclipse.org/emf/2002/Ecore/OCL/Pivot"/>
+  </eAnnotations>
+  <eClassifiers xsi:type="ecore:EClass" name="Bank">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="bankId" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="branches" lowerBound="1"
+        upperBound="-1" eType="#//Branch" containment="true" eOpposite="#//Branch/bank"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Branch">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="branchId" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="location" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="phoneNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="customers" lowerBound="1"
+        upperBound="-1" eType="#//Customer" containment="true" eOpposite="#//Customer/branch"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="employees" lowerBound="1"
+        upperBound="-1" eType="#//Employee" containment="true" eOpposite="#//Employee/branch"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="bank" lowerBound="1" eType="#//Bank"
+        eOpposite="#//Bank/branches"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Customer">
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore">
+      <details key="constraints" value="Minimum_Age Youth_Account Adult_Account Senior_Account Chequing_Account Maximum_Youth_Saving Maximum_Saving Youth_Saving_Balance"/>
+    </eAnnotations>
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore/OCL/Pivot">
+      <details key="Minimum_Age" value="self.age >= 16"/>
+      <details key="Youth_Account" value="self.age >= 16 and self.age &lt; 25 implies self.customerType = CustomerType :: Youth"/>
+      <details key="Adult_Account" value="self.age >= 25 and self.age &lt; 60 implies self.customerType = CustomerType :: Adult"/>
+      <details key="Senior_Account" value="self.age >= 60 implies self.customerType = CustomerType :: Senior"/>
+      <details key="Chequing_Account" value="self.accounts->select(v|v.oclIsKindOf(Chequing))->size() &lt;= 1"/>
+      <details key="Maximum_Youth_Saving" value="self.customerType = CustomerType :: Youth implies self.accounts->select(v|v.oclIsKindOf(Saving))->size() &lt;= 1"/>
+      <details key="Maximum_Saving" value="self.accounts->select(v|v.oclIsKindOf(Saving))->size() &lt;= 5"/>
+      <details key="Youth_Saving_Balance" value="self.customerType = CustomerType :: Youth and self.accounts->select(v|v.oclIsKindOf(Saving))->size() = 1 implies self.accounts->exists(v|v.oclIsKindOf(Saving) and v.balance >= 200)"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="age" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="address" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="phoneNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="customerType" lowerBound="1"
+        eType="#//CustomerType"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="branch" lowerBound="1"
+        eType="#//Branch" eOpposite="#//Branch/customers"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="accounts" lowerBound="1"
+        upperBound="-1" eType="#//Account" containment="true" eOpposite="#//Account/customer"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="loans" upperBound="-1"
+        eType="#//Loan" containment="true" eOpposite="#//Loan/customer"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="representative" upperBound="-1"
+        eType="#//Financial_Representative" eOpposite="#//Financial_Representative/a"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Account" abstract="true">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="accountNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="balance" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="customer" lowerBound="1"
+        eType="#//Customer" eOpposite="#//Customer/accounts"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Employee" abstract="true">
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore">
+      <details key="constraints" value="Minimum_Age"/>
+    </eAnnotations>
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore/OCL/Pivot">
+      <details key="Minimum_Age" value="self.eage >= 16"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="eid" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"
+        iD="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="ename" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="branch" lowerBound="1"
+        eType="#//Branch" eOpposite="#//Branch/employees"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="isCustomer" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="eage" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="eaddress" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="ephoneNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Loan">
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore">
+      <details key="constraints" value="Minimum_Loan_Amount Youth_Maximum_Loan_Amount"/>
+    </eAnnotations>
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore/OCL/Pivot">
+      <details key="Minimum_Loan_Amount" value="self.amount>=3000"/>
+      <details key="Youth_Maximum_Loan_Amount" value="self.customer.customerType = CustomerType::Youth implies self.amount&lt;=25000"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="loanNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="amount" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="interestRate" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="duration" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="customer" lowerBound="1"
+        eType="#//Customer" eOpposite="#//Customer/loans"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="CustomerType">
+    <eLiterals name="Youth"/>
+    <eLiterals name="Adult" value="1"/>
+    <eLiterals name="Senior" value="2"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Chequing" eSuperTypes="#//Account"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Saving" eSuperTypes="#//Account">
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore">
+      <details key="constraints" value="Youth_Interest_Rate Interest_Rate_0 Interest_Rate_08 Interest_Rate_10 Interest_Rate_13 Interest_Rate_15"/>
+    </eAnnotations>
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore/OCL/Pivot">
+      <details key="Youth_Interest_Rate" value="self.customer.customerType = CustomerType::Youth implies self.interestRate = 0.004"/>
+      <details key="Interest_Rate_0" value="(self.customer.customerType = CustomerType::Adult or self.customer.customerType = CustomerType::Senior) and self.balance &lt; 2000 implies self.interestRate = 0"/>
+      <details key="Interest_Rate_08" value="(self.customer.customerType = CustomerType::Adult or self.customer.customerType = CustomerType::Senior) and self.balance >= 2000 and self.balance &lt; 5000 implies self.interestRate = 0.008"/>
+      <details key="Interest_Rate_10" value="(self.customer.customerType = CustomerType::Adult or self.customer.customerType = CustomerType::Senior) and self.balance >= 5000 and self.balance &lt; 10000 implies self.interestRate = 0.01"/>
+      <details key="Interest_Rate_13" value="self.customer.customerType = CustomerType::Adult and self.balance >= 10000 implies self.interestRate = 0.013"/>
+      <details key="Interest_Rate_15" value="self.customer.customerType = CustomerType::Senior and self.balance >= 10000 implies self.interestRate = 0.015"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="interestRate" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Financial_Representative" eSuperTypes="#//Employee">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="a" upperBound="-1" eType="#//Customer"
+        eOpposite="#//Customer/representative"/>
+  </eClassifiers>
+</ecore:EPackage>

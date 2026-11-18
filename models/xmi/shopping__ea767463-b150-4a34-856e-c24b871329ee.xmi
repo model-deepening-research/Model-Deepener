@@ -1,0 +1,1140 @@
+<xmi:XMI xmi:version="2.1" xmlns:xmi="http://schema.omg.org/spec/XMI/2.1" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:uml="http://www.eclipse.org/uml2/5.0.0/UML">
+  <uml:Model xmi:id="_MNBAEJXNEeqqGZh46IEtXQ" name="com.genmymodel.shoppingcart">
+    <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+      <eAnnotations xmi:id="_MNBAEZXNEeqqGZh46IEtXQ" source="genmymodel">
+        <details xmi:id="_MNBAEpXNEeqqGZh46IEtXQ" key="uuid" value="ea767463-b150-4a34-856e-c24b871329ee"/>
+        <details xmi:id="_MNBAE5XNEeqqGZh46IEtXQ" key="gmm-documentation" value="&lt;span style=&quot;font-size: 14.44444465637207px; line-height: 20px;&quot;&gt;Online customer can browse or search items, view specific item, add it to shopping cart, view and update shopping cart, checkout. User can view shopping cart at any time.&lt;/span&gt;"/>
+      </eAnnotations>
+    </xmi:Extension>
+    <ownedComment xmi:id="_MNBAFJXNEeqqGZh46IEtXQ" body="This class diagram represents the entities and relations of an online shopping cart system. It's one of the possible designs for such a system.  Fork it to generate Java, SQL and more to get a usable implementation.  See also the activity diagram available in the tree structure.">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAFZXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAFpXNEeqqGZh46IEtXQ" key="uuid" value="_oozEAF2mEDCmZJZW1tvwBA"/>
+        </eAnnotations>
+      </xmi:Extension>
+    </ownedComment>
+    <packageImport xmi:id="_MNBAF5XNEeqqGZh46IEtXQ" importingNamespace="_MNBAEJXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAGJXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAGZXNEeqqGZh46IEtXQ" key="uuid" value="25f89824-2c56-4950-a84a-06a651f49bf9"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <importedPackage href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#/"/>
+    </packageImport>
+    <packageImport xmi:id="_MNBAGpXNEeqqGZh46IEtXQ" importingNamespace="_MNBAEJXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAG5XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAHJXNEeqqGZh46IEtXQ" key="uuid" value="cdd8a7d7-ee54-4f7c-92dc-bbfb7a2a1c66"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <importedPackage href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#/"/>
+    </packageImport>
+    <packagedElement xsi:type="uml:Enumeration" xmi:id="_MNBAHZXNEeqqGZh46IEtXQ" name="UserState">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAHpXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAH5XNEeqqGZh46IEtXQ" key="uuid" value="_xXnC4GcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBAIJXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedLiteral xmi:id="_MNBAIZXNEeqqGZh46IEtXQ" name="New" enumeration="_MNBAHZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAIpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAI5XNEeqqGZh46IEtXQ" key="uuid" value="_xXnC4WcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_MNBAJJXNEeqqGZh46IEtXQ" name="Active" enumeration="_MNBAHZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAJZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAJpXNEeqqGZh46IEtXQ" key="uuid" value="_xXnC4mcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBAJ5XNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_MNBAKJXNEeqqGZh46IEtXQ" name="Banned" enumeration="_MNBAHZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAKZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAKpXNEeqqGZh46IEtXQ" key="uuid" value="_xXnp8GcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Enumeration" xmi:id="_MNBAK5XNEeqqGZh46IEtXQ" name="OrderStatus">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBALJXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBALZXNEeqqGZh46IEtXQ" key="uuid" value="_xXnp8WcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBALpXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedLiteral xmi:id="_MNBAL5XNEeqqGZh46IEtXQ" name="New" enumeration="_MNBAK5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAMJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAMZXNEeqqGZh46IEtXQ" key="uuid" value="_xXnp8mcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_MNBAMpXNEeqqGZh46IEtXQ" name="Old" enumeration="_MNBAK5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAM5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBANJXNEeqqGZh46IEtXQ" key="uuid" value="_xXoRAGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_MNBANZXNEeqqGZh46IEtXQ" name="Shipped" enumeration="_MNBAK5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBANpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAN5XNEeqqGZh46IEtXQ" key="uuid" value="_xXoRAWcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_MNBAOJXNEeqqGZh46IEtXQ" name="Delivered" enumeration="_MNBAK5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAOZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAOpXNEeqqGZh46IEtXQ" key="uuid" value="_xXoRAmcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBAO5XNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+      <ownedLiteral xmi:id="_MNBAPJXNEeqqGZh46IEtXQ" name="Closed" enumeration="_MNBAK5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAPZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAPpXNEeqqGZh46IEtXQ" key="uuid" value="_xXoRA2cdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBAP5XNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedLiteral>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBAQJXNEeqqGZh46IEtXQ" name="Customer">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAQZXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAQpXNEeqqGZh46IEtXQ" key="uuid" value="_xXo4EGcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBAQ5XNEeqqGZh46IEtXQ" key="gmm-documentation" value="Represents the webuser when he signs in."/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBARJXNEeqqGZh46IEtXQ" name="address">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBARZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBARpXNEeqqGZh46IEtXQ" key="uuid" value="_xXo4EWcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAR5XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBASJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBASZXNEeqqGZh46IEtXQ" name="phone">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBASpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAS5XNEeqqGZh46IEtXQ" key="uuid" value="_xXpfIGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBATJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBATZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBATpXNEeqqGZh46IEtXQ" name="email">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAT5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAUJXNEeqqGZh46IEtXQ" key="uuid" value="_xXqGMGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAUZXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAUpXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedOperation xmi:id="_MNBAU5XNEeqqGZh46IEtXQ" name="isVIP" class="_MNBAQJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAVJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAVZXNEeqqGZh46IEtXQ" key="uuid" value="_0oNyEE6tEDC_9oRZ23LB4Q"/>
+            <details xmi:id="_MNBAVpXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+        <ownedParameter xmi:id="_MNBAV5XNEeqqGZh46IEtXQ" direction="return">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBAWJXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBAWZXNEeqqGZh46IEtXQ" key="uuid" value="985d58bd-246a-467d-a9de-c41b5a5eba2b"/>
+            </eAnnotations>
+          </xmi:Extension>
+          <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//Boolean"/>
+        </ownedParameter>
+      </ownedOperation>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBAWpXNEeqqGZh46IEtXQ" name="Payment">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAW5XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAXJXNEeqqGZh46IEtXQ" key="uuid" value="_xXqtQGcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBAXZXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBAXpXNEeqqGZh46IEtXQ" name="paidDate">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAX5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAYJXNEeqqGZh46IEtXQ" key="uuid" value="_xXqtQWcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBAYZXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Date"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAYpXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAY5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBAZJXNEeqqGZh46IEtXQ" name="total">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAZZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAZpXNEeqqGZh46IEtXQ" key="uuid" value="_xXrUUGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Real"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAZ5XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAaJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBAaZXNEeqqGZh46IEtXQ" name="details">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAapXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAa5XNEeqqGZh46IEtXQ" key="uuid" value="_xXrUUWcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAbJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAbZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBAbpXNEeqqGZh46IEtXQ" name="ShoppingCart">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAb5XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAcJXNEeqqGZh46IEtXQ" key="uuid" value="_xXr7YGcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBAcZXNEeqqGZh46IEtXQ" key="gmm-documentation" value="The entity ShoppingCart is related to one Account, one WebUser and references several LineItem.&amp;nbsp;"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBAcpXNEeqqGZh46IEtXQ" name="creationDate">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAc5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAdJXNEeqqGZh46IEtXQ" key="uuid" value="_xXr7YWcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBAdZXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Date"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAdpXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAd5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBAeJXNEeqqGZh46IEtXQ" name="Account">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAeZXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAepXNEeqqGZh46IEtXQ" key="uuid" value="_xXsicGcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBAe5XNEeqqGZh46IEtXQ" key="gmm-documentation" value="Notice the aggregation from Customer. No account without a Customer. Account can be closed. Most of the time both Account and Customer stay in the database even when the customer unsuscribe/leave the shop.&amp;nbsp;&lt;div&gt;&lt;br&gt;&lt;/div&gt;"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBAfJXNEeqqGZh46IEtXQ" name="billingAddress">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAfZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAfpXNEeqqGZh46IEtXQ" key="uuid" value="_xXsicWcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAf5XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAgJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBAgZXNEeqqGZh46IEtXQ" name="open">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAgpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAg5XNEeqqGZh46IEtXQ" key="uuid" value="_xXtJgGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Date"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAhJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAhZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBAhpXNEeqqGZh46IEtXQ" name="closed">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAh5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAiJXNEeqqGZh46IEtXQ" key="uuid" value="_xXtJgWcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Date"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAiZXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAipXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBAi5XNEeqqGZh46IEtXQ" name="isClosed">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAjJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAjZXNEeqqGZh46IEtXQ" key="uuid" value="_xXtwkGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//Boolean"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAjpXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAj5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBAkJXNEeqqGZh46IEtXQ" name="WebUser">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBAkZXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBAkpXNEeqqGZh46IEtXQ" key="uuid" value="_xXuXoGcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBAk5XNEeqqGZh46IEtXQ" key="gmm-documentation" value="The website visitor, considered not logged in yet."/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBAlJXNEeqqGZh46IEtXQ" name="login" visibility="protected">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBAlZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBAlpXNEeqqGZh46IEtXQ" key="uuid" value="_xXuXoWcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBAl5XNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBAmJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBAmZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBAmpXNEeqqGZh46IEtXQ" name="password" visibility="private">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnIJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnIZXNEeqqGZh46IEtXQ" key="uuid" value="_xXu-sGcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBnIpXNEeqqGZh46IEtXQ" key="gmm-documentation" value="Should be encrypted"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnI5XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnJJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnJZXNEeqqGZh46IEtXQ" name="state" type="_MNBAHZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnJpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnJ5XNEeqqGZh46IEtXQ" key="uuid" value="_xXu-sWcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnKJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnKZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBnKpXNEeqqGZh46IEtXQ" name="Order">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnK5XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnLJXNEeqqGZh46IEtXQ" key="uuid" value="_xXvlwGcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBnLZXNEeqqGZh46IEtXQ" key="gmm-documentation" value="When the ShoppingCart with the LineItems are confirmed by the WebUser, an Order is created.&amp;nbsp;"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBnLpXNEeqqGZh46IEtXQ" name="number">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnL5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnMJXNEeqqGZh46IEtXQ" key="uuid" value="_xXvlwWcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBnMZXNEeqqGZh46IEtXQ" key="gmm-documentation" value="&lt;u&gt;Id&lt;/u&gt;"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//Integer"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnMpXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnM5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnNJXNEeqqGZh46IEtXQ" name="ordered">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnNZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnNpXNEeqqGZh46IEtXQ" key="uuid" value="_xXwM0GcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Date"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnN5XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnOJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnOZXNEeqqGZh46IEtXQ" name="shipped">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnOpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnO5XNEeqqGZh46IEtXQ" key="uuid" value="_xXwM0WcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//Boolean"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnPJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnPZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnPpXNEeqqGZh46IEtXQ" name="shipTo">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnP5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnQJXNEeqqGZh46IEtXQ" key="uuid" value="_xXwz4GcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnQZXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnQpXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnQ5XNEeqqGZh46IEtXQ" name="total">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnRJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnRZXNEeqqGZh46IEtXQ" key="uuid" value="_xXwz4WcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Real"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnRpXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnR5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnSJXNEeqqGZh46IEtXQ" name="status" type="_MNBAK5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnSZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnSpXNEeqqGZh46IEtXQ" key="uuid" value="_xXxa8GcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnS5XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnTJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBnTZXNEeqqGZh46IEtXQ" name="LineItem">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnTpXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnT5XNEeqqGZh46IEtXQ" key="uuid" value="_xXxa8WcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBnUJXNEeqqGZh46IEtXQ" key="gmm-documentation" value="Differentiated from Product to introduce quantity."/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBnUZXNEeqqGZh46IEtXQ" name="quantity">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnUpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnU5XNEeqqGZh46IEtXQ" key="uuid" value="_xXxa8mcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBnVJXNEeqqGZh46IEtXQ" key="gmm-documentation" value="The number of products"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//Integer"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnVZXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnVpXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnV5XNEeqqGZh46IEtXQ" name="price">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnWJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnWZXNEeqqGZh46IEtXQ" key="uuid" value="_xXyCAGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="pathmap://GENMYMODEL_LIBRARIES/GenMyModelPrimitiveTypes.library.uml#//Real"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnWpXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnW5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Class" xmi:id="_MNBnXJXNEeqqGZh46IEtXQ" name="Product">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnXZXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnXpXNEeqqGZh46IEtXQ" key="uuid" value="_xXyCAWcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBnX5XNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedAttribute xmi:id="_MNBnYJXNEeqqGZh46IEtXQ" name="name">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnYZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnYpXNEeqqGZh46IEtXQ" key="uuid" value="_xXyCAmcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnY5XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnZJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+      <ownedAttribute xmi:id="_MNBnZZXNEeqqGZh46IEtXQ" name="description">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnZpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnZ5XNEeqqGZh46IEtXQ" key="uuid" value="_xXypEGcdEeKLcsEXbJ0TrA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <type xsi:type="uml:PrimitiveType" href="http://www.omg.org/spec/UML/20131001/PrimitiveTypes.xmi#//String"/>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnaJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnaZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedAttribute>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnapXNEeqqGZh46IEtXQ" name="Account_Payment" memberEnd="_MNBnbpXNEeqqGZh46IEtXQ _MNBndJXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBnbpXNEeqqGZh46IEtXQ _MNBndJXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBna5XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnbJXNEeqqGZh46IEtXQ" key="uuid" value="_xX1FUGcdEeKLcsEXbJ0TrA"/>
+          <details xmi:id="_MNBnbZXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBnbpXNEeqqGZh46IEtXQ" name="p" type="_MNBAWpXNEeqqGZh46IEtXQ" owningAssociation="_MNBnapXNEeqqGZh46IEtXQ" association="_MNBnapXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnb5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBncJXNEeqqGZh46IEtXQ" key="uuid" value="_xX1FUWcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBncZXNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBncpXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnc5XNEeqqGZh46IEtXQ" value="*"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBndJXNEeqqGZh46IEtXQ" name="acc" type="_MNBAeJXNEeqqGZh46IEtXQ" owningAssociation="_MNBnapXNEeqqGZh46IEtXQ" association="_MNBnapXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBndZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBndpXNEeqqGZh46IEtXQ" key="uuid" value="_xX1FUmcdEeKLcsEXbJ0TrA"/>
+            <details xmi:id="_MNBnd5XNEeqqGZh46IEtXQ" key="gmm-documentation" value=""/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBneJXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBneZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnepXNEeqqGZh46IEtXQ" name="WebUser_ShoppingCart" memberEnd="_MNBnfZXNEeqqGZh46IEtXQ _MNBngpXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBnfZXNEeqqGZh46IEtXQ _MNBngpXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBne5XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnfJXNEeqqGZh46IEtXQ" key="uuid" value="_ISCm0PdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBnfZXNEeqqGZh46IEtXQ" name="shoppingCart" type="_MNBAbpXNEeqqGZh46IEtXQ" owningAssociation="_MNBnepXNEeqqGZh46IEtXQ" association="_MNBnepXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnfpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnf5XNEeqqGZh46IEtXQ" key="uuid" value="_ISAKkPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBngJXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBngZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBngpXNEeqqGZh46IEtXQ" name="webUser" type="_MNBAkJXNEeqqGZh46IEtXQ" owningAssociation="_MNBnepXNEeqqGZh46IEtXQ" association="_MNBnepXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBng5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnhJXNEeqqGZh46IEtXQ" key="uuid" value="_ISB_wPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnhZXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnhpXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnh5XNEeqqGZh46IEtXQ" name="WebUser_Customer" memberEnd="_MNBnipXNEeqqGZh46IEtXQ _MNBnj5XNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBnipXNEeqqGZh46IEtXQ _MNBnj5XNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBniJXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBniZXNEeqqGZh46IEtXQ" key="uuid" value="_L_1HMfdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBnipXNEeqqGZh46IEtXQ" name="customer" type="_MNBAQJXNEeqqGZh46IEtXQ" owningAssociation="_MNBnh5XNEeqqGZh46IEtXQ" association="_MNBnh5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBni5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnjJXNEeqqGZh46IEtXQ" key="uuid" value="_L_yD4PdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnjZXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnjpXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBnj5XNEeqqGZh46IEtXQ" name="webUser" type="_MNBAkJXNEeqqGZh46IEtXQ" owningAssociation="_MNBnh5XNEeqqGZh46IEtXQ" association="_MNBnh5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnkJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnkZXNEeqqGZh46IEtXQ" key="uuid" value="_L_1HMPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnkpXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnk5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnlJXNEeqqGZh46IEtXQ" name="Customer_Account" memberEnd="_MNBnl5XNEeqqGZh46IEtXQ _MNBnnJXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBnl5XNEeqqGZh46IEtXQ _MNBnnJXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnlZXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnlpXNEeqqGZh46IEtXQ" key="uuid" value="_N8zKMPdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBnl5XNEeqqGZh46IEtXQ" name="account" type="_MNBAeJXNEeqqGZh46IEtXQ" aggregation="composite" owningAssociation="_MNBnlJXNEeqqGZh46IEtXQ" association="_MNBnlJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnmJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnmZXNEeqqGZh46IEtXQ" key="uuid" value="_N8wG4PdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnmpXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnm5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBnnJXNEeqqGZh46IEtXQ" name="customer" type="_MNBAQJXNEeqqGZh46IEtXQ" owningAssociation="_MNBnlJXNEeqqGZh46IEtXQ" association="_MNBnlJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnnZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnnpXNEeqqGZh46IEtXQ" key="uuid" value="_N8yjIPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnn5XNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnoJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnoZXNEeqqGZh46IEtXQ" name="Account_ShoppingCart" memberEnd="_MNBnpJXNEeqqGZh46IEtXQ _MNBnqZXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBnpJXNEeqqGZh46IEtXQ _MNBnqZXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnopXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBno5XNEeqqGZh46IEtXQ" key="uuid" value="_PkPpIPdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBnpJXNEeqqGZh46IEtXQ" name="cart" type="_MNBAbpXNEeqqGZh46IEtXQ" aggregation="composite" owningAssociation="_MNBnoZXNEeqqGZh46IEtXQ" association="_MNBnoZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnpZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnppXNEeqqGZh46IEtXQ" key="uuid" value="_PkL-wPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnp5XNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnqJXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBnqZXNEeqqGZh46IEtXQ" name="account" type="_MNBAeJXNEeqqGZh46IEtXQ" owningAssociation="_MNBnoZXNEeqqGZh46IEtXQ" association="_MNBnoZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnqpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnq5XNEeqqGZh46IEtXQ" key="uuid" value="_PkObAPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnrJXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnrZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnrpXNEeqqGZh46IEtXQ" name="ShoppingCart_LineItem" memberEnd="_MNBnsZXNEeqqGZh46IEtXQ _MNBntpXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBnsZXNEeqqGZh46IEtXQ _MNBntpXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnr5XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnsJXNEeqqGZh46IEtXQ" key="uuid" value="_WBA4QPdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBnsZXNEeqqGZh46IEtXQ" name="items" type="_MNBnTZXNEeqqGZh46IEtXQ" owningAssociation="_MNBnrpXNEeqqGZh46IEtXQ" association="_MNBnrpXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnspXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBns5XNEeqqGZh46IEtXQ" key="uuid" value="_WA8m0PdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBntJXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBntZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBntpXNEeqqGZh46IEtXQ" name="sc" type="_MNBAbpXNEeqqGZh46IEtXQ" owningAssociation="_MNBnrpXNEeqqGZh46IEtXQ" association="_MNBnrpXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnt5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnuJXNEeqqGZh46IEtXQ" key="uuid" value="_WA_qIPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnuZXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnupXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnu5XNEeqqGZh46IEtXQ" name="Product_LineItem" memberEnd="_MNBnvpXNEeqqGZh46IEtXQ _MNBnw5XNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBnvpXNEeqqGZh46IEtXQ _MNBnw5XNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnvJXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnvZXNEeqqGZh46IEtXQ" key="uuid" value="_qxalEPdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBnvpXNEeqqGZh46IEtXQ" name="lineItems" type="_MNBnTZXNEeqqGZh46IEtXQ" owningAssociation="_MNBnu5XNEeqqGZh46IEtXQ" association="_MNBnu5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnv5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnwJXNEeqqGZh46IEtXQ" key="uuid" value="_qxWToPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnwZXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnwpXNEeqqGZh46IEtXQ" value="*"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBnw5XNEeqqGZh46IEtXQ" name="product" type="_MNBnXJXNEeqqGZh46IEtXQ" owningAssociation="_MNBnu5XNEeqqGZh46IEtXQ" association="_MNBnu5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnxJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnxZXNEeqqGZh46IEtXQ" key="uuid" value="_qxZW8PdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnxpXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnx5XNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBnyJXNEeqqGZh46IEtXQ" name="Order_LineItem" memberEnd="_MNBny5XNEeqqGZh46IEtXQ _MNBn0JXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBny5XNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBnyZXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBnypXNEeqqGZh46IEtXQ" key="uuid" value="_zHzBMPdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBny5XNEeqqGZh46IEtXQ" name="items" type="_MNBnTZXNEeqqGZh46IEtXQ" owningAssociation="_MNBnyJXNEeqqGZh46IEtXQ" association="_MNBnyJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBnzJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBnzZXNEeqqGZh46IEtXQ" key="uuid" value="_zHxzEPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBnzpXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBnz5XNEeqqGZh46IEtXQ" value="*"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBn0JXNEeqqGZh46IEtXQ" name="order" type="_MNBnKpXNEeqqGZh46IEtXQ" owningAssociation="_MNBnyJXNEeqqGZh46IEtXQ" association="_MNBnyJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn0ZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBn0pXNEeqqGZh46IEtXQ" key="uuid" value="_zHyaIPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBn05XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBn1JXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBn1ZXNEeqqGZh46IEtXQ" name="Account_Order" memberEnd="_MNBn2JXNEeqqGZh46IEtXQ _MNBn3ZXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBn2JXNEeqqGZh46IEtXQ _MNBn3ZXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBn1pXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBn15XNEeqqGZh46IEtXQ" key="uuid" value="_2uIOsfdvEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBn2JXNEeqqGZh46IEtXQ" name="order" type="_MNBnKpXNEeqqGZh46IEtXQ" aggregation="composite" owningAssociation="_MNBn1ZXNEeqqGZh46IEtXQ" association="_MNBn1ZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn2ZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBn2pXNEeqqGZh46IEtXQ" key="uuid" value="_2uHAkPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBn25XNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBn3JXNEeqqGZh46IEtXQ" value="*"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBn3ZXNEeqqGZh46IEtXQ" name="account" type="_MNBAeJXNEeqqGZh46IEtXQ" owningAssociation="_MNBn1ZXNEeqqGZh46IEtXQ" association="_MNBn1ZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn3pXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBn35XNEeqqGZh46IEtXQ" key="uuid" value="_2uIOsPdvEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBn4JXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBn4ZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Association" xmi:id="_MNBn4pXNEeqqGZh46IEtXQ" name="Payment_Order" memberEnd="_MNBn5ZXNEeqqGZh46IEtXQ _MNBn6pXNEeqqGZh46IEtXQ" navigableOwnedEnd="_MNBn5ZXNEeqqGZh46IEtXQ">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBn45XNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBn5JXNEeqqGZh46IEtXQ" key="uuid" value="_OGCJQfdwEDCQ7NK455wpgA"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <ownedEnd xmi:id="_MNBn5ZXNEeqqGZh46IEtXQ" name="order" type="_MNBnKpXNEeqqGZh46IEtXQ" owningAssociation="_MNBn4pXNEeqqGZh46IEtXQ" association="_MNBn4pXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn5pXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBn55XNEeqqGZh46IEtXQ" key="uuid" value="_OF-e4PdwEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBn6JXNEeqqGZh46IEtXQ" value="1"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBn6ZXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+      <ownedEnd xmi:id="_MNBn6pXNEeqqGZh46IEtXQ" name="payment" type="_MNBAWpXNEeqqGZh46IEtXQ" owningAssociation="_MNBn4pXNEeqqGZh46IEtXQ" association="_MNBn4pXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn65XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBn7JXNEeqqGZh46IEtXQ" key="uuid" value="_OGCJQPdwEDCQ7NK455wpgA"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <lowerValue xsi:type="uml:LiteralInteger" xmi:id="_MNBn7ZXNEeqqGZh46IEtXQ"/>
+        <upperValue xsi:type="uml:LiteralUnlimitedNatural" xmi:id="_MNBn7pXNEeqqGZh46IEtXQ" value="1"/>
+      </ownedEnd>
+    </packagedElement>
+    <packagedElement xsi:type="uml:Activity" xmi:id="_MNBn75XNEeqqGZh46IEtXQ" name="Activity">
+      <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+        <eAnnotations xmi:id="_MNBn8JXNEeqqGZh46IEtXQ" source="genmymodel">
+          <details xmi:id="_MNBn8ZXNEeqqGZh46IEtXQ" key="uuid" value="_4wyAcF9NEDGXpelZg_yjMg"/>
+        </eAnnotations>
+      </xmi:Extension>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBn8pXNEeqqGZh46IEtXQ" name="ControlFlow3" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoiJXNEeqqGZh46IEtXQ" source="_MNBoeZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn85XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBn9JXNEeqqGZh46IEtXQ" key="uuid" value="_aeliYF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBn9ZXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBn9pXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBn95XNEeqqGZh46IEtXQ" key="uuid" value="_aegp4F9PEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBn-JXNEeqqGZh46IEtXQ" name="ControlFlow4" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBohZXNEeqqGZh46IEtXQ" source="_MNBoi5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn-ZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBn-pXNEeqqGZh46IEtXQ" key="uuid" value="_eFn6gF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBn-5XNEeqqGZh46IEtXQ" value="made decision">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBn_JXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBn_ZXNEeqqGZh46IEtXQ" key="uuid" value="_eFia8F9PEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBn_pXNEeqqGZh46IEtXQ" name="ControlFlow" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoi5XNEeqqGZh46IEtXQ" source="_MNBogpXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBn_5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoAJXNEeqqGZh46IEtXQ" key="uuid" value="_zem00F9QEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoAZXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoApXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoA5XNEeqqGZh46IEtXQ" key="uuid" value="_zejKcF9QEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoBJXNEeqqGZh46IEtXQ" name="ControlFlow6" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBooJXNEeqqGZh46IEtXQ" source="_MNBof5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoBZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoBpXNEeqqGZh46IEtXQ" key="uuid" value="_PUZP8F9REDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoB5XNEeqqGZh46IEtXQ" name="ControlFlow8" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBogpXNEeqqGZh46IEtXQ" source="_MNBooJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoCJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoCZXNEeqqGZh46IEtXQ" key="uuid" value="_QNYtcF9REDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoCpXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoC5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoDJXNEeqqGZh46IEtXQ" key="uuid" value="_QNW4QF9REDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoDZXNEeqqGZh46IEtXQ" name="ControlFlow9" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBojpXNEeqqGZh46IEtXQ" source="_MNBofJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoDpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoD5XNEeqqGZh46IEtXQ" key="uuid" value="_R-En8F9REDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoEJXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoEZXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoEpXNEeqqGZh46IEtXQ" key="uuid" value="_R-CywF9REDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoE5XNEeqqGZh46IEtXQ" name="ControlFlow7" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBooJXNEeqqGZh46IEtXQ" source="_MNBojpXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoFJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoFZXNEeqqGZh46IEtXQ" key="uuid" value="_d6FG8F9REDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoFpXNEeqqGZh46IEtXQ" value="found">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoF5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoGJXNEeqqGZh46IEtXQ" key="uuid" value="_d6DRwF9REDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoGZXNEeqqGZh46IEtXQ" name="ControlFlow19" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoo5XNEeqqGZh46IEtXQ" source="_MNBoiJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoGpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoG5XNEeqqGZh46IEtXQ" key="uuid" value="_NDTFIF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoHJXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoHZXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoHpXNEeqqGZh46IEtXQ" key="uuid" value="_NDOzsF9TEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoH5XNEeqqGZh46IEtXQ" name="ControlFlow5" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoppXNEeqqGZh46IEtXQ" source="_MNBoo5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoIJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoIZXNEeqqGZh46IEtXQ" key="uuid" value="_RL_Y0F9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoIpXNEeqqGZh46IEtXQ" value="search">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoI5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoJJXNEeqqGZh46IEtXQ" key="uuid" value="_RL8VgF9TEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoJZXNEeqqGZh46IEtXQ" name="ControlFlow11" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoppXNEeqqGZh46IEtXQ" source="_MNBoi5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoJpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoJ5XNEeqqGZh46IEtXQ" key="uuid" value="_SwQn8F9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoKJXNEeqqGZh46IEtXQ" name="ControlFlow21" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBofJXNEeqqGZh46IEtXQ" source="_MNBoppXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoKZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoKpXNEeqqGZh46IEtXQ" key="uuid" value="_YJKmUF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoK5XNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoLJXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoLZXNEeqqGZh46IEtXQ" key="uuid" value="_YJIxIF9TEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoLpXNEeqqGZh46IEtXQ" name="ControlFlow2" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoqZXNEeqqGZh46IEtXQ" source="_MNBoiJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoL5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoMJXNEeqqGZh46IEtXQ" key="uuid" value="_fV3dkF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoMZXNEeqqGZh46IEtXQ" value="browse">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoMpXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoM5XNEeqqGZh46IEtXQ" key="uuid" value="_fV22gF9TEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoNJXNEeqqGZh46IEtXQ" name="ControlFlow10" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBof5XNEeqqGZh46IEtXQ" source="_MNBoqZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoNZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoNpXNEeqqGZh46IEtXQ" key="uuid" value="_f9MjUF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoN5XNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoOJXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoOZXNEeqqGZh46IEtXQ" key="uuid" value="_f9KuIF9TEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoOpXNEeqqGZh46IEtXQ" name="ControlFlow20" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoqZXNEeqqGZh46IEtXQ" source="_MNBoi5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoO5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoPJXNEeqqGZh46IEtXQ" key="uuid" value="_iW2iUF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoPZXNEeqqGZh46IEtXQ" name="ControlFlow22" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoo5XNEeqqGZh46IEtXQ" source="_MNBojpXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoPpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoP5XNEeqqGZh46IEtXQ" key="uuid" value="_rXte0F9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoQJXNEeqqGZh46IEtXQ" value="not found">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoQZXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoQpXNEeqqGZh46IEtXQ" key="uuid" value="_rXrCkF9TEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoQ5XNEeqqGZh46IEtXQ" name="ControlFlow23" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBorJXNEeqqGZh46IEtXQ" source="_MNBol5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoRJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoRZXNEeqqGZh46IEtXQ" key="uuid" value="_Et_KkF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoRpXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoR5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoSJXNEeqqGZh46IEtXQ" key="uuid" value="_Et-jgF9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoSZXNEeqqGZh46IEtXQ" name="ControlFlow24" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBorJXNEeqqGZh46IEtXQ" source="_MNBohZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoSpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoS5XNEeqqGZh46IEtXQ" key="uuid" value="_FM4tEF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoTJXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoTZXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoTpXNEeqqGZh46IEtXQ" key="uuid" value="_FM3e8F9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoT5XNEeqqGZh46IEtXQ" name="ControlFlow12" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBor5XNEeqqGZh46IEtXQ" source="_MNBorJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoUJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoUZXNEeqqGZh46IEtXQ" key="uuid" value="_O9r4wF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoUpXNEeqqGZh46IEtXQ" value="view cart">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoU5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoVJXNEeqqGZh46IEtXQ" key="uuid" value="_O9qDkF9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoVZXNEeqqGZh46IEtXQ" name="ControlFlow13" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBokZXNEeqqGZh46IEtXQ" source="_MNBor5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoVpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoV5XNEeqqGZh46IEtXQ" key="uuid" value="_PjxBUF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoWJXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoWZXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoWpXNEeqqGZh46IEtXQ" key="uuid" value="_PjulEF9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoW5XNEeqqGZh46IEtXQ" name="ControlFlow14" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBolJXNEeqqGZh46IEtXQ" source="_MNBokZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoXJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoXZXNEeqqGZh46IEtXQ" key="uuid" value="_SxwAQF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoXpXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoX5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoYJXNEeqqGZh46IEtXQ" key="uuid" value="_SxuLEF9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoYZXNEeqqGZh46IEtXQ" name="ControlFlow15" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBol5XNEeqqGZh46IEtXQ" source="_MNBolJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoYpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoY5XNEeqqGZh46IEtXQ" key="uuid" value="_TnxpUF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoZJXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoZZXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoZpXNEeqqGZh46IEtXQ" key="uuid" value="_Tnv0IF9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoZ5XNEeqqGZh46IEtXQ" name="ControlFlow16" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBonZXNEeqqGZh46IEtXQ" source="_MNBompXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoaJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoaZXNEeqqGZh46IEtXQ" key="uuid" value="_V8I4oF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBoapXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBoa5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBobJXNEeqqGZh46IEtXQ" key="uuid" value="_V8HqgF9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBobZXNEeqqGZh46IEtXQ" name="ControlFlow17" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBompXNEeqqGZh46IEtXQ" source="_MNBolJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBobpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBob5XNEeqqGZh46IEtXQ" key="uuid" value="_3zi38F9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBocJXNEeqqGZh46IEtXQ" value="true">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBocZXNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBocpXNEeqqGZh46IEtXQ" key="uuid" value="_3zfNkF9UEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <edge xsi:type="uml:ControlFlow" xmi:id="_MNBoc5XNEeqqGZh46IEtXQ" name="ControlFlow18" activity="_MNBn75XNEeqqGZh46IEtXQ" target="_MNBoqZXNEeqqGZh46IEtXQ" source="_MNBolJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBodJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBodZXNEeqqGZh46IEtXQ" key="uuid" value="_O1E54F9VEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+        <guard xsi:type="uml:LiteralString" xmi:id="_MNBodpXNEeqqGZh46IEtXQ" value="more shopping">
+          <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+            <eAnnotations xmi:id="_MNBod5XNEeqqGZh46IEtXQ" source="genmymodel">
+              <details xmi:id="_MNBoeJXNEeqqGZh46IEtXQ" key="uuid" value="_O1B2kF9VEDGXpelZg_yjMg"/>
+            </eAnnotations>
+          </xmi:Extension>
+        </guard>
+      </edge>
+      <ownedNode xsi:type="uml:InitialNode" xmi:id="_MNBoeZXNEeqqGZh46IEtXQ" name="InitialNode" outgoing="_MNBn8pXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoepXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoe5XNEeqqGZh46IEtXQ" key="uuid" value="_O6DIMF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:OpaqueAction" xmi:id="_MNBofJXNEeqqGZh46IEtXQ" name="Search Items" incoming="_MNBoKJXNEeqqGZh46IEtXQ" outgoing="_MNBoDZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBofZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBofpXNEeqqGZh46IEtXQ" key="uuid" value="_PhFTAF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:OpaqueAction" xmi:id="_MNBof5XNEeqqGZh46IEtXQ" name="Browse Items" incoming="_MNBoNJXNEeqqGZh46IEtXQ" outgoing="_MNBoBJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBogJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBogZXNEeqqGZh46IEtXQ" key="uuid" value="_Q82GYF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:OpaqueAction" xmi:id="_MNBogpXNEeqqGZh46IEtXQ" name="View item" incoming="_MNBoB5XNEeqqGZh46IEtXQ" outgoing="_MNBn_pXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBog5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBohJXNEeqqGZh46IEtXQ" key="uuid" value="_Sm0U4F9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:OpaqueAction" xmi:id="_MNBohZXNEeqqGZh46IEtXQ" name="Add to shopping cart" incoming="_MNBn-JXNEeqqGZh46IEtXQ" outgoing="_MNBoSZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBohpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoh5XNEeqqGZh46IEtXQ" key="uuid" value="_UGzg8F9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:DecisionNode" xmi:id="_MNBoiJXNEeqqGZh46IEtXQ" name="DecisionNode" incoming="_MNBn8pXNEeqqGZh46IEtXQ" outgoing="_MNBoLpXNEeqqGZh46IEtXQ _MNBoGZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoiZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoipXNEeqqGZh46IEtXQ" key="uuid" value="_Y2PEgF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:DecisionNode" xmi:id="_MNBoi5XNEeqqGZh46IEtXQ" name="DecisionNode2" incoming="_MNBn_pXNEeqqGZh46IEtXQ" outgoing="_MNBoOpXNEeqqGZh46IEtXQ _MNBoJZXNEeqqGZh46IEtXQ _MNBn-JXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBojJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBojZXNEeqqGZh46IEtXQ" key="uuid" value="_dgU1EF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:DecisionNode" xmi:id="_MNBojpXNEeqqGZh46IEtXQ" name="DecisionNode5" incoming="_MNBoDZXNEeqqGZh46IEtXQ" outgoing="_MNBoPZXNEeqqGZh46IEtXQ _MNBoE5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoj5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBokJXNEeqqGZh46IEtXQ" key="uuid" value="_ncI98F9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:OpaqueAction" xmi:id="_MNBokZXNEeqqGZh46IEtXQ" name="View shopping cart" incoming="_MNBoVZXNEeqqGZh46IEtXQ" outgoing="_MNBoW5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBokpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBok5XNEeqqGZh46IEtXQ" key="uuid" value="_u65OgF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:DecisionNode" xmi:id="_MNBolJXNEeqqGZh46IEtXQ" name="DecisionNode10" incoming="_MNBoW5XNEeqqGZh46IEtXQ" outgoing="_MNBoYZXNEeqqGZh46IEtXQ _MNBoc5XNEeqqGZh46IEtXQ _MNBobZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBolZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBolpXNEeqqGZh46IEtXQ" key="uuid" value="_0sgAwF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:OpaqueAction" xmi:id="_MNBol5XNEeqqGZh46IEtXQ" name="Update shopping cart" incoming="_MNBoYZXNEeqqGZh46IEtXQ" outgoing="_MNBoQ5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBomJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBomZXNEeqqGZh46IEtXQ" key="uuid" value="_1K83UF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:OpaqueAction" xmi:id="_MNBompXNEeqqGZh46IEtXQ" name="Checkout" incoming="_MNBobZXNEeqqGZh46IEtXQ" outgoing="_MNBoZ5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBom5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBonJXNEeqqGZh46IEtXQ" key="uuid" value="_7vgJcF9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:ActivityFinalNode" xmi:id="_MNBonZXNEeqqGZh46IEtXQ" name="ActivityFinalNode" incoming="_MNBoZ5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBonpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBon5XNEeqqGZh46IEtXQ" key="uuid" value="_89ip4F9PEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:MergeNode" xmi:id="_MNBooJXNEeqqGZh46IEtXQ" name="MergeNode" incoming="_MNBoBJXNEeqqGZh46IEtXQ _MNBoE5XNEeqqGZh46IEtXQ" outgoing="_MNBoB5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBooZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoopXNEeqqGZh46IEtXQ" key="uuid" value="_OrkVYF9REDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:MergeNode" xmi:id="_MNBoo5XNEeqqGZh46IEtXQ" name="MergeNode3" incoming="_MNBoGZXNEeqqGZh46IEtXQ _MNBoPZXNEeqqGZh46IEtXQ" outgoing="_MNBoH5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBopJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBopZXNEeqqGZh46IEtXQ" key="uuid" value="_MdELkF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:MergeNode" xmi:id="_MNBoppXNEeqqGZh46IEtXQ" name="MergeNode4" incoming="_MNBoH5XNEeqqGZh46IEtXQ _MNBoJZXNEeqqGZh46IEtXQ" outgoing="_MNBoKJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBop5XNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoqJXNEeqqGZh46IEtXQ" key="uuid" value="_Qhj7wF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:MergeNode" xmi:id="_MNBoqZXNEeqqGZh46IEtXQ" name="MergeNode5" incoming="_MNBoLpXNEeqqGZh46IEtXQ _MNBoc5XNEeqqGZh46IEtXQ _MNBoOpXNEeqqGZh46IEtXQ" outgoing="_MNBoNJXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBoqpXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBoq5XNEeqqGZh46IEtXQ" key="uuid" value="_ewzosF9TEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:MergeNode" xmi:id="_MNBorJXNEeqqGZh46IEtXQ" name="MergeNode6" incoming="_MNBoQ5XNEeqqGZh46IEtXQ _MNBoSZXNEeqqGZh46IEtXQ" outgoing="_MNBoT5XNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBorZXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBorpXNEeqqGZh46IEtXQ" key="uuid" value="_DyHYMF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+      <ownedNode xsi:type="uml:MergeNode" xmi:id="_MNBor5XNEeqqGZh46IEtXQ" name="MergeNode2" incoming="_MNBoT5XNEeqqGZh46IEtXQ" outgoing="_MNBoVZXNEeqqGZh46IEtXQ">
+        <xmi:Extension extender="http://www.eclipse.org/emf/2002/Ecore">
+          <eAnnotations xmi:id="_MNBosJXNEeqqGZh46IEtXQ" source="genmymodel">
+            <details xmi:id="_MNBosZXNEeqqGZh46IEtXQ" key="uuid" value="_OVIrAF9UEDGXpelZg_yjMg"/>
+          </eAnnotations>
+        </xmi:Extension>
+      </ownedNode>
+    </packagedElement>
+  </uml:Model>
+</xmi:XMI>

@@ -26,8 +26,8 @@ from src.basemlm.basemlm_link import BaseMlmLink
 from src.basemlm.basemlm_model import BaseMlmModel
 from src.basemlm.basemlm_object import BaseMlmObject
 from src.basemlm.basemlm_slot import BaseMlmSlot
-from src.importers import CsvImporter, PlantUmlImporter, XmlImporter, importer_for, supported_extensions
-from src.importers.csv_reader import CsvReader
+from src.importers import CsvImporter, EcoreImporter, PlantUmlImporter, XmiImporter, XmlImporter, importer_for, supported_extensions
+from src.importers.csv_import.csv_reader import CsvReader
 from src.importers.import_report import ImportReport
 from src.importers.model_importer import ModelImporter, supported_formats_text, supported_importers
 from src.object_database.database import Database
@@ -1210,7 +1210,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         self._page_header(
             "Upload File or Select Example",
-            "Import a CSV, FMMLx/XML or PlantUML file. Validation starts automatically after a file is selected.",
+            "Import a CSV, FMMLx/XML, PlantUML, Ecore or UML-XMI file. Validation starts automatically after a file is selected.",
         )
 
         body = ctk.CTkFrame(self.content, fg_color="transparent")
@@ -2113,7 +2113,8 @@ class ModelDeepenerApp(ctk.CTk):
             return
 
         file_type = (self.current_file_type or os.path.splitext(self.current_file_path or "")[1].lstrip(".")).upper()
-        if file_type in ("XML", PlantUmlImporter.FORMAT_NAME.upper()):
+        if file_type in ("XML", PlantUmlImporter.FORMAT_NAME.upper(), EcoreImporter.FORMAT_NAME.upper(),
+                         XmiImporter.FORMAT_NAME.upper()):
             self._export_current_xml_model()
         elif file_type == "CSV":
             self._export_current_csv_model()
@@ -2752,22 +2753,18 @@ class ModelDeepenerApp(ctk.CTk):
         """
         Opens the Select Example dialog.
 
-        The methods in this block handle both ways to choose input: selecting
-        an example from example_models or browsing for a CSV/XML file manually.
+        The example tree includes XML, PlantUML and Ecore models.
         """
-        examples_root = os.path.join(os.getcwd(), "example_models")
-        if not os.path.isdir(examples_root):
+        roots = [("example_models", os.path.join(PROJECT_FOLDER_PATH, "example_models")),
+                 ("models/plantuml", os.path.join(PROJECT_FOLDER_PATH, "models", "plantuml")),
+                 ("models/ecore", os.path.join(PROJECT_FOLDER_PATH, "models", "ecore")),
+                 ("models/xmi", os.path.join(PROJECT_FOLDER_PATH, "models", "xmi"))]
+        examples = [(label, root, self._collect_example_files(root)) for label, root in roots
+                    if os.path.isdir(root)]
+        if not any(files for _label, _root, folders in examples for _folder, files in folders):
             self._show_information(
                 "No examples found",
-                "Place XML files in example_models.",
-            )
-            return
-
-        example_files = self._collect_example_files(examples_root)
-        if not example_files:
-            self._show_information(
-                "No examples found",
-                "No XML files were found in example_models.",
+                "No example files were found in example_models, models/plantuml or models/ecore.",
             )
             return
 
@@ -2781,7 +2778,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         ctk.CTkLabel(
             dialog,
-            text="Select an example from example_models",
+            text="Select an example",
             anchor="w",
             text_color=self.colors["text"],
             font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold"),
@@ -2799,20 +2796,21 @@ class ModelDeepenerApp(ctk.CTk):
         tree.configure(yscrollcommand=scrollbar.set)
 
         path_by_item = {}
-        root_id = tree.insert("", "end", text="example_models", open=True)
-        folder_ids = {examples_root: root_id}
-        for folder_path, file_names in example_files:
-            parent_path = os.path.dirname(folder_path)
-            if folder_path == examples_root:
-                folder_id = root_id
-            else:
-                parent_id = folder_ids.get(parent_path, root_id)
-                folder_id = tree.insert(parent_id, "end", text=os.path.basename(folder_path), open=False)
-                folder_ids[folder_path] = folder_id
-            for file_name in file_names:
-                full_path = os.path.join(folder_path, file_name)
-                item_id = tree.insert(folder_id, "end", text=file_name, open=False)
-                path_by_item[item_id] = full_path
+        for label, examples_root, example_files in examples:
+            root_id = tree.insert("", "end", text=label, open=True)
+            folder_ids = {examples_root: root_id}
+            for folder_path, file_names in example_files:
+                parent_path = os.path.dirname(folder_path)
+                if folder_path == examples_root:
+                    folder_id = root_id
+                else:
+                    parent_id = folder_ids.get(parent_path, root_id)
+                    folder_id = tree.insert(parent_id, "end", text=os.path.basename(folder_path), open=False)
+                    folder_ids[folder_path] = folder_id
+                for file_name in file_names:
+                    full_path = os.path.join(folder_path, file_name)
+                    item_id = tree.insert(folder_id, "end", text=file_name, open=False)
+                    path_by_item[item_id] = full_path
 
         def choose_selected():
             selected = tree.selection()
@@ -2875,7 +2873,7 @@ class ModelDeepenerApp(ctk.CTk):
         return rows
 
     def _browse_file(self) -> None:
-        """Ask for a CSV, XML or PlantUML file and validate its selection.
+        """Ask for a supported model file and validate its selection.
 
         If the user cancels the file dialog, nothing changes.
         """
@@ -2945,13 +2943,13 @@ class ModelDeepenerApp(ctk.CTk):
             self._render_xml_validation(xml_preview)
             self._render_xml_preview(xml_preview)
             can_create = not xml_preview.errors
-        elif isinstance(importer, PlantUmlImporter):
+        elif isinstance(importer, (PlantUmlImporter, EcoreImporter, XmiImporter)):
             self._set_validation_rows([
-                ("File type", PlantUmlImporter.FORMAT_NAME),
+                ("File type", importer.FORMAT_NAME),
                 ("Status", "Not Validated"),
                 ("Errors", "None"),
             ])
-            self._render_empty_preview("PlantUML files have no preview. Create the model to import the diagram.")
+            self._render_empty_preview(f"{importer.FORMAT_NAME} files have no preview. Create the model to import it.")
             can_create = True
         else:
             self._set_validation_rows([
@@ -3756,7 +3754,7 @@ class ModelDeepenerApp(ctk.CTk):
             return self._has_selected_columns()
         if isinstance(importer, XmlImporter):
             return self.xml_preview is not None and not self.xml_preview.errors
-        return isinstance(importer, PlantUmlImporter)
+        return isinstance(importer, (PlantUmlImporter, EcoreImporter, XmiImporter))
 
     def _has_selected_columns(self) -> bool:
         if self.csv_preview is None or self.csv_preview.errors or not self.csv_preview.header_detected:
@@ -3829,7 +3827,7 @@ class ModelDeepenerApp(ctk.CTk):
         ).place(relx=0.5, rely=0.5, anchor="center")
 
     def _create_model(self) -> None:
-        """Import CSV, XML or PlantUML and display the candidate only after it is saved.
+        """Import a model and display the candidate only after it is saved.
 
         Cancellation, source-copy errors and database failures leave the previous model and
         workflow state in place. The report can be reviewed before any source is copied.
@@ -3845,6 +3843,8 @@ class ModelDeepenerApp(ctk.CTk):
             if import_report.has_problems():
                 if not ask_import_problems(self, import_report, self._overlay):
                     return
+            if isinstance(importer, XmiImporter) and not model.get_objects():
+                return
             source_path = self._persist_imported_source_file(self.current_file_path)
             file_type = importer.FORMAT_NAME.upper()
             if not self._store_loaded_model(file_type, model, source_path, selected_columns):
@@ -5802,15 +5802,31 @@ class ModelDeepenerApp(ctk.CTk):
             name = f"{name} (inherited from {inherited_from.name})"
         return (
             name,
-            self._class_with_access_name(association.source_object, association.get_target_access_name()),
-            self._class_with_access_name(association.target_object, association.get_source_access_name()),
+            self._class_with_access_name(association.source_object, association.get_target_access_name(),
+                                         self._has_duplicate_association_end(association.target_object,
+                                                                             association.source_object)),
+            self._class_with_access_name(association.target_object, association.get_source_access_name(),
+                                         self._has_duplicate_association_end(association.source_object,
+                                                                             association.target_object)),
             self._association_multiplicity_text(association),
         )
 
-    def _class_with_access_name(self, class_object: BaseMlmObject, access_name: str) -> str:
-        """Returns the class name, followed by the access name in brackets if the two differ."""
+    def _has_duplicate_association_end(self, owner: BaseMlmObject, reached: BaseMlmObject) -> bool:
+        """Return whether an owner has several association ends reaching the same class."""
+        if self.current_model is None:
+            return False
+        count = 0
+        for association in self.current_model.associations:
+            if association.source_object is owner and association.target_object is reached:
+                count += 1
+            if association.target_object is owner and association.source_object is reached:
+                count += 1
+        return count > 1
+
+    def _class_with_access_name(self, class_object: BaseMlmObject, access_name: str, duplicate: bool) -> str:
+        """Return the class name and, for duplicate ends, its access name."""
         class_name = self._name(class_object)
-        if access_name.lower() == class_name.lower():
+        if not duplicate:
             return class_name
         return f"{class_name} ({access_name})"
 
@@ -7246,7 +7262,7 @@ class ImportProblemDialog(ctk.CTkToplevel):
                               self._report.get_structure_summary_lines())
         if self._report.has_adaptations():
             self._add_section(self.ADAPTED_TITLE, self.ADAPTED_EXPLANATION,
-                              [adaptation.get_description() for adaptation in self._report.get_adaptations()])
+                              self._report.get_adaptation_summary_lines())
         status_label = ctk.CTkLabel(self, text="", anchor="w", wraplength=self.LIST_WIDTH, justify="left",
                                     text_color=self._colors["muted"],
                                     font=ctk.CTkFont(family="Segoe UI", size=12))

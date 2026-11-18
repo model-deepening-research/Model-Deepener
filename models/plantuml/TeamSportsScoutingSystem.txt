@@ -1,0 +1,90 @@
+@startuml
+
+enum Position <<enum>> {
+    Goalkeeper
+    LeftBack
+    ...
+}
+
+enum Recommendation <<enum>> {
+    KeyPlayer
+    FirstTeamPlayer
+    ReserveTeamPlayer
+    ProspectivePlayer
+    NotRecommended
+}
+
+enum ScoutingStatus <<enum>> {
+    LongListed
+    ShortListed
+    RecommendedForSigning
+    OfferMade
+}
+
+enum ScoutKind <<enum>> {
+    RegularScout
+    HeadScout
+}
+
+abstract class Person {
+    String FirstName
+    String LastName
+}
+
+class Player {
+    ScoutingStatus Status
+}
+
+class HeadCoach {}
+
+class Director {}
+
+class Scout {
+    ScoutKind ScoutKind
+}
+
+class Club {}
+
+class Offer {
+    Int Value
+}
+
+class ScoutingAssignment {}
+
+class ScoutReport {
+    String Pro
+    String Con
+    Recommendation Recommendation
+}
+
+class PlayerProfile {
+    Position Position
+}
+
+class PlayerAttribute {
+    String Name
+    Int Value
+}
+
+Person <|-- Player
+Person <|-- HeadCoach
+Person <|-- Director
+Person <|-- Scout
+
+Director *--> "0..*" Offer
+Club *--> "0..1" Director
+Club *--> "0..1" HeadCoach
+Club *--> "0..*" Player
+Club *--> "0..*" Scout
+Scout *--> "0..*" ScoutingAssignment
+ScoutingAssignment *--> "0..1" ScoutReport 
+HeadCoach *--> "0..*" PlayerProfile
+PlayerProfile *--> "0..*" PlayerAttribute
+
+
+Player "0..1" <--> "0..*" Offer
+Player "0..1" <--> "0..1" PlayerProfile
+Player "1..1" <--> "0..*" ScoutingAssignment
+ScoutReport "0..1" <--> "0..1" ScoutReport : nextReport
+
+@enduml

@@ -1,0 +1,120 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="fair"
+    nsURI="http://www.verticon.com/tracker.fair/0.2.1/fair" nsPrefix="fair">
+  <eClassifiers xsi:type="ecore:EClass" name="Fair">
+    <eOperations name="exhibits" upperBound="-1" eType="#//Exhibit"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="youthClubs" upperBound="-1"
+        eType="#//YouthClub" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="divisions" lowerBound="1"
+        upperBound="-1" eType="#//Division" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="premises" lowerBound="1"
+        eType="ecore:EClass ../../com.verticon.tracker/model/tracker.ecore#//Premises"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="people" upperBound="-1"
+        eType="#//Person" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Exhibit">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="number" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"
+        changeable="false" volatile="true" transient="true" defaultValueLiteral="0"
+        derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="animal" lowerBound="1"
+        eType="ecore:EClass ../../com.verticon.tracker/model/tracker.ecore#//Animal"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="exhibitor" lowerBound="1"
+        eType="#//Person"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="lot" lowerBound="1" eType="#//Lot"
+        eOpposite="#//Lot/exhibits"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="salesOrder" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="inAuction" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="award" eType="#//Award"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="YouthClub">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="contacts" lowerBound="1"
+        upperBound="-1" eType="#//Person"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Division">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="departments" lowerBound="1"
+        upperBound="-1" eType="#//Department" containment="true" eOpposite="#//Department/division"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Department">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="classes" lowerBound="1"
+        upperBound="-1" eType="#//Class" containment="true" eOpposite="#//Class/department"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="superintendents" upperBound="-1"
+        eType="#//Person"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="division" lowerBound="1"
+        eType="#//Division" eOpposite="#//Division/departments"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Class">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="lots" lowerBound="1" upperBound="-1"
+        eType="#//Lot" containment="true" eOpposite="#//Lot/class"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="judges" lowerBound="1"
+        upperBound="-1" eType="#//Person"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="department" lowerBound="1"
+        eType="#//Department" eOpposite="#//Department/classes"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Lot">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="exhibits" lowerBound="1"
+        upperBound="-1" eType="#//Exhibit" containment="true" eOpposite="#//Exhibit/lot"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="class" lowerBound="1" eType="#//Class"
+        eOpposite="#//Class/lots"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Person">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="firstName" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="lastName" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="phone" eType="#//USTelephoneNumber"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="street" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="city" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="state" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="zipCode" eType="#//ZipCode"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        volatile="true" derived="true" iD="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="pin" eType="ecore:EDataType ../../com.verticon.tracker/model/tracker.ecore#//PremisesIdNumber"
+        unsettable="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="salesOrder" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="exhibitorNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="email" eType="ecore:EDataType ../../com.verticon.tracker/model/tracker.ecore#//Email"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="ZipCode" instanceClassName="java.lang.String"/>
+  <eClassifiers xsi:type="ecore:EDataType" name="USTelephoneNumber" instanceClassName="java.lang.String"/>
+  <eClassifiers xsi:type="ecore:EClass" name="YoungPerson" eSuperTypes="#//Person">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="parents" lowerBound="1"
+        upperBound="-1" eType="#//Person"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="club" lowerBound="1" eType="#//YouthClub"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="Award">
+    <eLiterals name="Unspecified" literal=""/>
+    <eLiterals name="GrandChampion" value="1" literal="Grand Champion"/>
+    <eLiterals name="ReserveChampion" value="2" literal="Reserve Champion"/>
+    <eLiterals name="BlueRibbon" value="3" literal="Blue Ribbon"/>
+    <eLiterals name="RedRibbon" value="4" literal="Red Ribbon"/>
+    <eLiterals name="WhiteRibbon" value="5" literal="White Ribbon"/>
+    <eLiterals name="PinkRibbon" value="6" literal="Pink Ribbon"/>
+  </eClassifiers>
+</ecore:EPackage>

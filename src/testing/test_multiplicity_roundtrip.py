@@ -60,7 +60,7 @@ class MultiplicityRoundTripTests(unittest.TestCase):
         self.assertEqual(str(parsed), "(1..1)")
 
     def test_plantuml_abstractness_and_attribute_bounds_survive_export(self) -> None:
-        """Keep an abstract class and its String array unbounded after a complete round trip."""
+        """Keep an abstract class and its String array at 1..1 after a round trip."""
         path = self._write("classes.puml", "@startuml\nabstract class A {\n String[] tags\n int count\n}\n"
                            "class B\nA -- B\n@enduml\n")
         model, _report = PlantUmlImporter().import_file(path)
@@ -73,10 +73,10 @@ class MultiplicityRoundTripTests(unittest.TestCase):
         self.assertEqual(classes[1].get("abstract"), "false")
         self.assertTrue(reimported.get_objects()[0].is_abstract())
         attributes = root.findall("Model/addAttribute")
-        self.assertEqual(attributes[0].get("multiplicity"), "Seq{0,-1,false,false}")
+        self.assertEqual(attributes[0].get("multiplicity"), "Seq{1,1,true,false}")
         self.assertEqual(attributes[1].get("multiplicity"), "Seq{1,1,true,false}")
         imported_attributes = reimported.get_objects()[0].get_regular_attributes()
-        self.assertTrue(imported_attributes[0].multiplicity.is_unbounded())
+        self.assertFalse(imported_attributes[0].multiplicity.is_unbounded())
         self.assertFalse(imported_attributes[1].multiplicity.is_unbounded())
 
     def test_xml_attribute_and_association_bounds_survive_export(self) -> None:

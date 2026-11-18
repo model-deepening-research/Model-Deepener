@@ -10,7 +10,7 @@ from src.basemlm.basemlm_model import BaseMlmModel
 from src.basemlm.basemlm_predefined_type import BooleanType, DateType, FloatType, IntegerType, StringType
 from src.basemlm.basemlm_slot import BaseMlmSlot
 from src.basemlm.basemlm_type_spec import TypeSpec
-from src.importers.csv_reader import FLOAT_EXPRESSION, INTEGER_EXPRESSION
+from src.importers.csv_import.csv_reader import FLOAT_EXPRESSION, INTEGER_EXPRESSION
 from src.importers.import_report import ConversionFailure, ImportReport
 
 # Recognizes a date expression, for example: Auxiliary::Date::createDate(2024, 12, 12)

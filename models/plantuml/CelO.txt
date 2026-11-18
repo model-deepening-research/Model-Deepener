@@ -1,0 +1,78 @@
+@startuml
+
+enum AttendeeStatus <<enum>> {
+    Yes
+    Maybe
+    No
+    NoResponse
+}
+
+enum CompletionStatus <<enum>> {
+    ToBeDone
+    Done
+    NotApplicable
+    Attendee
+}
+
+class Person {
+    String LastName
+    String FirstName
+    String EmailAddress
+    String Password
+}
+
+abstract class PersonRole {}
+
+class Organizer {
+    String Address
+    String PhoneNumber
+}
+
+class Attendee {}
+
+class TaskStatus {
+    CompletionStatus status
+}
+
+class Registration {
+    AttendeeStatus Status
+}
+
+class CheckListTask {
+    String Description
+}
+
+class Location {
+    String Name
+    String Address
+}
+
+class Event {
+    String Occasion
+    Date StartTime
+    Date EndTime
+}
+
+class EventType {
+    String Name
+}
+
+PersonRole <|-- Organizer
+PersonRole <|-- Attendee
+
+Person "1" -- "0..2" PersonRole
+
+Organizer "1..*" -- "*" Event
+Attendee "0..1" -- "*" TaskStatus
+
+Attendee "*" - "*" Event
+Registration .. (Attendee,Event)
+
+Event "*" - "*" CheckListTask
+(Event,CheckListTask)..TaskStatus
+
+Location "1" -- "*" Event
+EventType "1" -- "*" Event
+EventType "1" -- "*" CheckListTask
+
+@enduml

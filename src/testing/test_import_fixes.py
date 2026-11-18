@@ -4,7 +4,7 @@ import tempfile
 import unittest
 import xml.etree.ElementTree as ElementTree
 from pathlib import Path
-from types import SimpleNamespace
+from types import MethodType, SimpleNamespace
 from unittest.mock import Mock, patch
 
 from src.basemlm.basemlm_model import BaseMlmModel
@@ -13,11 +13,11 @@ from src.basemlm.basemlm_attribute import BaseMlmAttribute
 from src.basemlm.basemlm_slot import BaseMlmSlot
 from src.gui.app import ModelDeepenerApp
 from src.importers import CsvImporter, PlantUmlImporter, XmlImporter
-from src.importers.csv_reader import CsvReader
+from src.importers.csv_import.csv_reader import CsvReader
 from src.importers.import_report import ImportReport
 from src.importers.model_importer import register_importer, supported_extensions
-from src.importers.plantuml_diagram import UmlOperation, UmlParameter
-from src.importers.plantuml_reader import parse_multiplicity
+from src.importers.class_diagram import UmlOperation, UmlParameter
+from src.importers.plantuml_import.plantuml_reader import parse_multiplicity
 from src.importers.slot_value_converter import SlotValueConverter
 from src.object_database.folder import DatabaseFolder
 from src.testing.test_importers import XML_HEAD, XML_TAIL, typed_slot
@@ -42,111 +42,25 @@ class ImportFixTests(unittest.TestCase):
         """Return normalized XML and the model-import report for a small class diagram."""
         path = self._write("diagram.puml", f"@startuml\n{body}\n@enduml\n")
         importer = PlantUmlImporter()
-        root = ElementTree.fromstring(importer.convert_to_xml(path))
-        _model, report = importer.import_file(path)
+        model, report = importer.import_file(path)
+        output = str(self._folder / "out.xml")
+        model.export_xml(output, project_name="Root::diagram")
+        root = ElementTree.parse(output).getroot()
         return root, report
 
-    def test_each_class_typed_attribute_keeps_its_own_role(self) -> None:
-        """Turn mother and father of type Person into two distinct directed relationships."""
-        root, report = self._plantuml("class Person {\n Person mother\n Person father\n}")
-        associations = root.findall("Model/addAssociation")
-        self.assertEqual(len(associations), 2)
-        roles = []
-        for association in associations:
-            roles.append(association.get("accessTargetFromSourceName"))
-            self.assertEqual(association.get("sourceVisibleFromTarget"), "false")
-            self.assertEqual(association.get("targetVisibleFromSource"), "true")
-        self.assertEqual(roles, ["mother", "father"])
-        self.assertEqual(report.get_adaptations(), [])
-
-    def test_only_matching_label_replaces_an_attribute_and_reports_it(self) -> None:
-        """Drop mother only for a matching label and retain father and unrelated relationships."""
-        for relation in ("Child --> Person : mother", "Person --> Child : mother"):
-            with self.subTest(relation=relation):
-                root, report = self._plantuml(
-                    "class Child {\n Person mother\n Person father\n}\nclass Person\n" + relation)
-                self.assertEqual(len(root.findall("Model/addAssociation")), 2)
-                self.assertEqual(len(report.get_adaptations()), 2)
-                self.assertIn("Child.mother", report.get_adaptations()[0].get_description())
-        root, report = self._plantuml(
-            "class Child {\n Person mother\n}\nclass Person\nChild --> Person : knows")
-        self.assertEqual(len(root.findall("Model/addAssociation")), 2)
-        for hint in report.get_adaptations():
-            self.assertNotIn("omitted", hint.get_description())
-
-    def test_repeated_class_attribute_is_covered_by_the_existing_role(self) -> None:
-        """Keep one mother relationship and explain the repeated declaration rather than duplicating it."""
-        root, report = self._plantuml("class Child {\n Person mother\n Person mother\n}\nclass Person")
+    def test_class_attributes_remain_attributes(self) -> None:
+        """Preserve class typed properties even when a relationship also exists."""
+        root, _ = self._plantuml("class Person {\n Person mother\n Person father\n}\nPerson -- Person")
+        self.assertEqual([a.get("name") for a in root.findall("Model/addAttribute")], ["mother", "father"])
         self.assertEqual(len(root.findall("Model/addAssociation")), 1)
-        self.assertEqual(len(report.get_adaptations()), 1)
-        self.assertIn("same role or label", report.get_adaptations()[0].get_description())
 
-    def test_unique_unlabelled_composition_uses_the_attribute_role(self) -> None:
-        """Reuse a sole composition for availability while preserving its bounds and navigation."""
-        root, report = self._plantuml(
-            'class Hotel {\n RoomAvailability availability\n}\nclass RoomAvailability\n'
-            'Hotel "1" *-- "0..*" RoomAvailability')
-        associations = root.findall("Model/addAssociation")
-        self.assertEqual(len(associations), 1)
-        association = associations[0]
-        self.assertEqual(association.get("accessTargetFromSourceName"), "availability")
-        self.assertEqual(association.get("multTargetToSource"), "Seq{1,1,true,false}")
-        self.assertEqual(association.get("multSourceToTarget"), "Seq{0,-1,false,false}")
-        self.assertEqual(association.get("sourceVisibleFromTarget"), "true")
-        self.assertEqual(association.get("targetVisibleFromSource"), "true")
-        self.assertEqual(len(report.get_adaptations()), 1)
-        description = report.get_adaptations()[0].get_description()
-        self.assertIn("Hotel.availability", description)
-        self.assertIn("role 'availability'", description)
-
-    def test_unique_unlabelled_reverse_association_names_the_reached_end(self) -> None:
-        """Apply availability to the source end when the attribute owner is written on the right."""
-        root, report = self._plantuml(
-            'class Hotel {\n RoomAvailability availability\n}\nclass RoomAvailability\n'
-            'RoomAvailability "0..*" <-- "1" Hotel')
-        associations = root.findall("Model/addAssociation")
-        self.assertEqual(len(associations), 1)
-        association = associations[0]
-        self.assertEqual(association.get("accessSourceFromTargetName"), "availability")
-        self.assertEqual(association.get("sourceVisibleFromTarget"), "true")
-        self.assertEqual(association.get("targetVisibleFromSource"), "false")
-        self.assertEqual(len(report.get_adaptations()), 1)
-
-    def test_multiple_attributes_do_not_reuse_an_unlabelled_association(self) -> None:
-        """Keep mother and father distinct even after one attribute has already been removed."""
-        root, report = self._plantuml(
-            'class Child {\n Person mother\n Person father\n}\nclass Person\n'
-            'Child "1" -- "0..*" Person')
-        associations = root.findall("Model/addAssociation")
-        self.assertEqual(len(associations), 3)
-        self.assertEqual(associations[1].get("accessTargetFromSourceName"), "mother")
-        self.assertEqual(associations[2].get("accessTargetFromSourceName"), "father")
-        self.assertFalse(report.has_problems())
-
-    def test_multiple_unlabelled_associations_do_not_absorb_an_attribute(self) -> None:
-        """Add a separate mother relationship when two unlabelled relationships make reuse ambiguous."""
-        root, report = self._plantuml(
-            'class Child {\n Person mother\n}\nclass Person\n'
-            'Child "1" -- "0..*" Person\nChild "0..1" -- "1" Person')
-        associations = root.findall("Model/addAssociation")
-        self.assertEqual(len(associations), 3)
-        self.assertEqual(associations[2].get("accessTargetFromSourceName"), "mother")
-        self.assertFalse(report.has_problems())
-
-    def test_association_class_preserves_both_navigation_flags(self) -> None:
-        """Split each arrow direction through C without enabling navigation absent from its basis."""
-        cases = [("-->", "false", "true"), ("<--", "true", "false"), ("--", "true", "true")]
-        for arrow, source_visible, target_visible in cases:
-            with self.subTest(arrow=arrow):
-                root, _report = self._plantuml(
-                    f'class A\nclass B\nclass C\nA "1" {arrow} "0..*" B\n(A, B) .. C')
-                associations = root.findall("Model/addAssociation")
-                self.assertEqual(len(associations), 2)
-                self.assertEqual(associations[0].get("classTarget"), "Root::diagram::C")
-                self.assertEqual(associations[1].get("classSource"), "Root::diagram::C")
-                for association in associations:
-                    self.assertEqual(association.get("sourceVisibleFromTarget"), source_visible)
-                    self.assertEqual(association.get("targetVisibleFromSource"), target_visible)
+    def test_association_class_is_navigable_in_both_directions(self) -> None:
+        """Both ends of split relationships are navigable regardless of arrowheads."""
+        for arrow in ("-->", "<--", "--"):
+            root, _ = self._plantuml(f'class A\nclass B\nclass C\nA "1" {arrow} "0..*" B\n(A, B) .. C')
+            for association in root.findall("Model/addAssociation"):
+                self.assertEqual(association.get("sourceVisibleFromTarget"), "true")
+                self.assertEqual(association.get("targetVisibleFromSource"), "true")
 
     def test_csv_expressions_remain_literal_while_xml_strings_decode(self) -> None:
         """Keep CSV character-list and date text literal while XML still decodes character-list strings."""
@@ -187,16 +101,52 @@ class ImportFixTests(unittest.TestCase):
 
     def test_invalid_bounds_use_reported_unbounded_fallback(self) -> None:
         """Replace reversed intervals and star lower bounds with 0..* and an explicit adaptation."""
-        for value in ("5..2", "*..1", "*..*", "*"):
+        for value in ("5..2", "*..1", "*..*"):
             with self.subTest(value=value):
                 self.assertIsNone(parse_multiplicity(value))
                 root, report = self._plantuml(f'class A\nclass B\nA "{value}" -- "1" B')
                 association = root.find("Model/addAssociation")
                 self.assertEqual(association.get("multTargetToSource"), "Seq{0,-1,false,false}")
                 self.assertIn("Invalid multiplicity", report.get_adaptations()[0].get_description())
-        for value in ("0..*", "0..1", "2..5", "1"):
+        for value in ("*", "0..*", "0..1", "2..5", "1"):
             with self.subTest(valid=value):
                 self.assertIsNotNone(parse_multiplicity(value))
+
+    def test_lone_star_is_zero_to_many_without_warning(self) -> None:
+        """Import a lone star as zero to many without an invalid multiplicity hint."""
+        root, report = self._plantuml('class A\nclass B\nA "*" -- "1" B')
+        self.assertEqual(root.find("Model/addAssociation").get("multTargetToSource"), "Seq{0,-1,false,false}")
+        self.assertFalse(report.has_adaptations())
+
+    def test_adaptations_are_grouped_for_display_but_not_csv(self) -> None:
+        """Count identical messages while retaining each original problem in the CSV."""
+        _root, report = self._plantuml('A "bad" -- "1" B\nA "bad" -- "1" B\nA "other" -- "1" B')
+        self.assertEqual(report.get_adaptation_summary_lines(), [
+            "Invalid multiplicity 'bad' replaced by 0..*. (2×)",
+            "Invalid multiplicity 'other' replaced by 0..*.",
+        ])
+        path = self._folder / "problems.csv"
+        report.write_problem_list(str(path))
+        with path.open(encoding="utf-8-sig", newline="") as file:
+            rows = list(csv.reader(file))
+        self.assertEqual(len(rows), 4)
+        self.assertEqual(rows[1][4], rows[2][4])
+
+    def test_duplicate_roles_are_numbered_and_only_duplicates_are_displayed(self) -> None:
+        """Show both role names for repeated class pairs and none for single pairs."""
+        path = self._write("roles.puml", '@startuml\nA "1" -- "1" B : first\n'
+                           'A "1" -- "1" B : second\nA "1" -- "1" C : third\n@enduml')
+        model, _ = PlantUmlImporter().import_file(path)
+        first, second, single = model.get_associations()
+        self.assertEqual([first.get_source_access_name(), second.get_source_access_name()], ["b", "b1"])
+        self.assertEqual([first.get_target_access_name(), second.get_target_access_name()], ["a", "a1"])
+        ui = SimpleNamespace(current_model=model, _name=ModelDeepenerApp._name,
+                             _association_multiplicity_text=ModelDeepenerApp._association_multiplicity_text)
+        for name in ("_association_table_row", "_class_with_access_name", "_has_duplicate_association_end"):
+            setattr(ui, name, MethodType(getattr(ModelDeepenerApp, name), ui))
+        self.assertEqual(ui._association_table_row(first)[1:3], ("A (a)", "B (b)"))
+        self.assertEqual(ui._association_table_row(second)[1:3], ("A (a1)", "B (b1)"))
+        self.assertEqual(ui._association_table_row(single)[1:3], ("A", "C"))
 
     def test_visibility_prefixes_do_not_change_attributes_or_operations(self) -> None:
         """Read all four visibility prefixes without putting their symbols into names or types."""
@@ -207,9 +157,9 @@ class ImportFixTests(unittest.TestCase):
                 attributes = root.findall("Model/addAttribute")
                 self.assertEqual(attributes[0].get("name"), "name")
                 self.assertEqual(attributes[0].get("type"), "Root::XCore::String")
-                self.assertEqual(attributes[1].get("multiplicity"), "Seq{0,-1,false,false}")
-                self.assertEqual(root.find("Model/addOperation").get("name"), "count")
-                self.assertFalse(report.has_problems())
+                self.assertEqual(attributes[1].get("multiplicity"), "Seq{1,1,true,false}")
+                self.assertIsNone(root.find("Model/addOperation"))
+                self.assertEqual(len(report.get_adaptations()), 2)
 
     def test_inputs_and_reader_rows_are_independent_copies(self) -> None:
         """Mutating constructor input or returned CSV rows must not change stored operation or reader data."""
@@ -267,6 +217,17 @@ class ImportSaveTests(unittest.TestCase):
             _read_import_candidate=Mock(return_value=(model, ImportReport(), [])),
             _persist_imported_source_file=Mock(return_value="copy.puml"),
             _store_loaded_model=Mock(return_value=True), _show_error=Mock(), _show_model_page=Mock())
+
+    def test_plantuml_examples_are_listed_and_already_in_source_folder(self) -> None:
+        """Offer PlantUML sources and keep files already stored in the source folder."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder) / "models" / "plantuml"
+            root.mkdir(parents=True)
+            path = root / "Example.txt"
+            path.write_text("@startuml\nclass A\n@enduml\n", encoding="utf-8")
+            self.assertEqual(ModelDeepenerApp._collect_example_files(str(root)), [(str(root), ["Example.txt"])])
+            with patch.object(PlantUmlImporter, "SOURCE_FOLDER", str(root)):
+                self.assertEqual(ModelDeepenerApp._persist_imported_source_file(None, str(path)), str(path))
 
     def test_failed_source_copy_keeps_previous_model_and_workflow(self) -> None:
         """Report a source-copy error without saving or replacing any active GUI state."""

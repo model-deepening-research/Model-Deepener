@@ -2,6 +2,7 @@
 import os
 import tempfile
 import unittest
+import xml.etree.ElementTree as ElementTree
 from datetime import date
 from typing import Tuple
 
@@ -9,7 +10,7 @@ from src.basemlm.basemlm_model import BaseMlmModel
 from src.basemlm.basemlm_predefined_type import BooleanType, DateType, FloatType, IntegerType, StringType
 from src.basemlm.basemlm_slot import BaseMlmSlot
 from src.importers import CsvImporter, XmlImporter, importer_for, supported_extensions
-from src.importers.csv_reader import CsvReader
+from src.importers.csv_import.csv_reader import CsvReader
 from src.importers.import_report import ImportReport
 
 PROJECT = "Root::T"
@@ -53,9 +54,67 @@ class ImporterTests(unittest.TestCase):
         """Resolve CSV and uppercase XML endings to their formats and reject an unsupported PDF."""
         self.assertIsInstance(importer_for("a.csv"), CsvImporter)
         self.assertIsInstance(importer_for("a.XML"), XmlImporter)
-        self.assertEqual(supported_extensions(), [".csv", ".plantuml", ".puml", ".txt", ".xml"])
-        with self.assertRaisesRegex(ValueError, "must be a CSV, PlantUML or XML file"):
+        self.assertEqual(supported_extensions(), [".csv", ".ecore", ".plantuml", ".puml", ".txt", ".xmi", ".xml"])
+        with self.assertRaisesRegex(ValueError, "must be a CSV, Ecore, PlantUML, UML-XMI or XML file"):
             importer_for("a.pdf")
+
+    def test_xml_invalid_attribute_level_is_reported_and_replaced(self) -> None:
+        """Keep attributes and replace invalid or missing levels with zero."""
+        attributes = ''.join(
+            f'<addAttribute class="Root::T::K" name="{name}" type="Root::XCore::String" {level}/>'
+            for name, level in (("good", 'level="0"'), ("bad", 'level="nope"'), ("missing", ""))
+        )
+        model, report = XmlImporter().import_file(self._write("levels.xml", XML_HEAD + attributes + XML_TAIL))
+        owner = next(obj for obj in model.get_objects() if obj.get_name() == "K")
+        self.assertEqual([(a.get_name(), a.get_inst_level()) for a in owner.get_regular_attributes()],
+                         [("good", 0), ("bad", 0), ("missing", 0)])
+        messages = report.get_adaptation_summary_lines()
+        self.assertEqual(len(messages), 2)
+        self.assertTrue(any("bad" in message and "nope" in message and "level set to 0" in message for message in messages))
+        self.assertTrue(any("missing" in message and "level ''" in message and "level set to 0" in message for message in messages))
+        self.assertIsInstance(owner.level, int)
+
+    def test_xml_association_levels_and_owners_are_valid(self) -> None:
+        """Convert both association levels and attach each generated end to its owner."""
+        xml = (XML_HEAD + '<addMetaClass name="B" package="Root::T" level="1" abstract="false"/>'
+               '<addAssociation fwName="links" classSource="Root::T::K" classTarget="Root::T::B" '
+               'instLevelSource="0" instLevelTarget="0" accessTargetFromSourceName="b" '
+               'accessSourceFromTargetName="k" multSourceToTarget="Seq{1,1,true,false}" '
+               'multTargetToSource="Seq{1,1,true,false}"/>' + XML_TAIL)
+        model, report = XmlImporter().import_file(self._write("associations.xml", xml))
+        assoc = model.get_associations()[0]
+        self.assertIs(type(assoc.get_source_inst_level()), int)
+        self.assertIs(type(assoc.get_target_inst_level()), int)
+        self.assertIs(assoc.get_source_association_end().get_owner(), assoc.get_source_object())
+        self.assertIs(assoc.get_target_association_end().get_owner(), assoc.get_target_object())
+        self.assertTrue(assoc.get_source_association_end().valid_inst_level())
+        self.assertTrue(assoc.get_target_association_end().valid_inst_level())
+        self.assertFalse(report.has_problems())
+        invalid = xml.replace('instLevelSource="0"', 'instLevelSource="bad"').replace('instLevelTarget="0"', '')
+        model, report = XmlImporter().import_file(self._write("invalid-association.xml", invalid))
+        assoc = model.get_associations()[0]
+        self.assertEqual((assoc.get_source_inst_level(), assoc.get_target_inst_level()), (0, 0))
+        messages = report.get_adaptation_summary_lines()
+        self.assertTrue(any("links" in message and "instLevelSource 'bad'" in message for message in messages))
+        self.assertTrue(any("links" in message and "instLevelTarget ''" in message for message in messages))
+
+    def test_xml_association_visibility_is_preserved(self) -> None:
+        """Retain each explicitly declared XML navigation setting on export."""
+        for source_visible, target_visible in (("true", "false"), ("false", "true"), ("false", "false")):
+            with self.subTest(source=source_visible, target=target_visible):
+                xml = (XML_HEAD + '<addMetaClass name="B" package="Root::T" level="1" abstract="false"/>'
+                       '<addAssociation fwName="links" classSource="Root::T::K" classTarget="Root::T::B" '
+                       'instLevelSource="0" instLevelTarget="0" accessTargetFromSourceName="b" '
+                       'accessSourceFromTargetName="k" multSourceToTarget="Seq{1,1,true,false}" '
+                       'multTargetToSource="Seq{1,1,true,false}" '
+                       f'sourceVisibleFromTarget="{source_visible}" targetVisibleFromSource="{target_visible}"/>'
+                       + XML_TAIL)
+                model, _ = XmlImporter().import_file(self._write("visibility.xml", xml))
+                target = os.path.join(self._directory.name, "visibility-export.xml")
+                model.export_xml(target)
+                association = ElementTree.parse(target).getroot().find("Model/addAssociation")
+                self.assertEqual(association.get("sourceVisibleFromTarget"), source_visible)
+                self.assertEqual(association.get("targetVisibleFromSource"), target_visible)
 
     def test_valid_values_get_their_type_and_no_value_counts_as_failed(self) -> None:
         """Convert valid XML primitives and dates to Python values without reporting a mismatch."""
