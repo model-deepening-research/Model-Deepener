@@ -6,6 +6,7 @@ import xml.etree.ElementTree as ET
 
 from src.importers.class_diagram import (ClassDiagram, UmlAssociation, UmlAttribute, UmlEnum,
                                          UmlMultiplicity, EXACTLY_ONE, ZERO_TO_MANY, lower_first)
+from src.importers.class_diagram_normalizer import ClassDiagramNormalizer
 
 XSI_TYPE = '{http://www.w3.org/2001/XMLSchema-instance}type'
 PRIMITIVES = {
@@ -323,8 +324,8 @@ class XmiReader:
         """Add one association with its two end roles and multiplicities."""
         left_name, left_end = left
         right_name, right_end = right
-        left_bound = EXACTLY_ONE if left_end.get('aggregation') == 'composite' else self._bounds(left_end, left_name)
-        right_bound = EXACTLY_ONE if right_end.get('aggregation') == 'composite' else self._bounds(right_end, right_name)
+        left_bound = self._end_bounds(left_end, left_name, right_name, right_end.get('aggregation') == 'composite')
+        right_bound = self._end_bounds(right_end, right_name, left_name, left_end.get('aggregation') == 'composite')
         assoc = UmlAssociation(left_name, right_name, left_bound, right_bound, name)
         assoc.set_source_role(left_end.get('name') or lower_first(left_name))
         assoc.set_target_role(right_end.get('name') or lower_first(right_name))
@@ -338,8 +339,8 @@ class XmiReader:
         middle = self._class_names[xmi_id(element)]
         left_name, left = ends[0]
         right_name, right = ends[1]
-        right_bound = EXACTLY_ONE if right.get('aggregation') == 'composite' else self._bounds(right, right_name)
-        left_bound = EXACTLY_ONE if left.get('aggregation') == 'composite' else self._bounds(left, left_name)
+        right_bound = self._end_bounds(right, right_name, left_name, left.get('aggregation') == 'composite')
+        left_bound = self._end_bounds(left, left_name, right_name, right.get('aggregation') == 'composite')
         first = UmlAssociation(left_name, middle, EXACTLY_ONE, right_bound, name)
         first.set_source_role(left.get('name') or lower_first(left_name))
         second = UmlAssociation(middle, right_name, left_bound, EXACTLY_ONE, name)
@@ -354,9 +355,18 @@ class XmiReader:
             middle = self._unique_name(''.join(end[0] for end in ends), self._diagram.get_name())
             self._diagram.get_or_create_class(middle)
         for participant, end in ends:
-            bound = EXACTLY_ONE if end.get('aggregation') == 'composite' else self._bounds(end, participant)
+            bound = self._bounds(end, participant)
             assoc = UmlAssociation(middle, participant, ZERO_TO_MANY, bound, name)
             assoc.set_target_role(end.get('name') or lower_first(participant))
             self._diagram.add_association(assoc)
         self._diagram.add_adaptation('N-ary association', name,
                                      f"N-ary association '{name}' represented by class '{middle}'.")
+
+    def _end_bounds(self, end: ET.Element, whole: str, part: str, is_whole: bool) -> UmlMultiplicity:
+        """Use the opposite end's composite marker to identify the whole."""
+        if not is_whole:
+            return self._bounds(end, whole)
+        explicit = ('lower' in end.attrib or 'upper' in end.attrib or
+                    any(local_tag(child) in ('lowerValue', 'upperValue') for child in end))
+        bounds = self._bounds(end, whole) if explicit else None
+        return ClassDiagramNormalizer.composition_whole(self._diagram, bounds, whole, part)

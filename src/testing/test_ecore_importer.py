@@ -58,6 +58,19 @@ class EcoreImporterTests(unittest.TestCase):
             self.assertEqual(assoc.get('sourceVisibleFromTarget'), 'true')
             self.assertEqual(assoc.get('targetVisibleFromSource'), 'true')
 
+    def test_containment_whole_explicit_bounds(self) -> None:
+        for bounds, expected, warning in [('', '(1..1)', False), ('lowerBound="0" upperBound="1"', '(0..1)', False),
+                                          ('upperBound="-1"', '(0..*)', True), ('lowerBound="2" upperBound="3"', '(2..3)', True)]:
+            with self.subTest(bounds=bounds):
+                model, report = self._import(f'''
+                <eClassifiers xsi:type="ecore:EClass" name="A">
+                  <eStructuralFeatures xsi:type="ecore:EReference" name="parts" eType="#//B" containment="true" eOpposite="#//B/owner" upperBound="-1"/>
+                </eClassifiers><eClassifiers xsi:type="ecore:EClass" name="B">
+                  <eStructuralFeatures xsi:type="ecore:EReference" name="owner" eType="#//A" {bounds}/>
+                </eClassifiers>''')
+                self.assertEqual(str(model.get_associations()[0].source_multiplicity), expected)
+                self.assertEqual(any(a.get_problem_type() == 'Composition whole end' for a in report.get_adaptations()), warning)
+
     def test_types_packages_multiple_parents_and_operations(self) -> None:
         """Resolve duplicate package names, enums and all parent classes."""
         model, report = self._import('''

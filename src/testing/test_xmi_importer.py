@@ -58,11 +58,11 @@ class XmiImporterTests(unittest.TestCase):
         """Read both owned and class-owned ends with roles and composition bounds."""
         model, _ = self._import('''
         <packagedElement xsi:type="uml:Class" xmi:id="a" name="A">
-          <ownedAttribute xmi:id="endB" name="parts" type="b" association="rel"/>
+          <ownedAttribute xmi:id="endB" name="parts" type="b" association="rel" aggregation="composite"/>
         </packagedElement>
         <packagedElement xsi:type="uml:Class" xmi:id="b" name="B"/>
         <packagedElement xsi:type="uml:Association" xmi:id="rel" name="hasParts" memberEnd="endA endB">
-          <ownedEnd xmi:id="endA" name="owner" type="a" aggregation="composite"/>
+          <ownedEnd xmi:id="endA" name="owner" type="a"/>
         </packagedElement>''')
         assoc = model.get_associations()[0]
         self.assertEqual((assoc.name, assoc.source_object.name, assoc.target_object.name), ('hasParts', 'A', 'B'))
@@ -73,6 +73,71 @@ class XmiImporterTests(unittest.TestCase):
         model.export_xml(out)
         xml_assoc = ET.parse(out).getroot().find('Model/addAssociation')
         self.assertEqual((xml_assoc.get('sourceVisibleFromTarget'), xml_assoc.get('targetVisibleFromSource')), ('true', 'true'))
+
+    def test_composition_whole_explicit_bounds(self) -> None:
+        for bounds, expected, warning in [('', '(1..1)', False), ('lower="0" upper="1"', '(0..1)', False),
+                                          ('upper="*"', '(0..*)', True), ('lower="2" upper="3"', '(2..3)', True),
+                                          ('><lowerValue value="0"/><upperValue value="1"/></ownedEnd>', '(0..1)', False)]:
+            with self.subTest(bounds=bounds):
+                end = f'<ownedEnd xmi:id="e1" type="a" {bounds}'
+                if not bounds.startswith('>'):
+                    end += '/>'
+                model, report = self._import(f'''
+                <packagedElement xsi:type="uml:Class" xmi:id="a" name="A"/>
+                <packagedElement xsi:type="uml:Class" xmi:id="b" name="B"/>
+                <packagedElement xsi:type="uml:Association" xmi:id="r" memberEnd="e1 e2">
+                  {end}
+                  <ownedEnd xmi:id="e2" type="b" aggregation="composite" upper="*"/>
+                </packagedElement>''')
+                self.assertEqual(str(model.get_associations()[0].source_multiplicity), expected)
+                self.assertEqual(str(model.get_associations()[0].target_multiplicity), '(0..*)')
+                self.assertEqual(any(a.get_problem_type() == 'Composition whole end' for a in report.get_adaptations()), warning)
+
+    def test_composition_bounds_in_association_class_and_nary(self) -> None:
+        model, report = self._import('''
+        <packagedElement xsi:type="uml:Class" xmi:id="a" name="A"/>
+        <packagedElement xsi:type="uml:Class" xmi:id="b" name="B"/>
+        <packagedElement xsi:type="uml:Class" xmi:id="c" name="C"/>
+        <packagedElement xsi:type="uml:AssociationClass" xmi:id="m" name="Membership" memberEnd="m1 m2">
+          <ownedEnd xmi:id="m1" type="a" lower="0" upper="1"/>
+          <ownedEnd xmi:id="m2" type="b" aggregation="composite" upper="*"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Association" xmi:id="n" memberEnd="n1 n2 n3">
+          <ownedEnd xmi:id="n1" type="a" aggregation="composite"/>
+          <ownedEnd xmi:id="n2" type="b"/><ownedEnd xmi:id="n3" type="c"/>
+        </packagedElement>''')
+        associations = model.get_associations()
+        self.assertEqual(str(associations[1].source_multiplicity), '(0..1)')
+        self.assertEqual(str(associations[2].target_multiplicity), '(0..*)')
+        self.assertEqual(sum(a.get_problem_type() == 'Composition whole end' for a in report.get_adaptations()), 0)
+
+    def test_composition_whole_on_right_end(self) -> None:
+        model, report = self._import('''
+        <packagedElement xsi:type="uml:Class" xmi:id="a" name="A"/>
+        <packagedElement xsi:type="uml:Class" xmi:id="b" name="B"/>
+        <packagedElement xsi:type="uml:Association" xmi:id="r" memberEnd="part whole">
+          <ownedEnd xmi:id="part" type="b" aggregation="composite" upper="*"/>
+          <ownedEnd xmi:id="whole" type="a" upper="2"/>
+        </packagedElement>''')
+        association = model.get_associations()[0]
+        self.assertEqual(str(association.source_multiplicity), '(0..*)')
+        self.assertEqual(str(association.target_multiplicity), '(0..2)')
+        hints = [a for a in report.get_adaptations() if a.get_problem_type() == 'Composition whole end']
+        self.assertEqual(len(hints), 1)
+        self.assertEqual(hints[0].get_object_name(), 'A')
+
+    def test_composition_whole_on_association_class(self) -> None:
+        model, report = self._import('''
+        <packagedElement xsi:type="uml:Class" xmi:id="a" name="A"/>
+        <packagedElement xsi:type="uml:Class" xmi:id="b" name="B"/>
+        <packagedElement xsi:type="uml:AssociationClass" xmi:id="m" name="Membership" memberEnd="part whole">
+          <ownedEnd xmi:id="part" type="b" aggregation="composite" upper="*"/>
+          <ownedEnd xmi:id="whole" type="a" upper="2"/>
+        </packagedElement>''')
+        first, second = model.get_associations()
+        self.assertEqual(str(first.target_multiplicity), '(0..2)')
+        self.assertEqual(str(second.source_multiplicity), '(0..*)')
+        self.assertEqual(sum(a.get_problem_type() == 'Composition whole end' for a in report.get_adaptations()), 1)
 
     def test_association_class_and_nary_association(self) -> None:
         """Transform association classes and n-ary relationships through classes."""

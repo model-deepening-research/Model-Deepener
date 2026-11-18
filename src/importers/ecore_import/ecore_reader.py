@@ -6,6 +6,7 @@ from urllib.parse import unquote
 import xml.etree.ElementTree as ET
 
 from src.importers.class_diagram import ClassDiagram, UmlAssociation, UmlAttribute, UmlEnum, UmlMultiplicity, EXACTLY_ONE, ZERO_TO_MANY, lower_first
+from src.importers.class_diagram_normalizer import ClassDiagramNormalizer
 
 XSI_TYPE = '{http://www.w3.org/2001/XMLSchema-instance}type'
 XMI_ID = '{http://www.omg.org/XMI}id'
@@ -256,7 +257,12 @@ class EcoreReader:
             if ref.element.get('containment') != 'true' and opposite is None and bounds.get_upper() == 1:
                 self._diagram.get_class(ref.owner).add_attribute(UmlAttribute(name, target[1], EXACTLY_ONE))
             else:
-                source_bounds = EXACTLY_ONE if ref.element.get('containment') == 'true' else (self._bounds(opposite) if opposite else ZERO_TO_MANY)
+                if ref.element.get('containment') == 'true':
+                    explicit = opposite and any(key in opposite.element.attrib for key in ('lowerBound', 'upperBound'))
+                    whole_bounds = self._bounds(opposite) if explicit else None
+                    source_bounds = ClassDiagramNormalizer.composition_whole(self._diagram, whole_bounds, ref.owner, target[1])
+                else:
+                    source_bounds = self._bounds(opposite) if opposite else ZERO_TO_MANY
                 association = UmlAssociation(ref.owner, target[1], source_bounds, bounds)
                 association.set_target_role(name)
                 association.set_source_role(opposite.element.get('name') if opposite else lower_first(ref.owner))

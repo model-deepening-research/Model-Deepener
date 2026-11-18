@@ -1,6 +1,7 @@
 """Normalize shared class diagram roles."""
 from typing import Dict, Set
-from src.importers.class_diagram import ClassDiagram, UmlAssociation, lower_first
+from src.importers.class_diagram import (ClassDiagram, UmlAssociation, UmlMultiplicity,
+                                         COMPOSITION_WHOLE_END, EXACTLY_ONE, lower_first)
 
 
 class ClassDiagramNormalizer:
@@ -13,6 +14,17 @@ class ClassDiagramNormalizer:
     def normalize(self) -> None:
         """Complete association role names."""
         self._assign_role_names()
+
+    @staticmethod
+    def composition_whole(diagram: ClassDiagram, multiplicity: UmlMultiplicity | None,
+                          whole: str, part: str) -> UmlMultiplicity:
+        """Complete a missing whole bound and report bounds exceeding one."""
+        if multiplicity is None:
+            return EXACTLY_ONE
+        if not multiplicity.is_at_most_one():
+            diagram.add_adaptation(COMPOSITION_WHOLE_END, whole,
+                                   f"Composition {whole} *-- {part}: the whole end has '{multiplicity.get_text()}', expected at most 1.")
+        return multiplicity
 
     def _assign_role_names(self) -> None:
         """Assign roles without conflicts in the owner's inheritance hierarchy."""
