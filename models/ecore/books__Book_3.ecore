@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="ASCII"?>
+<xmi:XMI xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore">
+  <ecore:EPackage name="PrimitiveTypes" nsURI="PrimitiveTypes" nsPrefix="PrimitiveTypes">
+    <eClassifiers xsi:type="ecore:EDataType" name="Integer" instanceClassName="java.lang.Integer"/>
+    <eClassifiers xsi:type="ecore:EDataType" name="String" instanceClassName="java.lang.String"/>
+    <eClassifiers xsi:type="ecore:EDataType" name="Boolean" instanceClassName="java.lang.Boolean"/>
+  </ecore:EPackage>
+  <ecore:EPackage name="Book" nsURI="Book" nsPrefix="Book">
+    <eClassifiers xsi:type="ecore:EClass" name="Book">
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="title" ordered="false"
+          lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eStructuralFeatures xsi:type="ecore:EReference" name="chapters" upperBound="-1"
+          eType="#/1/Chapter" containment="true" eOpposite="#/1/Chapter/book"/>
+    </eClassifiers>
+    <eClassifiers xsi:type="ecore:EClass" name="Chapter">
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="title" ordered="false"
+          lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="nbPages" ordered="false"
+          lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eStructuralFeatures xsi:type="ecore:EAttribute" name="author" ordered="false"
+          lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eStructuralFeatures xsi:type="ecore:EReference" name="book" ordered="false"
+          lowerBound="1" eType="#/1/Book" eOpposite="#/1/Book/chapters"/>
+    </eClassifiers>
+  </ecore:EPackage>
+</xmi:XMI>

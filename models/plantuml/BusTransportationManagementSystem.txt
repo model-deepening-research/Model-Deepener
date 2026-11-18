@@ -1,0 +1,39 @@
+@startuml
+
+enum Shift <<enum>> {
+    Morning
+    Afternoon
+    Night
+}
+
+
+class BusVehicle {
+    String LicencePlate
+    Boolean InRepairShop
+}
+
+class Route {
+    Int Number
+}
+
+class RouteAssignment {
+    Date Date
+}
+
+class Driver {
+    String Name
+    String Id
+    Boolean OnSickLeave
+}
+
+class DriverSchedule{
+    Shift Shift
+}
+
+BusVehicle "1" -- "0..*" RouteAssignment
+Route "1" -- "0..*" RouteAssignment
+
+Driver "1" -- "0..*" DriverSchedule
+RouteAssignment "1" -- "0..*" DriverSchedule
+
+@enduml

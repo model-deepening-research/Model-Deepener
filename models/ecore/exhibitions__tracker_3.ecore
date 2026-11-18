@@ -1,0 +1,618 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="tracker"
+    nsURI="http://www.verticon.com/ns/tracker/0.1.0" nsPrefix="com.verticon.tracker">
+  <eClassifiers xsi:type="ecore:EClass" name="Animal" abstract="true">
+    <eOperations name="allEvents" upperBound="-1" eType="#//Event"/>
+    <eOperations name="addTemplate">
+      <eParameters name="eventTemplate">
+        <eGenericType eClassifier="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EEList">
+          <eTypeArguments eClassifier="#//Event"/>
+        </eGenericType>
+      </eParameters>
+    </eOperations>
+    <eOperations name="activeTag" eType="#//Tag"/>
+    <eOperations name="eventHistory" upperBound="-1" eType="#//Event">
+      <eAnnotations source="http://www.eclipse.org/emf/2002/GenModel">
+        <details key="body" value="return allEvents();"/>
+        <details key="documentation" value="All the events associated with this animal."/>
+      </eAnnotations>
+    </eOperations>
+    <eOperations name="lastWeighIn" eType="#//WeighIn">
+      <eAnnotations source="http://www.eclipse.org/emf/2002/GenModel">
+        <details key="body" value="WeighIn lastWeighIn = null;&#xA;&#x9;&#x9;if(!eventHistory().isEmpty()){&#xA;&#x9;&#x9;&#x9;CollectionFilter&lt;Event> weighInsProducer = new CollectionFilter&lt;Event>();&#xA;&#x9;&#x9;&#x9;weighInsProducer.addFilter(CommonUtilities.weighInFilterCriteria);&#xA;&#x9;&#x9;&#x9;List&lt;Event> weighIns = new ArrayList&lt;Event>(weighInsProducer.filterCopy(eventHistory()));&#xA;&#x9;&#x9;&#x9;if(weighIns.isEmpty()){&#xA;&#x9;&#x9;&#x9;&#x9;return null;&#xA;&#x9;&#x9;&#x9;}&#xA;&#x9;&#x9;&#x9;Collections.sort(weighIns, CommonUtilities.DATE_COMPARATOR);&#xA;&#x9;&#x9;&#x9;lastWeighIn = (WeighIn) weighIns.get(weighIns.size()-1);&#xA;&#x9;&#x9;}&#xA;&#x9;&#x9;return lastWeighIn;"/>
+        <details key="documentation" value="The most recent WeighIn event for this animal."/>
+      </eAnnotations>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="birthDate" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="sex" eType="#//Sex" defaultValueLiteral="Unspecified"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="tags" lowerBound="1" upperBound="-1"
+        eType="#//Tag" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="species" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        changeable="false" volatile="true" transient="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="breed" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        changeable="false" volatile="true" transient="true" defaultValueLiteral=""
+        derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="age" eType="#//Age" changeable="false"
+        volatile="true" transient="true" defaultValueLiteral="" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="sexCode" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="speciesCode" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        volatile="true" derived="true" iD="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="lastEventDateTime" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate" changeable="false"
+        volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="dam" eType="#//Animal"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="sire" eType="#//Animal"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="weight" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EIntegerObject"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="weightGainPerDay" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDoubleObject"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="Sex">
+    <eLiterals name="Unspecified" literal=""/>
+    <eLiterals name="F" value="1" literal="Female"/>
+    <eLiterals name="M" value="2" literal="Male"/>
+    <eLiterals name="C" value="3" literal="Neutered/castrated male"/>
+    <eLiterals name="S" value="4" literal="Neutered/spayed female"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Tag">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="usainNumberUsed" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean" changeable="false"
+        volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="events" lowerBound="1"
+        upperBound="-1" eType="#//Event" containment="true" eOpposite="#//Event/tag"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        defaultValueLiteral=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Bovine" abstract="true" eSuperTypes="#//Animal"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Event" abstract="true">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="dateTime" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="eventCode" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt" changeable="false"
+        volatile="true" transient="true" defaultValueLiteral="0" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="electronicallyRead" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"
+        defaultValueLiteral="false"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="correction" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"
+        defaultValueLiteral="false"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comments" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="tag" lowerBound="1" eType="#//Tag"
+        transient="true" eOpposite="#//Tag/events"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="TagAllocated" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Premises">
+    <eOperations name="eventHistory" upperBound="-1" eType="#//Event"/>
+    <eOperations name="findAnimal" eType="#//Animal">
+      <eParameters name="id" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    </eOperations>
+    <eOperations name="addTemplate">
+      <eParameters name="ains">
+        <eGenericType eClassifier="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EEList">
+          <eTypeArguments eClassifier="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+        </eGenericType>
+      </eParameters>
+      <eParameters name="animalTemplate" eType="#//Animal"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="premisesId" lowerBound="1"
+        eType="#//PremisesIdNumber"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="emailContact" lowerBound="1"
+        eType="#//Email" defaultValueLiteral=""/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="animals" upperBound="-1"
+        eType="#//Animal" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="unAppliedTags" upperBound="-1"
+        eType="#//Tag" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="locations" upperBound="-1"
+        eType="#//Location" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="uri" eType="#//URI"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="schema" eType="#//Schema"
+        containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="PremisesIdNumber" instanceClassName="java.lang.String">
+    <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+      <details key="minLength" value="7"/>
+      <details key="maxLength" value="7"/>
+      <details key="length" value="7"/>
+      <details key="maxExclusive" value="adcdefg"/>
+    </eAnnotations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="Email" instanceClassName="java.lang.String"/>
+  <eClassifiers xsi:type="ecore:EEnum" name="BisonBreed">
+    <eLiterals name="WO" literal="WOOD BISON"/>
+    <eLiterals name="PB" value="1" literal="PLAINS BISON"/>
+    <eLiterals name="Unspecified" value="2" literal=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="SheepBreed">
+    <eLiterals name="CD" literal="ARCOTT - Canadian"/>
+    <eLiterals name="OU" value="1" literal="ARCOTT - Outaouais"/>
+    <eLiterals name="RI" value="2" literal="ARCOTT - Rideau"/>
+    <eLiterals name="LY" value="3" literal="BARBADOS BLACK BELLY"/>
+    <eLiterals name="FB" value="4" literal="BLACK FACE"/>
+    <eLiterals name="BW" value="5" literal="BLACK WELSH MOUNTAIN"/>
+    <eLiterals name="BF" value="6" literal="BLUE FACED LEISTER"/>
+    <eLiterals name="BO" value="7" literal="BOOROULA"/>
+    <eLiterals name="BC" value="8" literal="BORDER CHEVIOT"/>
+    <eLiterals name="CO" value="9" literal="CHAROLLAIS"/>
+    <eLiterals name="CF" value="10" literal="CLUN FOREST"/>
+    <eLiterals name="CL" value="11" literal="COLUMBIA"/>
+    <eLiterals name="CP" value="12" literal="COOPWORTH"/>
+    <eLiterals name="CR" value="13" literal="CORRIEDALE"/>
+    <eLiterals name="DH" value="14" literal="DORSET - Horned"/>
+    <eLiterals name="DP" value="15" literal="DORSET - Polled"/>
+    <eLiterals name="DL" value="16" literal="DLS"/>
+    <eLiterals name="ER" value="17" literal="EAST FRIESLAND"/>
+    <eLiterals name="FN" value="18" literal="FINNISH LANDRACE "/>
+    <eLiterals name="HS" value="19" literal="HAMPSHIRE"/>
+    <eLiterals name="HY" value="20" literal="HYBRID"/>
+    <eLiterals name="IL" value="21" literal="ICELANDIC"/>
+    <eLiterals name="KK" value="22" literal="KARAKUL"/>
+    <eLiterals name="KA" value="23" literal="KATAHDIN"/>
+    <eLiterals name="KH" value="24" literal="KERRY HILL"/>
+    <eLiterals name="BL" value="25" literal="LEICESTER - Border"/>
+    <eLiterals name="LE" value="26" literal="LEICESTER - English"/>
+    <eLiterals name="HL" value="27" literal="LEISTER - Hexam"/>
+    <eLiterals name="LI" value="28" literal="LINCOLN"/>
+    <eLiterals name="MM" value="29"/>
+    <eLiterals name="MP" value="30" literal="MERINO POLLED"/>
+    <eLiterals name="MT" value="31"/>
+    <eLiterals name="NL" value="32" literal="NEWFOUNDLAND LOCO"/>
+    <eLiterals name="NC" value="33" literal="NORTH COUNTRY CHEVIOT"/>
+    <eLiterals name="OX" value="34" literal="OXFORD"/>
+    <eLiterals name="PE" value="35" literal="PERENDALE"/>
+    <eLiterals name="PO" value="36" literal="POLYPAY"/>
+    <eLiterals name="RG" value="37" literal="RAMBOUILLET"/>
+    <eLiterals name="RV" value="38" literal="ROMANOV"/>
+    <eLiterals name="RM" value="39" literal="ROMNELET"/>
+    <eLiterals name="RY" value="40" literal="ROMNEY"/>
+    <eLiterals name="SX" value="41" literal="ST. CROIX"/>
+    <eLiterals name="SC" value="42" literal="SCOTTISH BLACKFACE"/>
+    <eLiterals name="SL" value="43" literal="SHETLAND"/>
+    <eLiterals name="SR" value="44" literal="SHROPSHIRE"/>
+    <eLiterals name="ST" value="45" literal="SOUTHDOWN"/>
+    <eLiterals name="SU" value="46" literal="SUFFOLK"/>
+    <eLiterals name="TA" value="47" literal="TARGHEE"/>
+    <eLiterals name="TX" value="48" literal="TEXEL"/>
+    <eLiterals name="TU" value="49" literal="TUNIS"/>
+    <eLiterals name="XL" value="50" literal="CROSSBRED - Large"/>
+    <eLiterals name="XM" value="51" literal="CROSSBRED - Medium"/>
+    <eLiterals name="ZS" value="52" literal="CROSSBRED - Small"/>
+    <eLiterals name="Unspecified" value="53" literal=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="BovineBeef" eSuperTypes="#//Bovine">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="beefBreed" eType="#//BeefBreed"
+        defaultValueLiteral="Unspecified"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Ovine" eSuperTypes="#//Animal">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="sheepBreed" eType="#//SheepBreed"
+        defaultValueLiteral="Unspecified"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="scrapieTag" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="BeefBreed">
+    <eLiterals name="AN" literal="ABERDEEN ANGUS"/>
+    <eLiterals name="AB" value="1" literal="ABONDANCE"/>
+    <eLiterals name="AF" value="2" literal="AFRICANDER"/>
+    <eLiterals name="AL" value="3" literal="ALPINE"/>
+    <eLiterals name="AE" value="4" literal="AMERICAN BREED"/>
+    <eLiterals name="AM" value="5" literal="AMERIFAX"/>
+    <eLiterals name="AK" value="6" literal="ANKINA"/>
+    <eLiterals name="AW" value="7" literal="ANKOLE-WATUSI"/>
+    <eLiterals name="AU" value="8" literal="AUBRAC"/>
+    <eLiterals name="BA" value="9" literal="BARZONA"/>
+    <eLiterals name="BF" value="10" literal="BEEF FRIESIAN"/>
+    <eLiterals name="BE" value="11" literal="BEEFALO"/>
+    <eLiterals name="BM" value="12" literal="BEEFMASTER"/>
+    <eLiterals name="BB" value="13" literal="BELIGIAN BLUE"/>
+    <eLiterals name="BG" value="14" literal="BELTED GALLOWAY"/>
+    <eLiterals name="BD" value="15" literal="BLONDE D=AQUITAINE"/>
+    <eLiterals name="NS" value="16" literal="BONSMARA"/>
+    <eLiterals name="BO" value="17" literal="BRAFORD"/>
+    <eLiterals name="BR" value="18" literal="BRAHMAN"/>
+    <eLiterals name="BH" value="19" literal="BRAHMENTAL"/>
+    <eLiterals name="BI" value="20" literal="BRAHMOUSIN"/>
+    <eLiterals name="BL" value="21" literal="BRALER"/>
+    <eLiterals name="BN" value="22" literal="BRANGUS"/>
+    <eLiterals name="BU" value="23" literal="BRAUNVIEH"/>
+    <eLiterals name="BW" value="24" literal="BRITISH WHITE"/>
+    <eLiterals name="SB" value="25" literal="BROWN SWISS (beef/boeuf)"/>
+    <eLiterals name="BQ" value="26" literal="BUELINGO"/>
+    <eLiterals name="CP" value="27" literal="CAMPINE RED PIED"/>
+    <eLiterals name="CN" value="28" literal="CANADIENNE"/>
+    <eLiterals name="CB" value="29" literal="CHARBRAY"/>
+    <eLiterals name="CH" value="30" literal="CHAROLAIS"/>
+    <eLiterals name="CG" value="31" literal="CHI-ANGUS"/>
+    <eLiterals name="CM" value="32" literal="CHI-MAINE"/>
+    <eLiterals name="CA" value="33" literal="CHIANINA"/>
+    <eLiterals name="XX" value="34" literal="CROSSBREDS"/>
+    <eLiterals name="XT" value="35" literal="CROSSBRED TWINNER"/>
+    <eLiterals name="CU" value="36" literal="CUMBERLAND"/>
+    <eLiterals name="DB" value="37" literal="DANISH BLACK AND WHITE"/>
+    <eLiterals name="DJ" value="38" literal="DANISH JERSEY"/>
+    <eLiterals name="RW" value="39" literal="DANISH RED AND WHITE"/>
+    <eLiterals name="DE" value="40" literal="DEVON"/>
+    <eLiterals name="DR" value="41" literal="DEXTER"/>
+    <eLiterals name="DL" value="42" literal="DUTCH BELTED"/>
+    <eLiterals name="FP" value="43" literal="EAST FLEMISH RED PIED"/>
+    <eLiterals name="ER" value="44" literal="ERINGER"/>
+    <eLiterals name="FA" value="45" literal="FLAMANDE"/>
+    <eLiterals name="FL" value="46" literal="FLECKVIEH"/>
+    <eLiterals name="FC" value="47" literal="FLORIDA CRACKER"/>
+    <eLiterals name="FR" value="48" literal="FRIBOURG"/>
+    <eLiterals name="FB" value="49" literal="FRIESIAN (Belgium)"/>
+    <eLiterals name="DF" value="50" literal="FRIESIAN (Dutch)"/>
+    <eLiterals name="GA" value="51" literal="GALLOWAY (beef/boeuf)"/>
+    <eLiterals name="GS" value="52" literal="GASCONNE"/>
+    <eLiterals name="GE" value="53" literal="GELBRAY"/>
+    <eLiterals name="GV" value="54" literal="GELBVIEH"/>
+    <eLiterals name="GI" value="55" literal="GRAUVIEH"/>
+    <eLiterals name="GR" value="56" literal="GRONINGEN"/>
+    <eLiterals name="GZ" value="57" literal="GUZERA"/>
+    <eLiterals name="GY" value="58" literal="GYR (or Gir)"/>
+    <eLiterals name="HC" value="59" literal="HAYS CONVERTER"/>
+    <eLiterals name="HB" value="60" literal="HEREFORD (black)"/>
+    <eLiterals name="HH" value="61" literal="HEREFORD (horned)"/>
+    <eLiterals name="HP" value="62" literal="HEREFORD (polled)"/>
+    <eLiterals name="SH" value="63" literal="HIGHLAND (Scotch Highland)"/>
+    <eLiterals name="HY" value="64" literal="HYBRID (Alberta Synthtic)"/>
+    <eLiterals name="IB" value="65" literal="INDU BRAZIL"/>
+    <eLiterals name="KY" value="66" literal="KERRY"/>
+    <eLiterals name="KB" value="67" literal="KOBE (Wagyu)"/>
+    <eLiterals name="LM" value="68" literal="LIMOUSIN"/>
+    <eLiterals name="LR" value="69" literal="LINCOLN RED"/>
+    <eLiterals name="LO" value="70" literal="LOWLINE (Loala)"/>
+    <eLiterals name="LU" value="71" literal="LUING"/>
+    <eLiterals name="MA" value="72" literal="MAINE-ANJOU"/>
+    <eLiterals name="MH" value="73" literal="MASHONA"/>
+    <eLiterals name="ML" value="74" literal="MANDALONG SPECIAL"/>
+    <eLiterals name="MR" value="75" literal="MARCHIGIANA"/>
+    <eLiterals name="ME" value="76" literal="MAREMMANA"/>
+    <eLiterals name="MI" value="77" literal="MEUSE-RHINE-ISSEL"/>
+    <eLiterals name="MC" value="78" literal="MEXICAN CORRIENTE"/>
+    <eLiterals name="MO" value="79" literal="MONTBELIARDE"/>
+    <eLiterals name="MU" value="80" literal="MURRAH"/>
+    <eLiterals name="MG" value="81" literal="MURRAY GREY"/>
+    <eLiterals name="NE" value="82" literal="NELLORE"/>
+    <eLiterals name="NM" value="83" literal="NORMANDE"/>
+    <eLiterals name="NR" value="84" literal="NORWEGIAN RED"/>
+    <eLiterals name="PA" value="85" literal="PARTHENAISE"/>
+    <eLiterals name="PR" value="86" literal="PIE ROUGE"/>
+    <eLiterals name="PI" value="87" literal="PIEDMONTESE"/>
+    <eLiterals name="PZ" value="88" literal="PINZGAUER"/>
+    <eLiterals name="RA" value="89" literal="RANGER"/>
+    <eLiterals name="AR" value="90" literal="RED ANGUS"/>
+    <eLiterals name="RR" value="91" literal="RED BRAHMAN"/>
+    <eLiterals name="RB" value="92" literal="RED BRANGUS"/>
+    <eLiterals name="RD" value="93" literal="RED DANE (Danish Red)"/>
+    <eLiterals name="RP" value="94" literal="RED POLL"/>
+    <eLiterals name="RN" value="95" literal="ROMAGNOLA"/>
+    <eLiterals name="RS" value="96" literal="ROMOSINUANO"/>
+    <eLiterals name="RO" value="97" literal="ROTBUNTE"/>
+    <eLiterals name="DN" value="98" literal="ROUGE DU NORD"/>
+    <eLiterals name="SW" value="99" literal="SAHIWAL"/>
+    <eLiterals name="SA" value="100" literal="SALERS"/>
+    <eLiterals name="SG" value="101" literal="SANTA GERTRUDIS"/>
+    <eLiterals name="SL" value="102" literal="SEMEPOL"/>
+    <eLiterals name="SE" value="103" literal="SENAPOL"/>
+    <eLiterals name="SV" value="104" literal="SHAVER BEEF BLEND"/>
+    <eLiterals name="SS" value="105" literal="SHORTHORN (beef-scotch)"/>
+    <eLiterals name="IS" value="106" literal="SHORTHORN (illawarra)"/>
+    <eLiterals name="SP" value="107" literal="SHORTHORN (polled)"/>
+    <eLiterals name="SI" value="108" literal="SIMBRAH"/>
+    <eLiterals name="SM" value="109" literal="SIMMENTAL"/>
+    <eLiterals name="DS" value="110" literal="SOUTH DEVON"/>
+    <eLiterals name="SX" value="111" literal="SUSSEX"/>
+    <eLiterals name="TP" value="112" literal="TABAPUA"/>
+    <eLiterals name="TA" value="113" literal="TARENTAISE"/>
+    <eLiterals name="TG" value="114" literal="TASMANIAN GREY"/>
+    <eLiterals name="TN" value="115" literal="TAURINDICUS"/>
+    <eLiterals name="TL" value="116" literal="TEXAS LONGHORN"/>
+    <eLiterals name="TI" value="117" literal="TULI"/>
+    <eLiterals name="WB" value="118" literal="WELSH BLACK"/>
+    <eLiterals name="WF" value="119" literal="WEST FLEMISH RED"/>
+    <eLiterals name="WP" value="120" literal="WHITE PARK"/>
+    <eLiterals name="YA" value="121" literal="YAK"/>
+    <eLiterals name="Unspecified" value="122" literal=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="DairyBreed">
+    <eLiterals name="LD" literal="AMERICAN LINEBACK"/>
+    <eLiterals name="AY" value="1" literal="AYRSHIRE"/>
+    <eLiterals name="BS" value="2" literal="BROWN SWISS"/>
+    <eLiterals name="GD" value="3" literal="GALLOWAY"/>
+    <eLiterals name="GU" value="4" literal="GUERNSEY"/>
+    <eLiterals name="HO" value="5" literal="HOLSTEIN"/>
+    <eLiterals name="JE" value="6" literal="JERSEY"/>
+    <eLiterals name="WW" value="7" literal="RED HOLSTEIN"/>
+    <eLiterals name="FM" value="8" literal="ROUGE FLAMAND"/>
+    <eLiterals name="MS" value="9" literal="SHORTHORN"/>
+    <eLiterals name="Unspecified" value="10" literal=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="BovineBison" eSuperTypes="#//Bovine">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="buffaloBreed" eType="#//BisonBreed"
+        defaultValueLiteral="Unspecified"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="BovineDairy" eSuperTypes="#//Bovine">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="dairyBreed" eType="#//DairyBreed"
+        defaultValueLiteral="Unspecified"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="TagApplied" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="MovedIn" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourcePin" lowerBound="1"
+        eType="#//PremisesIdNumber"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MovedOut" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="destinationPin" lowerBound="1"
+        eType="#//PremisesIdNumber"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="LostTag" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="ReplacedTag" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="oldId" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        changeable="false" volatile="true" transient="true" defaultValueLiteral=""
+        derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="usainNumberUsedForOldId"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="oldTag" lowerBound="1"
+        eType="#//Tag"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Imported" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Exported" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Sighting" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="location" eType="#//Location"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Slaughtered" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Died" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="TagRetired" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="AnimalMissing" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="ICVI" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EDataType" name="Age" instanceClassName="com.verticon.tracker.util.Age"/>
+  <eClassifiers xsi:type="ecore:EDataType" name="USPhoneNumber" instanceClassName="java.lang.String"/>
+  <eClassifiers xsi:type="ecore:EClass" name="WeighIn" eSuperTypes="#//Event">
+    <eOperations name="previousWeighIn" eType="#//WeighIn">
+      <eAnnotations source="http://www.eclipse.org/emf/2002/GenModel">
+        <details key="body" value="Collection&lt;Event> weighIns = getPreviousWeighInEvents();&#x9;&#x9;&#x9;&#xA;&#x9;&#x9;WeighIn lastWeighIn = getPreviousWeighInEvent(weighIns);&#xA;&#x9;&#x9;return lastWeighIn;"/>
+        <details key="documentation" value="The previous WeighIn event for the same animal."/>
+      </eAnnotations>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="weight" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EIntegerObject"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="weightGainPerDay" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDoubleObject"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="SwineBreed">
+    <eLiterals name="BK" literal="BERKSHIRE"/>
+    <eLiterals name="CW" value="1" literal="CHESTER WHITE"/>
+    <eLiterals name="DU" value="2" literal="DUROC"/>
+    <eLiterals name="HA" value="3" literal="HAMPSHIRE"/>
+    <eLiterals name="LC" value="4" literal="LACOMBE"/>
+    <eLiterals name="LA" value="5" literal="LANDRACE"/>
+    <eLiterals name="LB" value="6" literal="LARGE BLACK (British)"/>
+    <eLiterals name="LW" value="7" literal="LARGE WHITE"/>
+    <eLiterals name="PE" value="8" literal="PIETRAIN"/>
+    <eLiterals name="PC" value="9" literal="POLAND CHINA"/>
+    <eLiterals name="RW" value="10" literal="RED WATTLE"/>
+    <eLiterals name="SO" value="11" literal="SPOTTED"/>
+    <eLiterals name="TM" value="12" literal="TAMWORTH"/>
+    <eLiterals name="WS" value="13" literal="WESSEX SADDLEBACK"/>
+    <eLiterals name="YO" value="14" literal="YORKSHIRE"/>
+    <eLiterals name="Unspecified" value="15" literal=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Swine" eSuperTypes="#//Animal">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="swineBreed" eType="#//SwineBreed"
+        defaultValueLiteral="Unspecified"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="rightEarNotching" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="leftEarNotching" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="HorseBreed">
+    <eLiterals name="AC" literal="AMERICAN BASHKIR CURLY"/>
+    <eLiterals name="AS" value="1" literal="AMERICAN SADDLEBRED"/>
+    <eLiterals name="AA" value="2" literal="ANDALUSIAN"/>
+    <eLiterals name="AO" value="3" literal="ANGLO-ARABIAN"/>
+    <eLiterals name="NO" value="4" literal="ANGLO-NORMAND"/>
+    <eLiterals name="AP" value="5" literal="APPALOSA"/>
+    <eLiterals name="AD" value="6" literal="ARABIAN"/>
+    <eLiterals name="BW" value="7" literal="BADEN-WURTTEMBERG"/>
+    <eLiterals name="BY" value="8" literal="BAYERISCHES WARMBLOOD"/>
+    <eLiterals name="BU" value="9" literal="BUCKSKIN"/>
+    <eLiterals name="CI" value="10" literal="CANADIAN HORSE"/>
+    <eLiterals name="FC" value="11" literal="CHEVAL DE SELLE FRANCAIS (FRENCH SADDLE HORSE)"/>
+    <eLiterals name="CV" value="12" literal="CLEVELAND BAY"/>
+    <eLiterals name="CY" value="13" literal="CLYDESDALE"/>
+    <eLiterals name="CM" value="14" literal="CONNEMARA"/>
+    <eLiterals name="DT" value="15" literal="DARTMOOR PONY"/>
+    <eLiterals name="DW" value="16" literal="DUTCH WARMBLOOD"/>
+    <eLiterals name="EX" value="17" literal="EXMOOR PONY"/>
+    <eLiterals name="FE" value="18" literal="FELL PONY"/>
+    <eLiterals name="FJ" value="19" literal="FJORD"/>
+    <eLiterals name="FH" value="20" literal="FRENCH HORSE"/>
+    <eLiterals name="FR" value="21" literal="FRIESIAN"/>
+    <eLiterals name="GL" value="22" literal="GELDERLANDER"/>
+    <eLiterals name="WG" value="23" literal="GERMAN WARMBLOOD"/>
+    <eLiterals name="HN" value="24" literal="HACKNEY (horse/cheval)"/>
+    <eLiterals name="HK" value="25" literal="HACKNEY (pony/poney)"/>
+    <eLiterals name="HF" value="26" literal="HAFLINGER"/>
+    <eLiterals name="HV" value="27" literal="HANOVERIAN"/>
+    <eLiterals name="HG" value="28" literal="HIGHLAND PONY"/>
+    <eLiterals name="HT" value="29" literal="HOLSTEINER"/>
+    <eLiterals name="HW" value="30" literal="HUNGARIAN WARMBLOOD"/>
+    <eLiterals name="HU" value="31" literal="HUNTER"/>
+    <eLiterals name="IC" value="32" literal="ICELANDIC"/>
+    <eLiterals name="LZ" value="33" literal="LIPIZZANER"/>
+    <eLiterals name="MU" value="34" literal="MINATURE HORSE"/>
+    <eLiterals name="MF" value="35" literal="MISSOURI FOXTROTTING"/>
+    <eLiterals name="MN" value="36" literal="MORGAN"/>
+    <eLiterals name="NF" value="37" literal="NEW FOREST"/>
+    <eLiterals name="NK" value="38" literal="NORIKER"/>
+    <eLiterals name="OB" value="39" literal="OLDENBURG"/>
+    <eLiterals name="PT" value="40" literal="PAINT"/>
+    <eLiterals name="PL" value="41" literal="PALOMINO"/>
+    <eLiterals name="PF" value="42" literal="PASO FINO"/>
+    <eLiterals name="PH" value="43" literal="PERCHERON"/>
+    <eLiterals name="PV" value="44" literal="PERUVIAN"/>
+    <eLiterals name="PN" value="45" literal="PINTO"/>
+    <eLiterals name="PW" value="46" literal="POLISH WARMBLOOD"/>
+    <eLiterals name="OL" value="47" literal="POLO PONY"/>
+    <eLiterals name="QH" value="48" literal="OUARTER HORSE"/>
+    <eLiterals name="RH" value="49" literal="RHEINLANDER"/>
+    <eLiterals name="RU" value="50" literal="RUSTIC PONY"/>
+    <eLiterals name="SE" value="51" literal="SHETLAND"/>
+    <eLiterals name="SY" value="52" literal="SHIRE"/>
+    <eLiterals name="SN" value="53" literal="STANDARDBRED"/>
+    <eLiterals name="SF" value="54" literal="SUFFOLK PUNCH"/>
+    <eLiterals name="WW" value="55" literal="SWEDISH WARMBLOOD"/>
+    <eLiterals name="WI" value="56" literal="SWISS HORSE"/>
+    <eLiterals name="TP" value="57" literal="TARPAN"/>
+    <eLiterals name="TW" value="58" literal="TENNESSEE WALKING"/>
+    <eLiterals name="TH" value="59" literal="THOROUGHBRED"/>
+    <eLiterals name="TR" value="60" literal="TRAKEHNER"/>
+    <eLiterals name="TF" value="61" literal="TROTTEUR FRANCAIS"/>
+    <eLiterals name="VK" value="62" literal="VIKING"/>
+    <eLiterals name="WE" value="63" literal="WELSH"/>
+    <eLiterals name="WF" value="64" literal="WESTFALEN"/>
+    <eLiterals name="WU" value="65" literal="WURTTEMBERG"/>
+    <eLiterals name="Unspecified" value="66" literal=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Equine" eSuperTypes="#//Animal">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="horseBreed" eType="#//HorseBreed"
+        defaultValueLiteral="Unspecified"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="GoatBreed">
+    <eLiterals name="AI" literal="ALPINE"/>
+    <eLiterals name="AG" value="1" literal="ANGORA"/>
+    <eLiterals name="BZ" value="2" literal="BOER"/>
+    <eLiterals name="CS" value="3" literal="CASHMERE"/>
+    <eLiterals name="LN" value="4" literal="LA MANCHA"/>
+    <eLiterals name="ND" value="5" literal="NIGERIAN DWARF"/>
+    <eLiterals name="NU" value="6" literal="NUBIAN"/>
+    <eLiterals name="OH" value="7" literal="OBERHASLI"/>
+    <eLiterals name="PY" value="8" literal="PYGMY"/>
+    <eLiterals name="EN" value="9" literal="SAANEN"/>
+    <eLiterals name="TO" value="10" literal="TOGGENBURG"/>
+    <eLiterals name="Unspecified" value="11"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Caprine" eSuperTypes="#//Animal">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="goatBreed" eType="#//GoatBreed"
+        defaultValueLiteral="Unspecified"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Location">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="URI" instanceClassName="java.lang.String"/>
+  <eClassifiers xsi:type="ecore:EClass" name="MedicalCondition" eSuperTypes="#//Event"/>
+  <eClassifiers xsi:type="ecore:EClass" name="MedicalTreatment" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="product" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="manufacturer" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="lot" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="quantity" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="treatment" eType="#//Treatment"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="method" eType="#//TreatmentMethod"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="Treatment">
+    <eLiterals name="Unspecified" literal=""/>
+    <eLiterals name="Vaccination" value="1" literal="Vaccination"/>
+    <eLiterals name="Vitamin" value="2"/>
+    <eLiterals name="Hormone" value="3"/>
+    <eLiterals name="Prevention" value="4"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="TreatmentMethod">
+    <eLiterals name="Unspecified" literal=""/>
+    <eLiterals name="Intramuscular" value="1"/>
+    <eLiterals name="Nasal" value="2"/>
+    <eLiterals name="Salve" value="3"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Birthing" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="viability" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="assisted" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="difficulty" eType="#//OneToTen"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="OneToTen">
+    <eLiterals name="Unspecified" literal=""/>
+    <eLiterals name="One" value="1"/>
+    <eLiterals name="Two" value="2" literal="Two"/>
+    <eLiterals name="Three" value="3"/>
+    <eLiterals name="Four" value="4"/>
+    <eLiterals name="Five" value="5" literal="Five"/>
+    <eLiterals name="Six" value="6"/>
+    <eLiterals name="Seven" value="7"/>
+    <eLiterals name="Eight" value="8"/>
+    <eLiterals name="Nine" value="9"/>
+    <eLiterals name="Ten" value="10"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Calving" eSuperTypes="#//Birthing"/>
+  <eClassifiers xsi:type="ecore:EClass" name="BirthDefect" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="freemartin" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Mastitis" eSuperTypes="#//MedicalCondition">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="location" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="origin" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MilkTest" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="poundsProduced" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="percentButterFat" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="percentProtein" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="somaticCellCounts" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="otherSolids" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="HerdTest" eSuperTypes="#//Event">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="pregnant" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="daysSinceBredEstimate"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="bredDateEstimate" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="GenericEvent" eSuperTypes="#//Event">
+    <eOperations name="findSchema" eType="#//EventAttributeSchema">
+      <eParameters name="eventAttribute" eType="#//EventAttribute"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="eventAttributes" upperBound="-1"
+        eType="#//EventAttribute" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="eventSchema" lowerBound="1"
+        eType="#//EventSchema"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="EventAttribute" instanceClassName="java.util.Map$Entry">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="key" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="value" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="EventSchema">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        iD="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="animalType" upperBound="-1"
+        eType="#//AnimalType"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="eventAttributes" lowerBound="1"
+        upperBound="-1" eType="#//EventAttributeSchema" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="AnimalType">
+    <eLiterals name="Unspecified" literal=""/>
+    <eLiterals name="Swine" value="2"/>
+    <eLiterals name="Equine" value="3"/>
+    <eLiterals name="Caprine" value="4"/>
+    <eLiterals name="Ovine"/>
+    <eLiterals name="BovineBeef" value="5"/>
+    <eLiterals name="BovineDairy" value="6"/>
+    <eLiterals name="BovineBison" value="7"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="EventAttributeSchema">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="dataType" lowerBound="1"
+        eType="#//EventDataType"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="EventDataType">
+    <eLiterals name="String"/>
+    <eLiterals name="Integer" value="1"/>
+    <eLiterals name="Boolean" value="2"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Schema">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="eventSchemas" upperBound="-1"
+        eType="#//EventSchema" containment="true"/>
+  </eClassifiers>
+</ecore:EPackage>

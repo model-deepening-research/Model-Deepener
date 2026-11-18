@@ -1,0 +1,82 @@
+@startuml
+
+enum Mode { 
+    DESIGN
+    GAME 
+}
+enum Color { 
+    RED
+    BLUE
+    GREEN
+    YELLOW
+}
+
+class TileO {}
+
+class Game {
+    int currentConnectionPieces
+    Mode mode
+    {static} const int SpareConnectionPieces = 32
+    {static} const int NumberOfActionCards = 32
+}
+
+class Connection {}
+
+class Die {}
+
+class Deck {}
+
+abstract class Tile{
+    int x
+    int y
+    Boolean hasBeenVisited
+}
+
+abstract class ActionCard {
+    string instructions
+}
+
+class RollDieActionCard {}
+class ConnectTilesActionCard {}
+class RemoveConnectionActionCard {}
+class TeleportActionCard {}
+class LoseTurnActionCard {}
+
+class WinTile {}
+class ActionTile {
+   int inactivityPeriod
+   int tunrsUntilActive
+}
+class NormalTile {}
+
+class Player {
+    int number
+    int turnsUntilActive
+    Color color
+}
+
+WinTile --|> Tile
+Tile <|-- ActionTile
+Tile <|-- NormalTile
+
+ActionCard <|-- RollDieActionCard
+ActionCard <|-- ConnectTilesActionCard
+ActionCard <|-- RemoveConnectionActionCard
+ActionCard <|-- TeleportActionCard 
+ActionCard <|-- LoseTurnActionCard 
+
+TileO "1" *-- "*" Game : games
+Game  "1" *-- "*" Tile : tiles
+Game  "1" *-- "*" Connection : connections
+Game  "1" *-- "1" Die : die
+Game  "1" *- "1" Deck : deck
+Game  "1" --> "0..1" Player : currentPlayer
+Game  "1" *-- "2..4" Player : players
+Deck  "1" *-- "0..32" ActionCard : cards
+
+Game  "1" --> "0..1" WinTile : winTile
+Tile  "2" -- "0..4" Connection : connections/tiles
+Player "1" --> "0..1" Tile : startingTile
+Player "0..4" --> "0..1" Tile : currentTile
+Deck  "1" --> "0..1" ActionCard : currentCard
+@enduml

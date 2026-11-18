@@ -1,0 +1,47 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="amazoninformational" nsURI="http://amazoninformational/1.0"
+    nsPrefix="amazoninformational">
+  <eClassifiers xsi:type="ecore:EClass" name="Order">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="products" lowerBound="1"
+        upperBound="-1" eType="#//Product" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="shipment" eType="#//Shipment"
+        containment="true" eOpposite="#//Shipment/order"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="invoice" eType="#//Invoice"
+        containment="true" eOpposite="#//Invoice/order"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="packages" upperBound="-1"
+        eType="#//Package" containment="true" eOpposite="#//Package/order"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="status" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="customer" eType="#//Customer"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="totalAmount" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Product">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="onHand" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Package">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="products" eType="#//Product"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="order" lowerBound="1" eType="#//Order"
+        eOpposite="#//Order/packages"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="location" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Shipment">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="package" lowerBound="1"
+        upperBound="-1" eType="#//Package"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="order" eType="#//Order"
+        eOpposite="#//Order/shipment"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Invoice">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="order" lowerBound="1" eType="#//Order"
+        eOpposite="#//Order/invoice"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="payment" eType="#//Payment"
+        containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Payment"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Customer">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="inGoodStanding" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="creditLimit" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="consummedCredit" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="address" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="isVIP" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+  </eClassifiers>
+</ecore:EPackage>

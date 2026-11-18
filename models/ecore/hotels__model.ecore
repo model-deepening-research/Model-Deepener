@@ -1,0 +1,563 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="model" nsURI="http:///model.ecore" nsPrefix="model">
+  <eClassifiers xsi:type="ecore:EClass" name="BankComponent"/>
+  <eClassifiers xsi:type="ecore:EClass" name="HotelComponent"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Receptionist"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Customers"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Admin"/>
+  <eClassifiers xsi:type="ecore:EClass" name="BankInterface" abstract="true" interface="true"/>
+  <eClassifiers xsi:type="ecore:EClass" name="CustomerInterface" abstract="true" interface="true">
+    <eOperations name="searchRooms" ordered="false" upperBound="-1" eType="#//Room">
+      <eParameters name="dateFrom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="dateTo" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="numberOfGuests" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eParameters name="numberOfRooms" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eOperations>
+    <eOperations name="createCustomer" ordered="false" lowerBound="1" eType="#//Customer">
+      <eParameters name="firstName" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="surname" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="email" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="address" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="ccNumber" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="ccv" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="expiringMonth" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eParameters name="expriningYear" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eOperations>
+    <eOperations name="pay" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="customer" ordered="false" lowerBound="1" eType="#//Customer"/>
+      <eParameters name="receipt" ordered="false" lowerBound="1" eType="#//Receipt"/>
+    </eOperations>
+    <eOperations name="validateCard" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="customer" ordered="false" lowerBound="1" eType="#//Customer"/>
+    </eOperations>
+    <eOperations name="createBooking" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="fromDate" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="toDate" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="wishes" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="customer" ordered="false" lowerBound="1" eType="#//Customer"/>
+      <eParameters name="promotion" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="receipt" ordered="false" lowerBound="1" eType="#//Receipt"/>
+      <eParameters name="roomTypes" ordered="false" upperBound="-1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Room">
+    <eOperations name="Room" ordered="false" lowerBound="1">
+      <eParameters name="number" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+      <eParameters name="description" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="type" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="price" ordered="false" lowerBound="1" eType="#//Expense"/>
+      <eParameters name="beds" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+      <eParameters name="status" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="receipt" ordered="false" lowerBound="1" eType="#//Receipt"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="price" ordered="false"
+        lowerBound="1" eType="#//Expense"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="number" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="clean" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="type" ordered="false" lowerBound="1"
+        eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="beds" ordered="false" lowerBound="1"
+        eType="ecore:EDataType types.ecore#//Integer"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="receipt" ordered="false"
+        lowerBound="1" eType="#//Receipt"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="residents" ordered="false"
+        upperBound="-1" eType="#//Resident"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="status" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Expense">
+    <eOperations name="Expense" ordered="false" lowerBound="1">
+      <eParameters name="id" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eParameters name="name" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="date" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="description" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="price" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+      <eParameters name="isFixed" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+      <eParameters name="receiptID" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="price" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" ordered="false" lowerBound="1"
+        eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="date" ordered="false" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" ordered="false" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="fixed" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="receiptId" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Receipt">
+    <eOperations name="addExpense" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="expense" ordered="false" lowerBound="1" eType="#//Expense"/>
+    </eOperations>
+    <eOperations name="removeExpense" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="expense" ordered="false" lowerBound="1" eType="#//Expense"/>
+    </eOperations>
+    <eOperations name="getAllExpenses" ordered="false" upperBound="-1" eType="#//Expense"/>
+    <eOperations name="Receipt" ordered="false" lowerBound="1">
+      <eParameters name="id" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eParameters name="date" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="expenses" ordered="false" upperBound="-1" eType="#//Expense"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="expenses" ordered="false"
+        upperBound="-1" eType="#//Expense"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="totalCost" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="Date" ordered="false" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" ordered="false" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Resident">
+    <eOperations name="Resident" ordered="false" lowerBound="1">
+      <eParameters name="id" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="firstName" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="surname" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="firstName" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="surname" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" ordered="false" lowerBound="1"
+        eType="ecore:EDataType types.ecore#//String"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Customer">
+    <eOperations name="Customer" ordered="false" lowerBound="1">
+      <eParameters name="firstName" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="surname" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="email" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="address" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="ccNumber" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="ccv" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="ccExpiringMonth" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eParameters name="ccExpiringYear" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="firstName" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="surname" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="email" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="adress" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="ccNumber" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="ccv" ordered="false" lowerBound="1"
+        eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="expiringMonth" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="expiringYear" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="ReceptionistInterface" abstract="true"
+      interface="true">
+    <eOperations name="createResident" ordered="false" lowerBound="1" eType="#//Resident">
+      <eParameters name="firstName" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="surname" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="passportNumber" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="viewAllBookings" ordered="false" upperBound="-1" eType="#//Booking">
+      <eParameters name="fromDate" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="toDate" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    </eOperations>
+    <eOperations name="getBooking" ordered="false" lowerBound="1" eType="#//Booking">
+      <eParameters name="bookingNumber" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eOperations>
+    <eOperations name="viewUnOccupiedRooms" ordered="false" upperBound="-1" eType="#//Room"/>
+    <eOperations name="viewAllBookings" ordered="false" upperBound="-1" eType="#//Booking">
+      <eParameters name="surname" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="dateFrom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="dateTo" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    </eOperations>
+    <eOperations name="viewUnOccupiedRooms" ordered="false" upperBound="-1" eType="#//Room">
+      <eParameters name="roomType" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="checkIn" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+      <eParameters name="rooms" ordered="false" upperBound="-1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="checkOut" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+    </eOperations>
+    <eOperations name="login" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="name" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="password" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="removeBooking" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+    </eOperations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Booking">
+    <eOperations name="Booking" ordered="false" lowerBound="1">
+      <eParameters name="fromDate" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="toDate" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="wishes" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="customer" ordered="false" lowerBound="1" eType="#//Customer"/>
+      <eParameters name="roomTypes" ordered="false" upperBound="-1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="promotionCode" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="id" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eParameters name="rooms" ordered="false" upperBound="-1" eType="#//Room"/>
+      <eParameters name="receipt" ordered="false" lowerBound="1" eType="#//Receipt"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="customer" ordered="false"
+        lowerBound="1" eType="#//Customer"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="fromDate" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="toDate" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="wishes" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="promotion" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="roomTypes" ordered="false"
+        upperBound="-1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="checkedIn" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" ordered="false" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="receipt" ordered="false"
+        lowerBound="1" eType="#//Receipt"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="room" ordered="false" upperBound="-1"
+        eType="#//Room"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="AdminInterface" abstract="true" interface="true">
+    <eOperations name="login" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="name" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="password" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="createRoom" ordered="false" lowerBound="1" eType="#//Room">
+      <eParameters name="room" ordered="false" lowerBound="1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="removeRoom" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="room" ordered="false" lowerBound="1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="updateRoom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="room" ordered="false" lowerBound="1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="createUser" ordered="false" lowerBound="1" eType="#//User">
+      <eParameters name="user" ordered="false" lowerBound="1" eType="#//User"/>
+    </eOperations>
+    <eOperations name="removeUser" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="user" ordered="false" lowerBound="1" eType="#//User"/>
+    </eOperations>
+    <eOperations name="updateUser" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="user" ordered="false" lowerBound="1" eType="#//User"/>
+    </eOperations>
+    <eOperations name="createPromotion" ordered="false" lowerBound="1" eType="#//Promotion">
+      <eParameters name="promotion" ordered="false" lowerBound="1" eType="#//Promotion"/>
+    </eOperations>
+    <eOperations name="removePromotion" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="promotion" ordered="false" lowerBound="1" eType="#//Promotion"/>
+    </eOperations>
+    <eOperations name="updatePromotion" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="promotion" ordered="false" lowerBound="1" eType="#//Promotion"/>
+    </eOperations>
+    <eOperations name="createExpense" ordered="false" lowerBound="1" eType="#//Expense">
+      <eParameters name="expense" ordered="false" lowerBound="1" eType="#//Expense"/>
+    </eOperations>
+    <eOperations name="removeExpense" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="expense" ordered="false" lowerBound="1" eType="#//Expense"/>
+    </eOperations>
+    <eOperations name="updateExpense" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean">
+      <eParameters name="expense" ordered="false" lowerBound="1" eType="#//Expense"/>
+    </eOperations>
+    <eOperations name="viewRooms" ordered="false" upperBound="-1" eType="#//Room"/>
+    <eOperations name="viewPromotions" ordered="false" upperBound="-1" eType="#//Promotion"/>
+    <eOperations name="viewUsers" ordered="false" upperBound="-1" eType="#//User"/>
+    <eOperations name="viewExpenses" ordered="false" upperBound="-1" eType="#//Expense"/>
+    <eOperations name="AdminController" ordered="false" lowerBound="1">
+      <eParameters name="roomExpert" ordered="false" lowerBound="1" eType="#//RoomExpert"/>
+      <eParameters name="expenseExpert" ordered="false" lowerBound="1" eType="#//ExpenseExpert"/>
+      <eParameters name="userExpert" ordered="false" lowerBound="1" eType="#//UserExpert"/>
+      <eParameters name="promotionExpert" ordered="false" lowerBound="1" eType="#//PromotionExpert"/>
+    </eOperations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="User">
+    <eOperations name="User" ordered="false" lowerBound="1">
+      <eParameters name="firstName" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="surname" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="password" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="receptionist" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+      <eParameters name="administrator" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+      <eParameters name="id" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="firstName" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="surname" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="password" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" ordered="false" lowerBound="1"
+        eType="ecore:EDataType types.ecore#//Integer"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="receptionist" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="administrator" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Boolean"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Promotion">
+    <eOperations name="calculateDiscount" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble">
+      <eParameters name="room" ordered="false" lowerBound="1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="Promotion" ordered="false" lowerBound="1">
+      <eParameters name="code" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="description" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+      <eParameters name="percentage" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+      <eParameters name="vaildFrom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="vaildTo" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="roomType" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="expirationDate" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="code" ordered="false" lowerBound="1"
+        eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="description" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="percentage" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="validFrom" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="validTo" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="roomType" ordered="false"
+        lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="expirationDate" ordered="false"
+        lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="RoomExpert">
+    <eOperations name="getAllRooms" ordered="false" upperBound="-1" eType="#//Room"/>
+    <eOperations name="getAvailableRoomTypes" ordered="false" upperBound="-1" eType="#//Room">
+      <eParameters name="from" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="to" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="numberOfRooms" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+      <eParameters name="numberOfGuests" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="getUnoccupiedRooms" ordered="false" upperBound="-1" eType="#//Room"/>
+    <eOperations name="addRoom" ordered="false" lowerBound="1" eType="#//Room">
+      <eParameters name="room" ordered="false" lowerBound="1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="removeRoom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="room" ordered="false" lowerBound="1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="updateRoom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="room" ordered="false" lowerBound="1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="getRoom" ordered="false" lowerBound="1" eType="#//Room">
+      <eParameters name="roomNumber" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="RoomExpert" ordered="false" lowerBound="1">
+      <eParameters name="database" ordered="false" lowerBound="1" eType="#//DatabaseInterface"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="database" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="DatabaseInterface" abstract="true" interface="true">
+    <eOperations name="query" ordered="false" upperBound="-1" eType="ecore:EDataType types.ecore#//String">
+      <eParameters name="query" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="send" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="query" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="ExpenseExpert">
+    <eOperations name="getExpense" ordered="false" lowerBound="1" eType="#//Expense">
+      <eParameters name="ID" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="getAllExpense" ordered="false" upperBound="-1" eType="#//Expense"/>
+    <eOperations name="getAllExpense" ordered="false" upperBound="-1" eType="#//Expense">
+      <eParameters name="receiptID" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    </eOperations>
+    <eOperations name="addExpense" ordered="false" lowerBound="1" eType="#//Expense">
+      <eParameters name="expense" ordered="false" lowerBound="1" eType="#//Expense"/>
+    </eOperations>
+    <eOperations name="removeExpense" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="ID" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="updateExpense" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="expense" ordered="false" lowerBound="1" eType="#//Expense"/>
+    </eOperations>
+    <eOperations name="ExpenseExpert" ordered="false" lowerBound="1">
+      <eParameters name="database" ordered="false" lowerBound="1" eType="#//DatabaseInterface"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="database" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="UserExpert">
+    <eOperations name="getUser" ordered="false" lowerBound="1" eType="#//User">
+      <eParameters name="ID" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="getAllUsers" ordered="false" upperBound="-1" eType="#//User"/>
+    <eOperations name="addUser" ordered="false" lowerBound="1" eType="#//User">
+      <eParameters name="user" ordered="false" lowerBound="1" eType="#//User"/>
+    </eOperations>
+    <eOperations name="removeUser" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="ID" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="updateUser" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="user" ordered="false" lowerBound="1" eType="#//User"/>
+    </eOperations>
+    <eOperations name="login" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="name" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+      <eParameters name="password" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="UserExpert" ordered="false" lowerBound="1">
+      <eParameters name="database" ordered="false" lowerBound="1" eType="#//DatabaseInterface"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="database" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="PromotionExpert">
+    <eOperations name="getPromotion" ordered="false" lowerBound="1" eType="#//Promotion">
+      <eParameters name="promotionCode" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="getAllPromotions" ordered="false" upperBound="-1" eType="#//Promotion"/>
+    <eOperations name="removePromotion" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="code" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="updatePromotion" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="promotion" ordered="false" lowerBound="1" eType="#//Promotion"/>
+    </eOperations>
+    <eOperations name="PromotionExpert" ordered="false" lowerBound="1">
+      <eParameters name="database" ordered="false" lowerBound="1" eType="#//DatabaseInterface"/>
+    </eOperations>
+    <eOperations name="addPromotion" ordered="false" lowerBound="1" eType="#//Promotion">
+      <eParameters name="promotion" ordered="false" lowerBound="1" eType="#//Promotion"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="database" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="BookingExpert">
+    <eOperations name="getBooking" ordered="false" lowerBound="1" eType="#//Booking">
+      <eParameters name="ID" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="getAllBookings" ordered="false" upperBound="-1" eType="#//Booking">
+      <eParameters name="dateFrom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="dateTo" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    </eOperations>
+    <eOperations name="addBooking" ordered="false" lowerBound="1" eType="#//Booking">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+    </eOperations>
+    <eOperations name="removeBooking" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+    </eOperations>
+    <eOperations name="updateBooking" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+    </eOperations>
+    <eOperations name="getAllBookings" ordered="false" upperBound="-1" eType="#//Booking">
+      <eParameters name="dateFrom" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="dateTo" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+      <eParameters name="surname" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//String"/>
+    </eOperations>
+    <eOperations name="BookingExpert" ordered="false" lowerBound="1">
+      <eParameters name="database" ordered="false" lowerBound="1" eType="#//DatabaseInterface"/>
+    </eOperations>
+    <eOperations name="checkIn" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+      <eParameters name="rooms" ordered="false" upperBound="-1" eType="#//Room"/>
+    </eOperations>
+    <eOperations name="checkOut" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="database" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="ReceiptExpert">
+    <eOperations name="getReceipt" ordered="false" lowerBound="1" eType="#//Receipt">
+      <eParameters name="ID" ordered="false" lowerBound="1" eType="ecore:EDataType types.ecore#//Integer"/>
+    </eOperations>
+    <eOperations name="getAllReceipt" ordered="false" upperBound="-1" eType="#//Receipt"/>
+    <eOperations name="combine" ordered="false" lowerBound="1" eType="#//Receipt">
+      <eParameters name="receiptList" ordered="false" upperBound="-1" eType="#//Receipt"/>
+    </eOperations>
+    <eOperations name="addReceipt" ordered="false" lowerBound="1" eType="#//Receipt">
+      <eParameters name="receipt" ordered="false" lowerBound="1" eType="#//Receipt"/>
+    </eOperations>
+    <eOperations name="removeReceipt" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="receipt" ordered="false" lowerBound="1" eType="#//Receipt"/>
+    </eOperations>
+    <eOperations name="updateReceipt" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="receipt" ordered="false" lowerBound="1" eType="#//Receipt"/>
+    </eOperations>
+    <eOperations name="ReceiptExpert" ordered="false" lowerBound="1">
+      <eParameters name="database" ordered="false" lowerBound="1" eType="#//DatabaseInterface"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="database" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="EmailSender">
+    <eOperations name="send" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="booking" ordered="false" lowerBound="1" eType="#//Booking"/>
+    </eOperations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Payment">
+    <eOperations name="makePayment" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="customer" ordered="false" lowerBound="1" eType="#//Customer"/>
+      <eParameters name="amount" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+    </eOperations>
+    <eOperations name="isCreditCardValid" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean">
+      <eParameters name="customer" ordered="false" lowerBound="1" eType="#//Customer"/>
+    </eOperations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="BookingController" eSuperTypes="#//CustomerInterface">
+    <eOperations name="BookingController" ordered="false" lowerBound="1">
+      <eParameters name="roomExpert" ordered="false" lowerBound="1" eType="#//RoomExpert"/>
+      <eParameters name="bookingExpert" ordered="false" lowerBound="1" eType="#//BookingExpert"/>
+      <eParameters name="promotionExpert" ordered="false" lowerBound="1" eType="#//PromotionExpert"/>
+      <eParameters name="expenseExpert" ordered="false" lowerBound="1" eType="#//ExpenseExpert"/>
+      <eParameters name="receiptExpert" ordered="false" lowerBound="1" eType="#//ReceiptExpert"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="room" ordered="false" lowerBound="1"
+        eType="#//RoomExpert"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="bookingExpert" ordered="false"
+        lowerBound="1" eType="#//BookingExpert"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="promotionExpert" ordered="false"
+        lowerBound="1" eType="#//PromotionExpert"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="databaseInterface" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="expenseExpert" ordered="false"
+        lowerBound="1" eType="#//ExpenseExpert"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="receiptExpert" ordered="false"
+        lowerBound="1" eType="#//ReceiptExpert"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="AdminController" eSuperTypes="#//AdminInterface">
+    <eOperations name="AdminController" ordered="false" lowerBound="1">
+      <eParameters name="expenseExpert" ordered="false" lowerBound="1" eType="#//ExpenseExpert"/>
+      <eParameters name="promotionExpert" ordered="false" lowerBound="1" eType="#//PromotionExpert"/>
+      <eParameters name="userExpert" ordered="false" lowerBound="1" eType="#//UserExpert"/>
+      <eParameters name="roomExpert" ordered="false" lowerBound="1" eType="#//RoomExpert"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="userExpert" ordered="false"
+        lowerBound="1" eType="#//UserExpert"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="expenseExpert" ordered="false"
+        lowerBound="1" eType="#//ExpenseExpert"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="promoExpert" ordered="false"
+        lowerBound="1" eType="#//PromotionExpert"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="databaseInterface" ordered="false"
+        lowerBound="1" eType="#//DatabaseInterface"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="roomExpert" ordered="false"
+        lowerBound="1" eType="#//RoomExpert"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="ReceptionistController" eSuperTypes="#//BookingController #//ReceptionistInterface">
+    <eOperations name="ReceptionistController" ordered="false" lowerBound="1">
+      <eParameters name="receiptExpert" ordered="false" lowerBound="1" eType="#//ReceiptExpert"/>
+      <eParameters name="expenseExpert" ordered="false" lowerBound="1" eType="#//ExpenseExpert"/>
+      <eParameters name="roomExpert" ordered="false" lowerBound="1" eType="#//RoomExpert"/>
+      <eParameters name="bookingExpert" ordered="false" lowerBound="1" eType="#//BookingExpert"/>
+      <eParameters name="promotionExpert" ordered="false" lowerBound="1" eType="#//PromotionExpert"/>
+      <eParameters name="userExpert" ordered="false" lowerBound="1" eType="#//UserExpert"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="userExpert" ordered="false"
+        lowerBound="1" eType="#//UserExpert"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MSAccessDB" eSuperTypes="#//DatabaseInterface">
+    <eOperations name="openConnection" ordered="false" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eOperations name="closeConnection" ordered="false" lowerBound="1"/>
+  </eClassifiers>
+</ecore:EPackage>

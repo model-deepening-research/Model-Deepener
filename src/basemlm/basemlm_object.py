@@ -1,7 +1,6 @@
 import xml.etree.ElementTree as ElementTree
 from typing import List
 
-from basemlm.basemlm_association import BaseMlmAssociation
 from basemlm.basemlm_property import BaseMlmProperty
 from basemlm.basemlm_type_spec import TypeSpec
 from src.basemlm.model_member import ModelMember
@@ -71,6 +70,10 @@ class BaseMlmObject(ModelMember, TypeSpec):
 
     def get_level(self) -> int:
         return self.level
+
+    def get_full_name(self) -> str:
+        """Expose the qualified object path so importers can resolve references without reading fields."""
+        return self.full_name
 
     def get_model(self):
         return self.model
@@ -245,7 +248,7 @@ class BaseMlmObject(ModelMember, TypeSpec):
         slot_found: bool = False
         for slot in self.slot_list:
             if slot.name == new_slot.name:
-                slot.value += "///" + new_slot.value
+                slot.add_value_of(new_slot)
                 slot_found = True
         if not slot_found:
             self.slot_list.append(new_slot)
@@ -339,9 +342,12 @@ class BaseMlmObject(ModelMember, TypeSpec):
         during import, so the original slot does not make the export fail.
         Starting diagram coordinates are replaced by the later layout step.
         MetaClass elements become classes; other elements become instances.
+        Abstract flags and declared attribute bounds are preserved. Attributes without bounds
+        use XModeler's default of exactly one value.
         Association ends and slot links are exported by their relationship
         commands instead of being duplicated as attributes or ordinary slots.
-        Empty slot expressions are omitted because XModeler cannot parse them.
+        A slot without a value and without an original XML expression is omitted
+        because XModeler cannot parse an empty expression.
         """
         projectName = root.attrib['path']
         diagrams = root.find('Diagrams')
@@ -353,20 +359,23 @@ class BaseMlmObject(ModelMember, TypeSpec):
         model = root.find('Model')
 
         if self.class_of_object is None or self.class_of_object.name == 'MetaClass':
-            ElementTree.SubElement(model, 'addMetaClass', abstract='false', level=str(self.level),
+            ElementTree.SubElement(model, 'addMetaClass', abstract=str(self.is_abstract()).lower(), level=str(self.level),
                                    maxLevel=str(self.level), name=self.name, package=projectName,
                                    singleton='false')
         else:
             class_path = projectName + "::" + self.class_of_object.full_name.split("::")[2]
-            ElementTree.SubElement(model, 'addInstance', abstract='false', level=str(self.level),
+            ElementTree.SubElement(model, 'addInstance', abstract=str(self.is_abstract()).lower(), level=str(self.level),
                                    maxLevel=str(self.level), name=self.name, of=class_path,
                                    package=projectName, singleton='false')
 
         for attr in self.attr_list:
             if attr.attr_category == "ASSOC-END":
                 continue
+            multiplicity = 'Seq{1,1,true,false}'
+            if attr.multiplicity is not None:
+                multiplicity = attr.multiplicity.to_xml()
             attribute = ElementTree.SubElement(model, 'addAttribute', level=str(attr.inst_level),
-                                               multiplicity='Seq{1,1,true,false}', name=attr.name,
+                                               multiplicity=multiplicity, name=attr.name,
                                                package=projectName, type=attr.attr_type_str)
             # this attr has to be set separetly because of the keyword class and cannot be used in the prior operation
             attribute.set('class', projectName + "::" + self.name)
@@ -374,7 +383,7 @@ class BaseMlmObject(ModelMember, TypeSpec):
         for slot in self.slot_list:
             if slot.slot_category == "SLOT-LINK":
                 continue
-            if slot.value == "":
+            if slot.value == "" and not slot.xml_value:
                 continue
             slot_element = ElementTree.SubElement(model, 'changeSlotValue', package=projectName,
                                                   slotName=slot.name, valueToBeParsed=slot.value_for_xml())

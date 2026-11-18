@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="customers"
+    nsURI="http://www.eclipse.org/emf/search/test/models/movies/customers/1.0.0" nsPrefix="customers">
+  <eClassifiers xsi:type="ecore:EClass" name="Customer">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="firstName" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="lastName" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="creditCard" upperBound="-1"
+        eType="#//CreditCard" containment="true" eOpposite="#//CreditCard/holder"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="address" lowerBound="1"
+        eType="#//Address" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comment" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        defaultValueLiteral=""/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="dateOfBirth" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Address">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="street" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="town" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="zipCode" eType="#//ZipCode"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="USAddress" eSuperTypes="#//Address">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="state" eType="#//USStates"
+        defaultValueLiteral=""/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="USStates">
+    <eLiterals name="UNKNOWN"/>
+    <eLiterals name="AL" value="1"/>
+    <eLiterals name="AK" value="2"/>
+    <eLiterals name="AS" value="3"/>
+    <eLiterals name="AZ" value="4"/>
+    <eLiterals name="AR" value="5"/>
+    <eLiterals name="CA" value="6"/>
+    <eLiterals name="CO" value="7"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CanadaAddress" eSuperTypes="#//Address">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="province" eType="#//CanadaProvinces"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="CanadaProvinces">
+    <eLiterals name="UNKNOWN"/>
+    <eLiterals name="AB" value="1"/>
+    <eLiterals name="BC" value="2"/>
+    <eLiterals name="MB" value="3"/>
+    <eLiterals name="NB" value="4"/>
+    <eLiterals name="NL" value="5"/>
+    <eLiterals name="NT" value="6"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="ZipCode" instanceClassName="java.math.BigInteger">
+    <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+      <details key="name" value="zipCode"/>
+      <details key="baseType" value="http://www.eclipse.org/emf/2003/XMLType#integer"/>
+      <details key="minInclusive" value="1000"/>
+      <details key="maxInclusive" value="99999"/>
+    </eAnnotations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CreditCard">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="ccNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBigInteger"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="expiresDate" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="type" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="holder" lowerBound="1"
+        eType="#//Customer" eOpposite="#//Customer/creditCard"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CustomersDB">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="customers" upperBound="-1"
+        eType="#//Customer" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comment" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+</ecore:EPackage>

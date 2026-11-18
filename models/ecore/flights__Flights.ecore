@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="Flights" nsURI="platform:/resource/Flights/model/Flights.ecore"
+    nsPrefix="Flights">
+  <eClassifiers xsi:type="ecore:EClass" name="FlightModel">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="flights" lowerBound="1"
+        eType="#//FlightContainer" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="bookings" lowerBound="1"
+        eType="#//Bookings" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="persons" lowerBound="1"
+        eType="#//Persons" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="routes" lowerBound="1"
+        eType="#//Routes" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="airports" lowerBound="1"
+        eType="#//Airports" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="planes" lowerBound="1"
+        eType="#//Planes" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="globalTime" lowerBound="1"
+        eType="#//TimeStamp" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="FlightObject" abstract="true">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="ID" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="FlightContainer">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="flights" upperBound="-1"
+        eType="#//Flight" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Flight" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="travels" upperBound="-1"
+        eType="#//Travel" eOpposite="#//Travel/flights"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="route" lowerBound="1" eType="#//Route"
+        eOpposite="#//Route/flights"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="src" lowerBound="1" eType="#//Gate"
+        eOpposite="#//Gate/outgoingFlights"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="trg" lowerBound="1" eType="#//Gate"
+        eOpposite="#//Gate/incomingFlights"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="plane" lowerBound="1" eType="#//Plane"
+        eOpposite="#//Plane/flights"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="departure" lowerBound="1"
+        eType="#//TimeStamp" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="arrival" lowerBound="1"
+        eType="#//TimeStamp" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="newAttribute" eType="#//FlightState"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Bookings">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="bookings" upperBound="-1"
+        eType="#//Booking" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Booking" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="travels" upperBound="-1"
+        eType="#//Travel" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Routes">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="routes" upperBound="-1"
+        eType="#//Route" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Route" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="duration" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="flights" upperBound="-1"
+        eType="#//Flight" eOpposite="#//Flight/route"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="src" lowerBound="1" eType="#//Airport"
+        eOpposite="#//Airport/outgoingRoutes"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="trg" lowerBound="1" eType="#//Airport"
+        eOpposite="#//Airport/incomingRoutes"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Travel" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="flights" upperBound="-1"
+        eType="#//Flight" eOpposite="#//Flight/travels"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="person" eType="#//Person"
+        eOpposite="#//Person/travels"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Persons">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="persons" upperBound="-1"
+        eType="#//Person" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Person" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="travelState" eType="#//TravelState"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="travels" upperBound="-1"
+        eType="#//Travel" eOpposite="#//Travel/person"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Airports">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="airports" upperBound="-1"
+        eType="#//Airport" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Airport" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="gates" upperBound="-1"
+        eType="#//Gate" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="size" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"
+        defaultValueLiteral="1.0"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="outgoingRoutes" upperBound="-1"
+        eType="#//Route" eOpposite="#//Route/src"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="incomingRoutes" upperBound="-1"
+        eType="#//Route" eOpposite="#//Route/trg"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Planes">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="planes" upperBound="-1"
+        eType="#//Plane" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Plane" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="capacity" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="flights" upperBound="-1"
+        eType="#//Flight" eOpposite="#//Flight/plane"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="TravelState">
+    <eLiterals name="unknown"/>
+    <eLiterals name="checkedIn" value="1"/>
+    <eLiterals name="luggageDroppedOf" value="2"/>
+    <eLiterals name="onBoard" value="3"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Gate" eSuperTypes="#//FlightObject">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="position" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="outgoingFlights" upperBound="-1"
+        eType="#//Flight" eOpposite="#//Flight/src"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="incomingFlights" upperBound="-1"
+        eType="#//Flight" eOpposite="#//Flight/trg"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="TimeStamp">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="time" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//ELong"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="FlightState">
+    <eLiterals name="planned"/>
+    <eLiterals name="inFlight" value="1"/>
+    <eLiterals name="completed" value="2"/>
+  </eClassifiers>
+</ecore:EPackage>

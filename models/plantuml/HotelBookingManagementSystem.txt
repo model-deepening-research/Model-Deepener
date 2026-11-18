@@ -1,0 +1,110 @@
+@startuml
+
+enum RoomType { 
+    SINGLE
+    DOUBLE
+    TWIN 
+}
+
+enum BookingStatus { 
+    FINALIZED
+    CONFIRMED
+    CANCELLED_BY_HBMS
+    PRELIMINARY
+    CANCELLED_BY_TRAVELLER
+    CANCELLED_BY_HOTEL 
+}
+
+enum PaymentType { 
+    PREPAID
+    PAID_AT_HOTEL 
+}
+
+class HotelChain {}
+
+class HotelBookingManager {}
+
+class Traveller {
+    string name
+    int reliabilityRating
+}
+
+class BillingInformation {
+    string companyName
+    string address
+}
+
+class TravelPreference {
+    string preference
+    string value
+}
+
+class Hotel {
+    string city
+    string country
+    string area
+    RoomAvailability availability
+}
+
+abstract class Offer {}
+class SpecialOffer {}
+class RegularOffer {}
+
+class TravelSearch {}
+
+class SearchInfo {}
+
+class RoomAvailability {}
+
+abstract class TripInfo {
+    int numberOfRooms
+    RoomType roomType
+    date arrivalDate
+    date departureDate
+    float budgetPerNight
+}
+
+class BookingInfo {}
+
+class Booking {
+    int bookingId
+    date cancellationDeadline
+    string creditCardNumber
+    BookingStatus bookingStatus
+    PaymentType paymentType
+    date confirmationDate
+    float paidAmount
+}
+
+SpecialOffer --|> Offer
+RegularOffer --|> Offer
+RoomAvailability --|> TripInfo
+SearchInfo --|> TripInfo
+BookingInfo --|> TripInfo
+
+HotelChain "1" *-- "*" Hotel
+HotelBookingManager "1" *-- "*" HotelChain
+HotelBookingManager "1" *-- "*" Traveller
+
+Hotel "1" *-- "*" Offer
+Hotel "1" *-- "*" RoomAvailability
+
+Traveller "1" *-- "*" TravelSearch
+Traveller "1" *-- "*" TravelPreference
+Traveller "1" *-- "1" BillingInformation
+
+TravelSearch "1" *-- "1" SearchInfo
+TravelSearch "1" *-- "*" TravelPreference
+
+Booking "1" *-- "1" BookingInfo
+
+RegularOffer "*" -- "*" TravelSearch
+
+Hotel "1" -- "*" Booking
+Booking "0..1" -- "1" Offer
+Booking "*" -- "1" Traveller
+
+SpecialOffer "*" -- "1" BookingInfo : specialOffers
+BookingInfo "0..5" -- "*" SpecialOffer : bestOffers
+
+@enduml

@@ -1,0 +1,110 @@
+@startuml
+
+enum Interval <<enum>> {
+    Weekly
+    Monthly
+    EveryHalfYear
+    Yearly
+}
+
+enum AccessType <<enum>> {
+    Reservable
+    WalkIn
+    DropOff
+}
+
+enum DayOfWeek <<enum>> {
+    Monday
+    Tuesday
+    Wednesday
+    Thursday
+    Friday
+    Saturday
+    Sunday
+}
+
+
+class Person {
+    String LastName
+    String FirstName
+    String Address
+    String PhoneNumber
+}
+
+abstract class PersonRole {
+    Int IdNumber
+}
+
+class Patient {
+    String DateOfBirth
+}
+
+class Doctor {
+    String Signature
+}
+
+class Requisition {
+    String EffectiveDate
+    Int RepetitionCount
+    Interval RepetitionInterval
+}
+
+class TestResult {
+    Boolean Result
+    String Report
+}
+
+class SpecificTest {
+    Date Date
+}
+
+class Appointment {
+    String Confirmation
+    Date Date
+    String startTime
+    String endTime
+}
+
+class BusinessHour {
+    DayOfWeek DayOfWeek
+    String startTime
+    String endTime
+}
+
+class Lab {
+    String RegistrationNumber
+    String Name
+    String Address
+    Boolean ChangeCancelFee
+}
+
+class Test {
+    String Name
+    String Duration
+}
+
+class TestType {
+    String Name
+    String DurationAdditive
+    AccessType Access
+}
+
+
+
+PersonRole <|-- Patient
+PersonRole <|-- Doctor
+
+Person "1" -- "0..2" PersonRole
+Patient "1" -- "*" Requisition
+Lab "1" - "*" Requisition
+(Lab,Requisition) .. Appointment
+
+Doctor "1" -- "*" Requisition
+Requisition "1" - "*" SpecificTest
+SpecificTest "1" -- "0..1" TestResult
+BusinessHour "7" -- "1" Lab
+SpecificTest "*" - "1" Test
+Test "*" -- "1" TestType
+
+
+@enduml

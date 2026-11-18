@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="education" nsURI="http://www.example.org/education" nsPrefix="education">
+  <eClassifiers xsi:type="ecore:EClass" name="Person">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="firstname" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="lastname" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Student" eSuperTypes="#//Person"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Teacher" eSuperTypes="#//Person"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Course">
+    <eOperations name="start">
+      <eParameters name="startdate" eType="#//date"/>
+    </eOperations>
+    <eOperations name="finish">
+      <eParameters name="finishdate" eType="#//date"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="student" upperBound="-1"
+        eType="#//Student" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="teacher" lowerBound="1"
+        eType="#//Teacher" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="date" instanceClassName="java.util.Date"/>
+</ecore:EPackage>

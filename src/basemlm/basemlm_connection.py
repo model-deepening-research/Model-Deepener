@@ -6,7 +6,7 @@ from src.basemlm.model_element import ModelElement
 
 class BaseMlmConnection(ModelMember, metaclass=ABCMeta):
     """
-    Superclass for model relationships, currently FmmlxAssociation and FmmlxLink.
+    Superclass for model relationships, currently BaseMlmAssociation and BaseMlmLink.
     Each model relationship has exactly one source and one target object.
     """
     def __init__(self, source_object, target_object, name, print_name):

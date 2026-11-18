@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="school" nsURI="http://www.example.org/school" nsPrefix="school">
+  <eClassifiers xsi:type="ecore:EClass" name="School">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="faculty" upperBound="-1"
+        eType="#//Faculty" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="courseofstudy" upperBound="-1"
+        eType="#//CourseOfStudy" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="course" upperBound="-1"
+        eType="#//Course" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="student" upperBound="-1"
+        eType="#//Student" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="teacher" upperBound="-1"
+        eType="#//Teacher" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Faculty">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="courseofstudy" upperBound="-1"
+        eType="#//CourseOfStudy" eOpposite="#//CourseOfStudy/faculty"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CourseOfStudy">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="course" upperBound="-1"
+        eType="#//Course"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="faculty" lowerBound="1"
+        eType="#//Faculty" eOpposite="#//Faculty/courseofstudy"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="student" upperBound="-1"
+        eType="#//Student" eOpposite="#//Student/courseofstudy"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Course">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="enrolledStudent" upperBound="-1"
+        eType="#//Student" eOpposite="#//Student/enrolledIn"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="taughtBy" lowerBound="1"
+        eType="#//Teacher" eOpposite="#//Teacher/teaches"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="courseresult" upperBound="-1"
+        eType="#//CourseResult" containment="true" eOpposite="#//CourseResult/course"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="courseNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Student">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="enrolledIn" upperBound="-1"
+        eType="#//Course" eOpposite="#//Course/enrolledStudent"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="studentNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="courseofstudy" lowerBound="1"
+        eType="#//CourseOfStudy" eOpposite="#//CourseOfStudy/student"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Teacher">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="teaches" upperBound="-1"
+        eType="#//Course" eOpposite="#//Course/taughtBy"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CourseResult">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="student" lowerBound="1"
+        eType="#//Student"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="course" lowerBound="1"
+        eType="#//Course" eOpposite="#//Course/courseresult"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="grade" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBigInteger"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Query">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="student" eType="#//Student"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="where" eType="#//Where"
+        containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="type" eType="#//SchoolElement"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Where">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="booleanexpr" lowerBound="1"
+        eType="#//BooleanExpr" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="BooleanExpr">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="and" eType="#//BooleanExpr"
+        containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="or" eType="#//BooleanExpr"
+        containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="lhs" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="rhs" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="operator" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="SchoolDatabase">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="school" lowerBound="1"
+        eType="#//School" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="query" upperBound="-1"
+        eType="#//Query" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="SchoolElement">
+    <eLiterals name="School"/>
+    <eLiterals name="Student" value="1"/>
+    <eLiterals name="Teacher" value="2"/>
+    <eLiterals name="Faculty" value="3"/>
+    <eLiterals name="CourseOfStudy" value="4"/>
+    <eLiterals name="Course" value="5"/>
+  </eClassifiers>
+</ecore:EPackage>

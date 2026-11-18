@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="ASCII"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="family_ecore" nsURI="http://example.org/family.ecore" nsPrefix="family_ecore">
+  <eAnnotations source="http://www.w3.org/2002/07/owl#Ontology">
+    <details key="uri" value="http://example.org/family.ecore"/>
+    <details key="prefix" value="family_ecore"/>
+  </eAnnotations>
+  <eClassifiers xsi:type="ecore:EClass" name="Person">
+    <eAnnotations source="http://www.w3.org/2002/07/owl#Class">
+      <details key="uri" value="http://example.org/family.ecore#Person"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString">
+      <eAnnotations source="http://www.w3.org/2002/07/owl#DatatypeProperty">
+        <details key="uri" value="http://example.org/family.ecore#name"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="hasFather" lowerBound="1"
+        eType="#//Person">
+      <eAnnotations source="http://www.w3.org/2002/07/owl#ObjectProperty">
+        <details key="uri" value="http://example.org/family.ecore#hasFather"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="age" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt">
+      <eAnnotations source="http://www.w3.org/2002/07/owl#DatatypeProperty">
+        <details key="uri" value="http://example.org/family.ecore#age"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="hasUncle" upperBound="-1"
+        eType="#//Person">
+      <eAnnotations source="http://www.w3.org/2002/07/owl#ObjectProperty">
+        <details key="uri" value="http://example.org/family.ecore#hasUncle"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="hasBrother" upperBound="-1"
+        eType="#//Person">
+      <eAnnotations source="http://www.w3.org/2002/07/owl#ObjectProperty">
+        <details key="uri" value="http://example.org/family.ecore#hasBrother"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Family">
+    <eAnnotations source="http://www.w3.org/2002/07/owl#Class">
+      <details key="uri" value="http://example.org/family.ecore#Family"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="member" lowerBound="1"
+        upperBound="-1" eType="#//Person" containment="true">
+      <eAnnotations source="http://www.w3.org/2002/07/owl#ObjectProperty">
+        <details key="uri" value="http://example.org/family.ecore#member"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+  </eClassifiers>
+</ecore:EPackage>

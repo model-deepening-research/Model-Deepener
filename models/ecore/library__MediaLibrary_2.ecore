@@ -1,0 +1,96 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="MediaLibrary" nsURI="MediaLibrary" nsPrefix="MediaLibrary">
+  <eClassifiers xsi:type="ecore:EClass" name="NamedElement" abstract="true">
+    <eAnnotations source="gmf.node">
+      <details key="label" value="name"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Ecosystem">
+    <eAnnotations source="gmf.diagram"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="libraries" lowerBound="1"
+        upperBound="-1" eType="#//Library" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="devices" lowerBound="1"
+        upperBound="-1" eType="#//Device" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="mediaSources" lowerBound="1"
+        upperBound="-1" eType="#//MediaSource" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Library" eSuperTypes="#//NamedElement">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="collections" upperBound="-1"
+        eType="#//MediaCollection" containment="true">
+      <eAnnotations source="gmf.compartment"/>
+    </eStructuralFeatures>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MediaCollection" eSuperTypes="#//NamedElement">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="members" lowerBound="1"
+        upperBound="-1" eType="#//Artifact" containment="true">
+      <eAnnotations source="gmf.compartment"/>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="host" lowerBound="1" eType="#//Device"
+        eOpposite="#//Device/hostOf">
+      <eAnnotations source="gmf.link">
+        <details key="target.decoration" value="arrow"/>
+        <details key="style" value="dash"/>
+        <details key="color" value="255,0,0"/>
+        <details key="label.text" value="host"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="syncedDevices" lowerBound="1"
+        upperBound="-1" eType="#//Device" eOpposite="#//Device/collections">
+      <eAnnotations source="gmf.link">
+        <details key="target.decoration" value="arrow"/>
+        <details key="style" value="dash"/>
+        <details key="label.text" value="syncedDevice"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Device" abstract="true" eSuperTypes="#//NamedElement">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="hostOf" upperBound="-1"
+        eType="#//MediaCollection" eOpposite="#//MediaCollection/host"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="collections" upperBound="-1"
+        eType="#//MediaCollection" eOpposite="#//MediaCollection/syncedDevices"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Tablet" eSuperTypes="#//Device"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Computer" eSuperTypes="#//Device"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Smartphone" eSuperTypes="#//Device"/>
+  <eClassifiers xsi:type="ecore:EClass" name="EReader" eSuperTypes="#//Device">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="videoEnabled" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBooleanObject"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="audioEnabled" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBooleanObject"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Artifact" abstract="true" eSuperTypes="#//NamedElement">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="origin" lowerBound="1"
+        eType="#//MediaSource" eOpposite="#//MediaSource/contents">
+      <eAnnotations source="gmf.link">
+        <details key="target.decoration" value="arrow"/>
+        <details key="style" value="dot"/>
+        <details key="color" value="50,200,0"/>
+        <details key="label.text" value="origin"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="DurationArtifact" abstract="true" eSuperTypes="#//Artifact">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="duration" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="AudioBook" eSuperTypes="#//DurationArtifact"/>
+  <eClassifiers xsi:type="ecore:EClass" name="MusicTrack" eSuperTypes="#//DurationArtifact"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Video" eSuperTypes="#//DurationArtifact"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Image" eSuperTypes="#//Artifact"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Ebook" eSuperTypes="#//Artifact"/>
+  <eClassifiers xsi:type="ecore:EClass" name="MediaSource" abstract="true" eSuperTypes="#//NamedElement">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="contents" upperBound="-1"
+        eType="#//Artifact" eOpposite="#//Artifact/origin"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="SourceType">
+    <eLiterals name="CD"/>
+    <eLiterals name="DVD" value="1"/>
+    <eLiterals name="VHS" value="2"/>
+    <eLiterals name="CASSETTE" value="3"/>
+    <eLiterals name="HDD" value="4"/>
+    <eLiterals name="OTHER" value="5"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="ExternalSource" eSuperTypes="#//MediaSource">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="sourceType" eType="#//SourceType"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Store" eSuperTypes="#//MediaSource"/>
+</ecore:EPackage>

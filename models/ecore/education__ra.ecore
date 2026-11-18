@@ -1,0 +1,78 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="ra" nsURI="platform:/resource/tdt4250/model/ra.ecore" nsPrefix="tdt4250.ra">
+  <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore">
+    <details key="validationDelegates" value="http://www.eclipse.org/acceleo/query/1.0"/>
+  </eAnnotations>
+  <eClassifiers xsi:type="ecore:EClass" name="Department">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="programme" upperBound="-1"
+        eType="#//Programme" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="course" upperBound="-1"
+        eType="#//Course" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="studyPlan" eType="#//StudyPlan"
+        containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="spesialization" eType="#//Specialization"
+        containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Course">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="code" eType="#//courseCode"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="mandatoryCourse" eType="#//MandatoryCourse"
+        eOpposite="#//MandatoryCourse/course"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Programme">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="mCode" eType="#//programmeCode"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="studyPlan" eType="#//StudyPlan"
+        containment="true" eOpposite="#//StudyPlan/programme"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="StudyPlan">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="programme" eType="#//Programme"
+        eOpposite="#//Programme/studyPlan"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="spesialization" upperBound="-1"
+        eType="#//Specialization" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="semester" upperBound="-1"
+        eType="#//Semester" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="mandatoryCourse" upperBound="-1"
+        eType="#//MandatoryCourse" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Specialization">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="semester" upperBound="-1"
+        eType="#//Semester" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Semester">
+    <eAnnotations source="http://www.eclipse.org/emf/2002/Ecore">
+      <details key="constraints" value="mandatoryOrNotCourse"/>
+    </eAnnotations>
+    <eAnnotations source="http://www.eclipse.org/acceleo/query/1.0">
+      <details key="mandatoryOrNotCourse" value="if self.mandatoryCourse.mandatory = true then not self.courseSlot->excludes(self.mandatoryCourse.course) else true endif and self.mandatoryCourse.credit->sum() >= 30.0"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="semesterNumber" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="totalPoints" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"
+        changeable="false" volatile="true" transient="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="courseSlot" upperBound="-1"
+        eType="#//Course"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="mandatoryCourse" upperBound="-1"
+        eType="#//MandatoryCourse" eOpposite="#//MandatoryCourse/semester"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MandatoryCourse">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="semester" eType="#//Semester"
+        eOpposite="#//Semester/mandatoryCourse"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="course" eType="#//Course"
+        eOpposite="#//Course/mandatoryCourse"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="mandatory" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="credit" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EDouble"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="programmeCode">
+    <eLiterals name="Datateknologi5" literal="MTDT"/>
+    <eLiterals name="Informatikk" value="1" literal="MSIT"/>
+    <eLiterals name="Datateknologi2" value="2" literal="MIDT"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="courseCode" instanceClassName="java.lang.String">
+    <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+      <details key="maxLength" value="8"/>
+      <details key="minLength" value="6"/>
+    </eAnnotations>
+  </eClassifiers>
+</ecore:EPackage>

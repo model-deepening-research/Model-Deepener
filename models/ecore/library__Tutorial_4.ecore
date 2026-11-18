@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0" xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="tutorial" nsURI="http://www.eclipse.org/mdt/ocl/oclinecore/tutorial" nsPrefix="tut">
+  <eAnnotations source="http://www.modelwriter.eu/alloyinecore/import">
+    <details key="Ecore" value="http://www.eclipse.org/emf/2002/Ecore"/>
+  </eAnnotations>
+  <eAnnotations source="http://www.modelwriter.eu/alloyinecore/source">
+    <details key="source" value="import Ecore : 'http://www.eclipse.org/emf/2002/Ecore';&#xA;&#xA;package tutorial : tut = 'http://www.eclipse.org/mdt/ocl/oclinecore/tutorial'&#xA;{&#xA;    class Library&#xA;    {&#xA;        attribute name : String;&#xA;        property books#library : Book[*] { composes };&#xA;        property loans : Loan[*] { composes };&#xA;        property members#library : Member[*] { composes };&#xA;    }&#xA;    class Book&#xA;    {&#xA;        attribute name : String;&#xA;        attribute copies : UnlimitedNatural;&#xA;        property library#books : Library[?];&#xA;        volatile property loans : Loan[*] { derived };&#xA;        operation isAvailable() : Boolean[?];&#xA;    }&#xA;    class Member&#xA;    {&#xA;        attribute name : String;&#xA;        property library#members : Library[?];&#xA;        volatile property loans : Loan[*] { derived };&#xA;        volatile property books : Book[*] { !unique derived };&#xA;    }&#xA;    class Loan&#xA;    {&#xA;        attribute date : Ecore::EDate[?];&#xA;        property book : Book;&#xA;        property member : Member;&#xA;    }&#xA;}"/>
+    <details key="source_hash" value="695747473"/>
+  </eAnnotations>
+  <eClassifiers xsi:type="ecore:EClass" name="Library">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" ordered="false" lowerBound="1">
+      <eType xsi:type="ecore:EDataType" href="http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="books" ordered="false" upperBound="-1" eType="//Book" containment="true" eOpposite="//Book/library"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="loans" ordered="false" upperBound="-1" eType="//Loan" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="members" ordered="false" upperBound="-1" eType="//Member" containment="true" eOpposite="//Member/library"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Book">
+    <eOperations name="isAvailable" ordered="false">
+      <eType xsi:type="ecore:EDataType" href="http://www.eclipse.org/emf/2002/Ecore#//EBoolean"/>
+    </eOperations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" ordered="false" lowerBound="1">
+      <eType xsi:type="ecore:EDataType" href="http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="copies" ordered="false" lowerBound="1">
+      <eType xsi:type="ecore:EDataType" href="http://www.eclipse.org/emf/2002/Ecore#//EBigInteger"/>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="library" ordered="false" eType="//Library" eOpposite="//Library/books"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="loans" ordered="false" upperBound="-1" eType="//Loan" volatile="true" derived="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Member">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" ordered="false" lowerBound="1">
+      <eType xsi:type="ecore:EDataType" href="http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="library" ordered="false" eType="//Library" eOpposite="//Library/members"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="loans" ordered="false" upperBound="-1" eType="//Loan" volatile="true" derived="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="books" ordered="false" unique="false" upperBound="-1" eType="//Book" volatile="true" derived="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Loan">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="date" ordered="false">
+      <eType xsi:type="ecore:EDataType" href="http://www.eclipse.org/emf/2002/Ecore#//EDate"/>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="book" ordered="false" lowerBound="1" eType="//Book"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="member" ordered="false" lowerBound="1" eType="//Member"/>
+  </eClassifiers>
+</ecore:EPackage>

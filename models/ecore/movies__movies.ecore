@@ -1,0 +1,64 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="movies"
+    nsURI="http://www.eclipse.org/emf/search/test/models/movies/movies/1.0.0" nsPrefix="movies">
+  <eClassifiers xsi:type="ecore:EDataType" name="ActorsList" instanceClassName="java.util.List"/>
+  <eClassifiers xsi:type="ecore:EClass" name="Movie">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="actors" eType="#//ActorsList"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="title" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="director" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="genre" eType="#//GenreTypes"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="summary" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="copies" upperBound="-1"
+        eType="#//Copy" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="review" upperBound="-1"
+        eType="#//CriticsReview" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="GenreTypes">
+    <eLiterals name="NewRelease"/>
+    <eLiterals name="Action" value="1"/>
+    <eLiterals name="Animation" value="2"/>
+    <eLiterals name="Family" value="3"/>
+    <eLiterals name="Classics" value="4"/>
+    <eLiterals name="Comedy" value="5"/>
+    <eLiterals name="Documentary" value="6"/>
+    <eLiterals name="Drama" value="7"/>
+    <eLiterals name="Horror" value="8"/>
+    <eLiterals name="Romance" value="9"/>
+    <eLiterals name="SciFi" value="10"/>
+    <eLiterals name="Thriller" value="11"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CriticsReview">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="rating" lowerBound="1"
+        eType="#//RatingValue"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="reviewedBy" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CustomerReview" eSuperTypes="#//CriticsReview">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comment" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EDataType" name="RatingValue" instanceClassName="int">
+    <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+      <details key="name" value="ratingValue"/>
+      <details key="baseType" value="http://www.eclipse.org/emf/2003/XMLType#int"/>
+      <details key="minInclusive" value="0"/>
+      <details key="maxInclusive" value="10"/>
+    </eAnnotations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MoviesDB">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="movies" upperBound="-1"
+        eType="#//Movie" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="comment" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="places" upperBound="-1"
+        eType="#//Place" containment="true"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Copy">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="place" eType="#//Place"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Place">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="id" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+</ecore:EPackage>

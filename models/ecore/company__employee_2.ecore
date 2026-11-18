@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="employee"
+    nsURI="http://www.eclipse.org/emf/teneo/samples/emf/sample/Employee" nsPrefix="employee">
+  <eAnnotations source="teneo.hibernate">
+    <details key="appinfo" value="&#xA;&#x9;&#x9;&#x9;@FilterDef(name=&quot;ageRange&quot;, parameters={ @ParamDef( name=&quot;fromAge&quot;, type=&quot;integer&quot; ), @ParamDef( name=&quot;toAge&quot;, type=&quot;integer&quot; ) } )&#xA;&#x9;&#x9;&#x9;@FilterDef(name=&quot;salaryHigherThan&quot;, parameters={ @ParamDef( name=&quot;salary&quot;, type=&quot;integer&quot; ) } )&#xA;&#x9;&#x9;"/>
+  </eAnnotations>
+  <eClassifiers xsi:type="ecore:EDataType" name="Date" instanceClassName="java.util.Date">
+    <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+      <details key="name" value="date"/>
+    </eAnnotations>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Department">
+    <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+      <details key="name" value="Department"/>
+      <details key="kind" value="elementOnly"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2003/XMLType#//String">
+      <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+        <details key="kind" value="element"/>
+        <details key="name" value="name"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="employees" upperBound="-1"
+        eType="#//Employee" containment="true" resolveProxies="false">
+      <eAnnotations source="teneo.hibernate">
+        <details key="appinfo" value="&#xA;&#x9;&#x9;&#x9;&#x9;@OneToMany(indexed=false)&#xA;&#x9;&#x9;&#x9;&#x9;@Filter(name=&quot;ageRange&quot;, condition=&quot;age between :fromAge and :toAge&quot;)&#xA;&#x9;&#x9;&#x9;&#x9;@Filter(name=&quot;salaryHigherThan&quot;, condition=&quot;salary &amp;gt; :salary&quot;)&#xA;&#x9;&#x9;&#x9;"/>
+      </eAnnotations>
+      <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+        <details key="kind" value="element"/>
+        <details key="name" value="employees"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Employee">
+    <eAnnotations source="teneo.hibernate">
+      <details key="appinfo" value="&#xA;&#x9;&#x9;&#x9;@FilterDef(name=&quot;hireDate&quot;, parameters={ @ParamDef( name=&quot;date&quot;, type=&quot;date&quot; ) } )&#xA;&#x9;&#x9;&#x9;@Filter(name=&quot;ageRange&quot;, condition=&quot;age between :fromAge and :toAge&quot;)&#xA;&#x9;&#x9;&#x9;@Filter(name=&quot;salaryHigherThan&quot;, condition=&quot;salary &amp;gt; :salary&quot;)&#xA;&#x9;&#x9;&#x9;@Filter(name=&quot;hireDate&quot;, condition=&quot;hireDate &amp;gt; :date&quot;)&#xA;&#x9;&#x9;"/>
+    </eAnnotations>
+    <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+      <details key="name" value="Employee"/>
+      <details key="kind" value="elementOnly"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2003/XMLType#//String">
+      <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+        <details key="kind" value="element"/>
+        <details key="name" value="name"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="salary" lowerBound="1"
+        eType="ecore:EDataType http://www.eclipse.org/emf/2003/XMLType#//Int" unsettable="true">
+      <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+        <details key="kind" value="element"/>
+        <details key="name" value="salary"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="age" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2003/XMLType#//Int"
+        unsettable="true">
+      <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+        <details key="kind" value="element"/>
+        <details key="name" value="age"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="hireDate" lowerBound="1"
+        eType="#//Date">
+      <eAnnotations source="http:///org/eclipse/emf/ecore/util/ExtendedMetaData">
+        <details key="kind" value="element"/>
+        <details key="name" value="hireDate"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+  </eClassifiers>
+</ecore:EPackage>

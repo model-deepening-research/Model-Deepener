@@ -1,0 +1,118 @@
+@startuml
+
+
+class SmartHome {}
+
+class Address {
+    String address
+}
+
+class User {
+    String name
+}
+
+class Room {}
+
+abstract class Device {
+    DeviceStatus deviceStatus
+    Integer deviceID
+}
+
+class ActivityLog {}
+
+class Sensor {}
+
+class Actuator {}
+
+class CommandSequence {}
+
+abstract class RuntimeElement {
+    Time timestamp
+}
+
+class SensorReading {
+    Double value
+}
+
+class ControlCommand {
+    CommandType commandType
+    CommandStatus commandStatus
+}
+
+class AlertRule {
+    RuleStatus ruleStatus
+}
+
+abstract class BooleanExpression {}
+
+class RelationalTerm {}
+
+class NotExpression {}
+
+class BinaryExpression {}
+
+enum DeviceStatus {
+    Activated
+    Deactivated
+}
+
+enum CommandType {
+    lockDoor
+    turnOnHeating
+}
+
+enum CommandStatus {
+    Requested
+    Completed
+    Failed
+}
+
+enum RuleStatus {
+    created
+    edited
+    activated
+    deactivated
+}
+
+enum BinaryOp {
+    AND
+    OR
+}
+
+Sensor --|> Device
+Actuator --|> Device
+RuntimeElement <|-- SensorReading
+RuntimeElement <|-- ControlCommand
+BooleanExpression <|-- RelationalTerm
+BooleanExpression <|-- NotExpression
+BooleanExpression <|-- BinaryExpression
+
+SmartHome "1" *-- "0..1" Address : address
+SmartHome "1" *-- "*" Room : rooms
+SmartHome "1" *-- "0..1" ActivityLog : log
+User "*" -- "*" SmartHome : owners
+
+Room "1" *-- "*" Sensor : sensors
+Room "1" *-- "*" Actuator : actuators
+
+ActivityLog "1" *-- "*" SensorReading : recordedReadings
+ActivityLog "1" *-- "*" ControlCommand : recordedCommands
+
+CommandSequence "*" -- "0..1" CommandSequence : nextCommand
+CommandSequence "1" *-- "0..1" ControlCommand : command
+
+SensorReading "*" -- "1" Sensor : sensor
+ControlCommand "*" -- "1" Actuator : actuator
+
+AlertRule "1" *-- "0..1" BooleanExpression : precondition
+AlertRule "1" *-- "*" CommandSequence : actions
+
+RelationalTerm "*" -- "0..1" Room
+RelationalTerm "*" -- "0..1" Device
+RelationalTerm "*" -- "0..1" RuntimeElement
+
+NotExpression "0..1" -- "1" BooleanExpression : expression
+
+BinaryExpression "0..1" -- "1" BooleanExpression : leftExpr
+BinaryExpression "0..1" -- "1" BooleanExpression : rightExpr
+@enduml

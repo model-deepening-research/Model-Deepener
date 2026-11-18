@@ -1,0 +1,33 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="music"
+    nsURI="http://com.scispike/music.ecore" nsPrefix="com.scispike.music">
+  <eClassifiers xsi:type="ecore:EClass" name="Artist">
+    <eOperations name="printState"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="notes" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="works" upperBound="-1"
+        eType="#//Work" containment="true" resolveProxies="false" eOpposite="#//Work/performer"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="MediaType">
+    <eLiterals name="CD"/>
+    <eLiterals name="MP3" value="1"/>
+    <eLiterals name="TAPE" value="3"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="MusicLibrary">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" lowerBound="1" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        defaultValueLiteral="My favorite band"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="artists" upperBound="-1"
+        eType="#//Artist" containment="true" resolveProxies="false"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Work">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="whenMade" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="notes" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="mediaTypes" upperBound="-1"
+        eType="#//MediaType"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="performer" lowerBound="1"
+        eType="#//Artist" transient="true" eOpposite="#//Artist/works"/>
+  </eClassifiers>
+</ecore:EPackage>

@@ -1,0 +1,101 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ecore:EPackage xmi:version="2.0"
+    xmlns:xmi="http://www.omg.org/XMI" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xmlns:ecore="http://www.eclipse.org/emf/2002/Ecore" name="library"
+    nsURI="http:///org/eclipse/example/library.ecore" nsPrefix="org.eclipse.example.library">
+  <eClassifiers xsi:type="ecore:EClass" name="Library">
+    <eAnnotations source="http:///org/eclipse/example/library.ecore">
+      <details key="note" value="Diagram element"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="writers" upperBound="-1"
+        eType="#//Writer" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="books" upperBound="-1"
+        eType="#//Book" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="communities" upperBound="-1"
+        eType="#//Community" containment="true" eOpposite="#//Community/library"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Writer">
+    <eAnnotations source="http:///org/eclipse/example/library.ecore">
+      <details key="note" value="Should be modeled as node; show name on diagram"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="books" upperBound="-1"
+        eType="#//Book" eOpposite="#//Book/author"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="brochures" upperBound="2"
+        eType="#//Book" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="opinions" upperBound="2"
+        eType="#//Opinion" containment="true" eOpposite="#//Opinion/writer"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="participates" ordered="false"
+        upperBound="-1" eType="#//CommunityRole" eOpposite="#//CommunityRole/participants"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Book">
+    <eAnnotations source="http:///org/eclipse/example/library.ecore">
+      <details key="note" value="Should be modeled as node; show title on diagram"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="title" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="pages" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EInt"
+        defaultValueLiteral="100"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="category" eType="#//BookCategory"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="author" lowerBound="1"
+        eType="#//Writer" eOpposite="#//Writer/books">
+      <eAnnotations source="http:///org/eclipse/example/library.ecore">
+        <details key="note" value="Should be modeled as link"/>
+      </eAnnotations>
+    </eStructuralFeatures>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="reviews" upperBound="-1"
+        eType="#//Review" containment="true" eOpposite="#//Review/book"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="chapters" upperBound="-1"
+        eType="#//Chapter" containment="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="opinions" upperBound="2"
+        eType="#//Opinion" eOpposite="#//Opinion/book"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EEnum" name="BookCategory">
+    <eLiterals name="Mystery"/>
+    <eLiterals name="ScienceFiction" value="1"/>
+    <eLiterals name="Biography" value="2"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Review">
+    <eAnnotations source="http:///org/eclipse/example/library.ecore">
+      <details key="note" value="Should be modeled as node inside book compartments"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="title" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="positive" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EBoolean"
+        defaultValueLiteral="true"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="book" lowerBound="1" eType="#//Book"
+        eOpposite="#//Book/reviews"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Opinion">
+    <eAnnotations source="http:///org/eclipse/example/library.ecore">
+      <details key="note" value="Should be modeled as directed link from writer to book"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="text" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="context" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="writer" lowerBound="1"
+        eType="#//Writer" eOpposite="#//Writer/opinions"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="book" lowerBound="1" eType="#//Book"
+        eOpposite="#//Book/opinions"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Chapter">
+    <eAnnotations source="http:///org/eclipse/example/library.ecore">
+      <details key="note" value="Should be modeled as direct child of book without compartments"/>
+    </eAnnotations>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="Community">
+    <eStructuralFeatures xsi:type="ecore:EReference" name="roles" ordered="false"
+        lowerBound="1" upperBound="-1" eType="#//CommunityRole" containment="true"
+        eOpposite="#//CommunityRole/community"/>
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="name" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="library" eType="#//Library"
+        eOpposite="#//Library/communities"/>
+  </eClassifiers>
+  <eClassifiers xsi:type="ecore:EClass" name="CommunityRole">
+    <eStructuralFeatures xsi:type="ecore:EAttribute" name="role" eType="ecore:EDataType http://www.eclipse.org/emf/2002/Ecore#//EString"
+        defaultValueLiteral="co-author"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="community" eType="#//Community"
+        eOpposite="#//Community/roles"/>
+    <eStructuralFeatures xsi:type="ecore:EReference" name="participants" ordered="false"
+        upperBound="-1" eType="#//Writer" eOpposite="#//Writer/participates"/>
+  </eClassifiers>
+</ecore:EPackage>

@@ -1,0 +1,49 @@
+@startuml
+
+class Customer {
+    String Name
+    String email
+}
+class InsurancePolicy {
+    String Type
+    Double MonthlyPrice
+    Double YearlyPrice
+}
+class Contract {
+    String Status
+    String InvoiceFrequency
+}
+class Invoice {}
+
+class Broker{
+    String Name
+}
+class Claim {
+    Double CompensationTotal
+    Double calculateCompenstationSum()
+}
+class ClaimCase {
+    String Status
+    String CompensationDecision
+}
+class Report {}
+class Estimator {
+    String AreaOfExpertise
+}
+class CompensationPayment {
+    Date PaymentDate
+}
+
+Customer "1"--"0..*" Contract
+Contract "1" -- "0..*" Invoice
+InsurancePolicy "1" -- "0..*" Contract
+Contract "1" -- "0..*" ClaimCase
+Customer "1" -- "0..*" Claim
+Claim "1" -- "0..*" ClaimCase
+ClaimCase "1" -- "0..*" CompensationPayment
+Estimator "0..*" - "0..*" ClaimCase
+(ClaimCase,Estimator) .. Report
+Customer "0..*" - "0..1" Broker
+
+
+@enduml

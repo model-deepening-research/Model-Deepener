@@ -47,16 +47,18 @@ class BaseMlmAssociation(BaseMlmConnection):
     def get_target_access_name(self) -> str:
         return self.target_access_name
 
-    def set_source_multiplicity(self, min_card: int, max_card: int):
-        # FH java, XMF saves "hasUpperLimit" -> is_unbounded muss genau andersherum sein daher änderung if und else teil
+    def set_source_multiplicity(self, min_card: int, max_card: int) -> None:
+        """Set how many source objects a target object can be linked to."""
+        # XMF stores "hasUpperLimit", the opposite of unbound. A maximum of -1 means there is no upper limit.
         if max_card == -1:
             self.source_multiplicity = Multiplicity(min_card, max_card, unbound=True)
             # IMPORTANT: DOES NOT WORK IF CONTINGENT ASSOCIATIONS ARE PRESENT
         else:
             self.source_multiplicity = Multiplicity(min_card, max_card)
 
-    def set_target_multiplicity(self, min_card: int, max_card: int):
-        # FH java, XMF saves "hasUpperLimit" -> is_unbounded muss genau andersherum sein daher änderung if und else teil
+    def set_target_multiplicity(self, min_card: int, max_card: int) -> None:
+        """Set how many target objects a source object can be linked to."""
+        # XMF stores "hasUpperLimit", the opposite of unbound. A maximum of -1 means there is no upper limit.
         if max_card == -1:
             self.target_multiplicity = Multiplicity(min_card, max_card, unbound=True)
             # IMPORTANT: DOES NOT WORK IF CONTINGENT ASSOCIATIONS ARE PRESENT
@@ -89,14 +91,9 @@ class BaseMlmAssociation(BaseMlmConnection):
         projectName = root.attrib['path']
         model = root.find('Model')
 
-        # transform of cardinalities
-        multSourceToTarget = 'Seq{' + str(self.target_multiplicity.min_multiplicity) + ',' + str(
-            self.target_multiplicity.max_multiplicity) + ',' + str(
-            self.target_multiplicity.unbound).lower() + ',false}'
-
-        multTargetToSource = 'Seq{' + str(self.source_multiplicity.min_multiplicity) + ',' + str(
-            self.source_multiplicity.max_multiplicity) + ',' + str(
-            self.source_multiplicity.unbound).lower() + ',false}'
+        # New associations use the same hasUpperBound representation as exported attributes.
+        multSourceToTarget = self.target_multiplicity.to_xml()
+        multTargetToSource = self.source_multiplicity.to_xml()
 
         # adapt class names to new projectname
         classSourceName = projectName + "::" + self.source_object.name

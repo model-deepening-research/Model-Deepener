@@ -1,21 +1,30 @@
+from datetime import date
+from typing import Any
+
 from src.basemlm.basemlm_attribute import BaseMlmAttribute
 from src.basemlm.basemlm_property import BaseMlmProperty
 
 
 class BaseMlmSlot(BaseMlmProperty):
     """
-    FmmlxSlot serves as an implementation of slots in FMMLx. Note that the attribute "owner" is of type FmmlxObject.
+    BaseMlmSlot serves as an implementation of slots in FMMLx. Note that the attribute "owner" is of type BaseMlmObject.
     Thus, the method set_attribute() can call "class_of_object".
 
-    You MAY NOT import FmmlxObject, though. This causes a circular import.
+    You MAY NOT import BaseMlmObject, though. This causes a circular import.
+
+    The value has the Python type that fits the attribute: str, int, float, bool, or date.
+    None means that the slot has no value. A value that could not be converted stays a str
+    and the slot is marked. The class attribute is the default for slots stored without a mark.
     """
+    _conversion_failed: bool = False
+
     def __init__(self, slot_name: str, value: str, xml_value: str = None):
         """
         Stores a slot's readable value and its original XModeler expression.
         """
         super().__init__(name=slot_name, print_name=f"{slot_name}:{value}")
         self.attribute = None
-        self.value = value # self._import_slot_value(value) # parsing done in FmmlxModel class
+        self.value = value
         self.xml_value = xml_value
         self.imported_value = value
         self.owner = None
@@ -61,16 +70,57 @@ class BaseMlmSlot(BaseMlmProperty):
         return "///" in str(self.value)
 
     def get_values_as_list(self) -> [str]:
-        return str(self.value).split("///")
+        """Return the values in the form used to check their type. A slot without a value has an empty list."""
+        if self.value is None:
+            return []
+        return self._get_value_for_type_check().split("///")
 
-    def set_attribute(self, attribute: BaseMlmAttribute = None):
-        """Connects the slot to its matching attribute when one can be found."""
-        # Beim CSV-Import kennen wir das passende Attribut schon.
+    def get_value_as_text(self) -> str:
+        """Return the value in the readable form shown to the user. A date is written as 2023-10-18."""
+        if self.value is None:
+            return "null"
+        if isinstance(self.value, bool):
+            return str(self.value).lower()
+        if isinstance(self.value, date):
+            return self.value.isoformat()
+        return str(self.value)
+
+    def _get_value_for_type_check(self) -> str:
+        """Return the value in the form the type specifications check. A date is written as DATE(18,10,2023)."""
+        if isinstance(self.value, date):
+            return f"DATE({self.value.day:02d},{self.value.month:02d},{self.value.year:04d})"
+        return self.get_value_as_text()
+
+    def set_converted_value(self, value: Any) -> None:
+        """Store the converted value. An unchanged converted value keeps its XML expression on export."""
+        self.value = value
+        self.imported_value = value
+
+    def mark_conversion_failed(self) -> None:
+        """Remember that the value does not fit the type of the attribute."""
+        self._conversion_failed = True
+
+    def has_conversion_failed(self) -> bool:
+        """Return True if the value does not fit the type of the attribute."""
+        return self._conversion_failed
+
+    def add_value_of(self, other_slot: "BaseMlmSlot") -> None:
+        """Append the value of another slot with the same name, as text separated by ///."""
+        self.value = self._get_value_for_type_check() + "///" + other_slot._get_value_for_type_check()
+        if other_slot.has_conversion_failed():
+            self.mark_conversion_failed()
+
+    def set_attribute(self, attribute: BaseMlmAttribute = None) -> None:
+        """Connects the slot to its matching attribute when one can be found.
+
+        The CSV import passes the attribute of the column. The XML import searches the class of
+        the owner, then upwards through the parents and the classification chain, the class of
+        the class and so on, because an attribute can be instantiated several levels below.
+        """
         if attribute is not None:
             self.attribute = attribute
             return
 
-        # Beim XML-Import wird das passende Attribut auch in den Ancestors gesucht.
         pending = [self.owner.class_of_object]
         visited = set()
         while pending and self.attribute is None:
@@ -82,7 +132,8 @@ class BaseMlmSlot(BaseMlmProperty):
                 if attr.name == self.name:
                     self.attribute = attr
                     return
-            pending.extend(getattr(current, "parent_classes", []))
+            pending.extend(current.get_parents())
+            pending.append(current.get_meta_class())
 
     def get_attribute(self):
         return self.attribute
