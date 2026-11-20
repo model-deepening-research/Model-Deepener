@@ -1,0 +1,139 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XModelerPackage path="Root::Portaview" version="4" xModelerVersion="3.2">
+    <Imports/>
+    <Model name="Root::Portaview">
+        <addMetaClass abstract="false" isControlClass="false" level="1" maxLevel="1" name="Subscription" package="Root::Portaview" singleton="false"/>
+        <addMetaClass abstract="false" isControlClass="false" level="1" maxLevel="1" name="Short" package="Root::Portaview" singleton="false"/>
+        <addMetaClass abstract="false" isControlClass="false" level="1" maxLevel="1" name="Video" package="Root::Portaview" singleton="false"/>
+        <addMetaClass abstract="true" isControlClass="false" level="1" maxLevel="1" name="AbstractVideo" package="Root::Portaview" singleton="false"/>
+        <addMetaClass abstract="false" isControlClass="false" level="1" maxLevel="1" name="Playlist" package="Root::Portaview" singleton="false"/>
+        <addMetaClass abstract="false" isControlClass="false" level="1" maxLevel="1" name="User" package="Root::Portaview" singleton="false"/>
+        <changeParent class="Root::Portaview::Short" new="Root::Portaview::AbstractVideo" old="" package="Root::Portaview"/>
+        <changeParent class="Root::Portaview::Video" new="Root::Portaview::AbstractVideo" old="" package="Root::Portaview"/>
+        <addEnumeration name="GenreEnum"/>
+        <addAttribute class="Root::Portaview::AbstractVideo" level="0" multiplicity="Seq{1,1,true,false}" name="genre" package="Root::Portaview" type="Root::Portaview::GenreEnum"/>
+        <addAttribute class="Root::Portaview::AbstractVideo" level="0" multiplicity="Seq{1,1,true,false}" name="title" package="Root::Portaview" type="Root::XCore::String"/>
+        <addAttribute class="Root::Portaview::AbstractVideo" level="0" multiplicity="Seq{1,1,true,false}" name="uploadDate" package="Root::Portaview" type="Root::Auxiliary::Date"/>
+        <addAttribute class="Root::Portaview::Playlist" level="0" multiplicity="Seq{1,1,true,false}" name="isPrivate" package="Root::Portaview" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::Portaview::Playlist" level="0" multiplicity="Seq{1,1,true,false}" name="playlistName" package="Root::Portaview" type="Root::XCore::String"/>
+        <addAttribute class="Root::Portaview::Short" level="0" multiplicity="Seq{1,1,true,false}" name="isLooped" package="Root::Portaview" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::Portaview::Subscription" level="0" multiplicity="Seq{1,1,true,false}" name="startDate" package="Root::Portaview" type="Root::Auxiliary::Date"/>
+        <addAttribute class="Root::Portaview::User" level="0" multiplicity="Seq{0,1,true,false}" name="subscriptionPricePerMonth" package="Root::Portaview" type="Root::XCore::Float"/>
+        <addAttribute class="Root::Portaview::User" level="0" multiplicity="Seq{1,1,true,false}" name="firstname" package="Root::Portaview" type="Root::XCore::String"/>
+        <addAttribute class="Root::Portaview::User" level="0" multiplicity="Seq{1,1,true,false}" name="lastname" package="Root::Portaview" type="Root::XCore::String"/>
+        <addAttribute class="Root::Portaview::User" level="0" multiplicity="Seq{1,1,true,false}" name="showUsername" package="Root::Portaview" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::Portaview::User" level="0" multiplicity="Seq{1,1,true,false}" name="username" package="Root::Portaview" type="Root::XCore::String"/>
+        <addOperation body="@Operation calculateMonthlyRevenue[monitor=true,delToClassAllowed=false]():XCore::Float&#10;  null&#10;end" class="Root::Portaview::User" level="0" monitored="true" name="calculateMonthlyRevenue" package="Root::Portaview" paramNames="" paramTypes="" type="Root::XCore::Float"/>
+        <addOperation body="@Operation calculateSubscriberCount[monitor=true,delToClassAllowed=false]():XCore::Integer&#10;  null&#10;end" class="Root::Portaview::User" level="0" monitored="true" name="calculateSubscriberCount" package="Root::Portaview" paramNames="" paramTypes="" type="Root::XCore::Integer"/>
+        <addOperation body="@Operation displayName[monitor=true,delToClassAllowed=false]():XCore::String&#10;  null&#10;end" class="Root::Portaview::User" level="0" monitored="true" name="displayName" package="Root::Portaview" paramNames="" paramTypes="" type="Root::XCore::String"/>
+        <addOperation body="@Operation fullName[monitor=true,delToClassAllowed=false]():XCore::String&#10;  null&#10;end" class="Root::Portaview::User" level="0" monitored="true" name="fullName" package="Root::Portaview" paramNames="" paramTypes="" type="Root::XCore::String"/>
+        <addAssociation accessSourceFromTargetName="playlist" accessTargetFromSourceName="video" associationType="Root::Associations::DefaultAssociation" classSource="Root::Portaview::Playlist" classTarget="Root::Portaview::Video" fwName="contains" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{0,-1,false,false}" multTargetToSource="Seq{0,-1,false,false}" package="Root::Portaview" reverseName="-1" sourceVisibleFromTarget="true" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="subscription1" accessTargetFromSourceName="user1" associationType="Root::Associations::DefaultAssociation" classSource="Root::Portaview::Subscription" classTarget="Root::Portaview::User" fwName="refers_to" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{1,1,true,false}" multTargetToSource="Seq{0,-1,false,false}" package="Root::Portaview" reverseName="-1" sourceVisibleFromTarget="true" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="user" accessTargetFromSourceName="abstractVideo" associationType="Root::Associations::DefaultAssociation" classSource="Root::Portaview::User" classTarget="Root::Portaview::AbstractVideo" fwName="uploads" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{0,-1,false,false}" multTargetToSource="Seq{1,1,true,false}" package="Root::Portaview" reverseName="-1" sourceVisibleFromTarget="true" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="user" accessTargetFromSourceName="playlist" associationType="Root::Associations::DefaultAssociation" classSource="Root::Portaview::User" classTarget="Root::Portaview::Playlist" fwName="manages" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{0,-1,false,false}" multTargetToSource="Seq{1,1,true,false}" package="Root::Portaview" reverseName="-1" sourceVisibleFromTarget="true" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="user" accessTargetFromSourceName="subscription" associationType="Root::Associations::DefaultAssociation" classSource="Root::Portaview::User" classTarget="Root::Portaview::Subscription" fwName="has" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{0,-1,false,false}" multTargetToSource="Seq{1,1,true,false}" package="Root::Portaview" reverseName="-1" sourceVisibleFromTarget="true" targetVisibleFromSource="true"/>
+    </Model>
+    <Diagrams>
+        <Diagram name="UMLppDiagram_1" umlMode="true">
+            <Instances>
+                <Instance hidden="false" path="Root::Portaview::Playlist" xCoordinate="548" yCoordinate="16"/>
+                <Instance hidden="false" path="Root::Portaview::AbstractVideo" xCoordinate="701" yCoordinate="306"/>
+                <Instance hidden="false" path="Root::Portaview::Subscription" xCoordinate="73" yCoordinate="601"/>
+                <Instance hidden="false" path="Root::Portaview::Video" xCoordinate="863" yCoordinate="570"/>
+                <Instance hidden="true" path="Root::Portaview::GenreEnum" xCoordinate="0" yCoordinate="0"/>
+                <Instance hidden="false" path="Root::Portaview::User" xCoordinate="16" yCoordinate="263"/>
+                <Instance hidden="false" path="Root::Portaview::Short" xCoordinate="494" yCoordinate="554"/>
+            </Instances>
+            <Edges>
+                <Edge path="InheritanceMapping: Root::Portaview::Short/Root::Portaview::AbstractVideo" sourcePort="NORTH" targetPort="SOUTH" type="Inheritance">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="636.4133" yCoordinate="497.00037"/>
+                        <IntermediatePoint xCoordinate="751.12775" yCoordinate="497.00037"/>
+                    </IntermediatePoints>
+                    <Labels/>
+                </Edge>
+                <Edge path="AssociationMapping: Root::Portaview::User::subscription" sourcePort="EAST" targetPort="EAST" type="Association">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="452.68335" yCoordinate="411.14062"/>
+                        <IntermediatePoint xCoordinate="452.68335" yCoordinate="636.48083"/>
+                    </IntermediatePoints>
+                    <Labels>
+                        <Label localID="0" ownerID="AssociationMapping: Root::Portaview::User::subscription" xCoordinate="205.5811" yCoordinate="-120.55014"/>
+                    </Labels>
+                </Edge>
+                <Edge path="AssociationMapping: Root::Portaview::User::playlist" sourcePort="NORTH" targetPort="WEST" type="Association">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="143.07275" yCoordinate="232.8"/>
+                        <IntermediatePoint xCoordinate="143.2" yCoordinate="232.8"/>
+                        <IntermediatePoint xCoordinate="143.2" yCoordinate="62.46702"/>
+                    </IntermediatePoints>
+                    <Labels>
+                        <Label localID="0" ownerID="AssociationMapping: Root::Portaview::User::playlist" xCoordinate="-79.23007" yCoordinate="-190.43457"/>
+                    </Labels>
+                </Edge>
+                <Edge path="InheritanceMapping: Root::Portaview::Video/Root::Portaview::AbstractVideo" sourcePort="NORTH" targetPort="SOUTH" type="Inheritance">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="1005.4226" yCoordinate="496.049"/>
+                        <IntermediatePoint xCoordinate="801.59485" yCoordinate="496.049"/>
+                    </IntermediatePoints>
+                    <Labels/>
+                </Edge>
+                <Edge path="AssociationMapping: Root::Portaview::User::abstractVideo" sourcePort="EAST" targetPort="NORTH" type="Association">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="380.13004" yCoordinate="337.0703"/>
+                        <IntermediatePoint xCoordinate="380.13004" yCoordinate="249.98132"/>
+                        <IntermediatePoint xCoordinate="776.7007" yCoordinate="249.98132"/>
+                    </IntermediatePoints>
+                    <Labels>
+                        <Label localID="0" ownerID="AssociationMapping: Root::Portaview::User::abstractVideo" xCoordinate="68.928856" yCoordinate="-155.04922"/>
+                    </Labels>
+                </Edge>
+                <Edge path="AssociationMapping: Root::Portaview::Subscription::user1" sourcePort="WEST" targetPort="WEST" type="Association">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="-138.6021" yCoordinate="636.48083"/>
+                        <IntermediatePoint xCoordinate="-138.6021" yCoordinate="374.10547"/>
+                    </IntermediatePoints>
+                    <Labels>
+                        <Label localID="0" ownerID="AssociationMapping: Root::Portaview::Subscription::user1" xCoordinate="-230.2305" yCoordinate="103.35683"/>
+                    </Labels>
+                </Edge>
+                <Edge path="AssociationMapping: Root::Portaview::Playlist::video" sourcePort="EAST" targetPort="EAST" type="Association">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="1236.1213" yCoordinate="62.46702"/>
+                        <IntermediatePoint xCoordinate="1236.1213" yCoordinate="627.05273"/>
+                    </IntermediatePoints>
+                    <Labels>
+                        <Label localID="0" ownerID="AssociationMapping: Root::Portaview::Playlist::video" xCoordinate="99.893394" yCoordinate="-313.34134"/>
+                    </Labels>
+                </Edge>
+            </Edges>
+            <DiagramDisplayProperties>
+                <SLOTS>true</SLOTS>
+                <CONCRETESYNTAX>true</CONCRETESYNTAX>
+                <METACLASSNAME>false</METACLASSNAME>
+                <ISSUETABLE>false</ISSUETABLE>
+                <OPERATIONS>true</OPERATIONS>
+                <DERIVEDATTRIBUTES>true</DERIVEDATTRIBUTES>
+                <CONSTRAINTS>true</CONSTRAINTS>
+                <CONSTRAINTREPORTS>true</CONSTRAINTREPORTS>
+                <DERIVEDOPERATIONS>true</DERIVEDOPERATIONS>
+                <OPERATIONVALUES>true</OPERATIONVALUES>
+                <GETTERSANDSETTERS>true</GETTERSANDSETTERS>
+            </DiagramDisplayProperties>
+            <Notes>
+                <Note>
+                    <NoteId>0</NoteId>
+                    <NoteColor>0xf9ec72ff</NoteColor>
+                    <NoteContent>A user cannot subscribe to the same user more than once or to themselves.</NoteContent>
+                    <NotePosition>
+                        <XPosition>-321.0</XPosition>
+                        <YPosition>298.0</YPosition>
+                    </NotePosition>
+                </Note>
+            </Notes>
+            <Views>
+                <View name="Main View" tx="268.3803" ty="43.52801" xx="0.70710677"/>
+            </Views>
+        </Diagram>
+    </Diagrams>
+</XModelerPackage>

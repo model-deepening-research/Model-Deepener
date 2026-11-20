@@ -18,7 +18,7 @@ class EcoreImporter(ModelImporter):
         """Read, normalize and import an Ecore model."""
         diagram = EcoreReader(path).read_diagram()
         ClassDiagramNormalizer(diagram).normalize()
-        return ClassDiagramBuilder().build(model, diagram)
+        return self._finish_import(model, ClassDiagramBuilder().build(model, diagram))
 
 
 register_importer(EcoreImporter)

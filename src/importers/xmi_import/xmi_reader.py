@@ -296,13 +296,16 @@ class XmiReader:
         if unresolved:
             self._keep_unresolved_association(element, ends, unresolved)
             return
-        name = element.get('name') or 'associated_to'
+        aggregation = {end.get('aggregation', 'none') for _, end in participants}
+        default_name = ('composition_of' if 'composite' in aggregation else
+                        'aggregation_of' if 'shared' in aggregation else 'associated_to')
+        name = element.get('name') or default_name
         if kind(element) == 'AssociationClass':
-            self._association_class(element, participants, name)
+            self._association_class(element, participants, name, not bool(element.get('name')))
         elif len(participants) > 2:
-            self._nary_association(participants, name)
+            self._nary_association(participants, name, name_generated=not bool(element.get('name')))
         else:
-            self._add_binary(participants[0], participants[1], name)
+            self._add_binary(participants[0], participants[1], name, not bool(element.get('name')))
 
     def _keep_unresolved_association(self, association: ET.Element, ends: list[ET.Element],
                                      unresolved: Optional[list[ET.Element]] = None) -> None:
@@ -320,21 +323,29 @@ class XmiReader:
                 self._diagram.add_adaptation('Unresolved association type', owner,
                                              f"Association reference '{owner}.{name}' to '{reference}' imported as String.")
 
-    def _add_binary(self, left: tuple[str, ET.Element], right: tuple[str, ET.Element], name: str) -> None:
+    def _add_binary(self, left: tuple[str, ET.Element], right: tuple[str, ET.Element], name: str,
+                    name_generated: bool = False) -> None:
         """Add one association with its two end roles and multiplicities."""
         left_name, left_end = left
         right_name, right_end = right
         left_bound = self._end_bounds(left_end, left_name, right_name, right_end.get('aggregation') == 'composite')
         right_bound = self._end_bounds(right_end, right_name, left_name, left_end.get('aggregation') == 'composite')
         assoc = UmlAssociation(left_name, right_name, left_bound, right_bound, name)
+        if name_generated:
+            assoc.mark_name_generated()
+        if not left_end.get('name'):
+            assoc.mark_source_role_generated()
+        if not right_end.get('name'):
+            assoc.mark_target_role_generated()
         assoc.set_source_role(left_end.get('name') or lower_first(left_name))
         assoc.set_target_role(right_end.get('name') or lower_first(right_name))
         self._diagram.add_association(assoc)
 
-    def _association_class(self, element: ET.Element, ends: list[tuple[str, ET.Element]], name: str) -> None:
+    def _association_class(self, element: ET.Element, ends: list[tuple[str, ET.Element]], name: str,
+                           name_generated: bool = False) -> None:
         """Represent an association class with associations through its class."""
         if len(ends) != 2:
-            self._nary_association(ends, name, self._class_names[xmi_id(element)])
+            self._nary_association(ends, name, self._class_names[xmi_id(element)], name_generated)
             return
         middle = self._class_names[xmi_id(element)]
         left_name, left = ends[0]
@@ -342,14 +353,23 @@ class XmiReader:
         right_bound = self._end_bounds(right, right_name, left_name, left.get('aggregation') == 'composite')
         left_bound = self._end_bounds(left, left_name, right_name, right.get('aggregation') == 'composite')
         first = UmlAssociation(left_name, middle, EXACTLY_ONE, right_bound, name)
+        if name_generated:
+            first.mark_name_generated()
+        if not left.get('name'):
+            first.mark_source_role_generated()
         first.set_source_role(left.get('name') or lower_first(left_name))
         second = UmlAssociation(middle, right_name, left_bound, EXACTLY_ONE, name)
+        if name_generated:
+            second.mark_name_generated()
+        if not right.get('name'):
+            second.mark_target_role_generated()
         second.set_target_role(right.get('name') or lower_first(right_name))
         self._diagram.add_association(first)
         self._diagram.add_association(second)
         self._diagram.add_adaptation('Association class', middle, f"Association class '{middle}' represented by two associations.")
 
-    def _nary_association(self, ends: list[tuple[str, ET.Element]], name: str, middle: str = '') -> None:
+    def _nary_association(self, ends: list[tuple[str, ET.Element]], name: str, middle: str = '',
+                          name_generated: bool = False) -> None:
         """Represent an n-ary association using an intermediate class."""
         if not middle:
             middle = self._unique_name(''.join(end[0] for end in ends), self._diagram.get_name())
@@ -357,6 +377,10 @@ class XmiReader:
         for participant, end in ends:
             bound = self._bounds(end, participant)
             assoc = UmlAssociation(middle, participant, ZERO_TO_MANY, bound, name)
+            if name_generated:
+                assoc.mark_name_generated()
+            if not end.get('name'):
+                assoc.mark_target_role_generated()
             assoc.set_target_role(end.get('name') or lower_first(participant))
             self._diagram.add_association(assoc)
         self._diagram.add_adaptation('N-ary association', name,

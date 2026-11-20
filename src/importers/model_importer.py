@@ -38,6 +38,12 @@ class ModelImporter(ABC):
         report = self.import_into(model, path)
         return model, report
 
+    @staticmethod
+    def _finish_import(model: BaseMlmModel, report: ImportReport) -> ImportReport:
+        """Set the model's adaptation flag from its import report."""
+        model.set_is_adapted(report.has_serious_problems())
+        return report
+
     @abstractmethod
     def import_into(self, model: BaseMlmModel, path: str) -> ImportReport:
         """Fill the given empty model with the content of the file and return the problems found."""

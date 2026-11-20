@@ -1470,10 +1470,24 @@ class ModelDeepenerApp(ctk.CTk):
         self._refresh_actions()
         self._clear_content()
 
-        self._page_header(
+        header = self._page_header(
             "Inspect Model",
             "Review the imported or generated model structure and content.",
         )
+        name_row = ctk.CTkFrame(header, fg_color="transparent")
+        name_row.grid(row=2, column=0, sticky="w", pady=(6, 0))
+        ctk.CTkLabel(name_row, text=self._current_model_display_name()).pack(side="left")
+        if self.current_model.get_is_adapted():
+            badge = ctk.CTkLabel(name_row, text="adapted", text_color="#A34D00",
+                                 fg_color="#FFF0DF", corner_radius=5, width=65)
+            badge.pack(side="left", padx=(8, 0))
+            badge.bind("<Enter>", self._show_adapted_tooltip)
+            badge.bind("<Leave>", self._hide_adapted_tooltip)
+
+        legend = ctk.CTkFrame(header, fg_color="transparent")
+        legend.grid(row=0, column=1, rowspan=2, sticky="ne")
+        ctk.CTkLabel(legend, text="Orange: serious adaptation", text_color="#B45309").pack(anchor="e")
+        ctk.CTkLabel(legend, text="Grey-blue: automatic adaptation", text_color="#647A94").pack(anchor="e")
 
         model = self.current_model
         self._attach_active_model_reference(model)
@@ -1638,6 +1652,10 @@ class ModelDeepenerApp(ctk.CTk):
             font=("Segoe UI", 10),
             foreground="#0F172A",
         )
+        self.model_tree.tag_configure("serious_adaptation", font=("Segoe UI", 10), foreground="#B45309")
+        self.model_tree.tag_configure("automatic_adaptation", font=("Segoe UI", 10), foreground="#647A94")
+        self.model_tree.bind("<Motion>", self._show_tree_import_notes)
+        self.model_tree.bind("<Leave>", self._hide_adapted_tooltip)
         self.model_tree.grid(
             row=0,
             column=0,
@@ -1861,6 +1879,7 @@ class ModelDeepenerApp(ctk.CTk):
             sticky="e",
         )
 
+        self._add_export_without_check_button(actions)
         self._populate_model_tree(model)
         self._show_model_overview_load_options(model)
 
@@ -1917,15 +1936,37 @@ class ModelDeepenerApp(ctk.CTk):
     def _resize_detail_canvas_window(self, event):
         window_id: Optional[int] = getattr(self, "detail_canvas_window", None)
         if window_id is None:
+            context = getattr(self, "_overview_resize_context", None)
+            if context is not None:
+                token, model_name, attributes, rows, widths = context
+                fitted = self._fit_column_widths(widths, event.width)
+                if fitted != widths:
+                    self._begin_prepared_model_overview_render(token, model_name, attributes, rows, fitted)
             return
         try:
-            self.detail_canvas.itemconfigure(window_id, width=event.width)
+            widths = getattr(self, "_detail_column_widths", [])
+            if widths:
+                widths = self._fit_column_widths(widths, event.width)
+                self._detail_column_widths = widths
+                for column, width in enumerate(widths):
+                    self.detail_table.grid_columnconfigure(column, weight=0, minsize=width)
+                key = getattr(self, "_detail_width_key", None)
+                if key is not None:
+                    self._table_column_widths[key] = list(widths)
+                width = sum(widths)
+            else:
+                width = event.width
+            self.detail_canvas.itemconfigure(window_id, width=width)
+            self.detail_canvas.configure(scrollregion=self.detail_canvas.bbox("all"))
             self._update_detail_x_scrollbar_visibility()
         except tk.TclError:
             pass
 
     def _reset_detail_canvas_table(self):
         self.detail_canvas.delete("all")
+        self._detail_column_widths = []
+        self._detail_width_key = None
+        self._overview_resize_context = None
         self.detail_table = tk.Frame(
             self.detail_canvas,
             background="#FFFFFF",
@@ -2052,6 +2093,30 @@ class ModelDeepenerApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
             command=self._export_current_model_placeholder,
         ).grid(row=0, column=3, sticky="e")
+
+        self._add_export_without_check_button(actions)
+
+    def _add_export_without_check_button(self, actions) -> None:
+        """Add the unchecked XML export action to an action bar."""
+        ctk.CTkButton(
+            actions, text="Export without check", width=190, height=42,
+            corner_radius=8, fg_color="#FFFFFF", hover_color="#FFF1E3",
+            border_width=1, border_color="#D18132", text_color="#9A4C00",
+            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+            command=self._export_without_check,
+        ).grid(row=0, column=4, sticky="e", padx=(10, 0))
+
+    def _export_without_check(self) -> None:
+        """Export XML after confirming that constraints are not checked."""
+        if self.current_model is None:
+            self._show_information("Export Model", "Create or open a model before exporting.")
+            return
+        if messagebox.askokcancel(
+            "Export without check",
+            "The model is exported without constraint check and may not be valid.",
+            icon="warning", parent=self,
+        ):
+            self._export_current_xml_model()
 
     def _check_current_constraints(self) -> None:
         """Check the current model and show whether BaseMLM constraints are valid."""
@@ -2753,18 +2818,19 @@ class ModelDeepenerApp(ctk.CTk):
         """
         Opens the Select Example dialog.
 
-        The example tree includes XML, PlantUML and Ecore models.
+        The example tree includes CSV, XML, PlantUML, Ecore and XMI models.
         """
-        roots = [("example_models", os.path.join(PROJECT_FOLDER_PATH, "example_models")),
-                 ("models/plantuml", os.path.join(PROJECT_FOLDER_PATH, "models", "plantuml")),
-                 ("models/ecore", os.path.join(PROJECT_FOLDER_PATH, "models", "ecore")),
-                 ("models/xmi", os.path.join(PROJECT_FOLDER_PATH, "models", "xmi"))]
+        roots = [("CSV", os.path.join(PROJECT_FOLDER_PATH, "models", "csv")),
+                 ("FMMLx", os.path.join(PROJECT_FOLDER_PATH, "models", "fmmlx")),
+                 ("PlantUML", os.path.join(PROJECT_FOLDER_PATH, "models", "plantuml")),
+                 ("XMI", os.path.join(PROJECT_FOLDER_PATH, "models", "xmi")),
+                 ("Ecore", os.path.join(PROJECT_FOLDER_PATH, "models", "ecore"))]
         examples = [(label, root, self._collect_example_files(root)) for label, root in roots
                     if os.path.isdir(root)]
         if not any(files for _label, _root, folders in examples for _folder, files in folders):
             self._show_information(
                 "No examples found",
-                "No example files were found in example_models, models/plantuml or models/ecore.",
+                "No example files were found in the model example folders.",
             )
             return
 
@@ -2796,8 +2862,10 @@ class ModelDeepenerApp(ctk.CTk):
         tree.configure(yscrollcommand=scrollbar.set)
 
         path_by_item = {}
+        folder_items = set()
         for label, examples_root, example_files in examples:
-            root_id = tree.insert("", "end", text=label, open=True)
+            root_id = tree.insert("", "end", text=label, open=False)
+            folder_items.add(root_id)
             folder_ids = {examples_root: root_id}
             for folder_path, file_names in example_files:
                 parent_path = os.path.dirname(folder_path)
@@ -2806,6 +2874,7 @@ class ModelDeepenerApp(ctk.CTk):
                 else:
                     parent_id = folder_ids.get(parent_path, root_id)
                     folder_id = tree.insert(parent_id, "end", text=os.path.basename(folder_path), open=False)
+                    folder_items.add(folder_id)
                     folder_ids[folder_path] = folder_id
                 for file_name in file_names:
                     full_path = os.path.join(folder_path, file_name)
@@ -2824,6 +2893,12 @@ class ModelDeepenerApp(ctk.CTk):
             dialog.destroy()
             self._validate_current_file()
 
+        def toggle_folder(event) -> None:
+            item = tree.identify_row(event.y)
+            if item in folder_items and tree.identify("element", event.x, event.y) != "Treeitem.indicator":
+                tree.item(item, open=not tree.item(item, "open"))
+
+        tree.bind("<ButtonRelease-1>", toggle_folder)
         tree.bind("<Double-1>", lambda _event: choose_selected())
 
         actions = ctk.CTkFrame(dialog, fg_color="transparent")
@@ -2865,8 +2940,12 @@ class ModelDeepenerApp(ctk.CTk):
             subfolders[:] = sorted(visible_folders)
             supported_files = []
             for file_name in file_names:
-                if file_name.lower().endswith(tuple(supported_extensions())):
-                    supported_files.append(file_name)
+                path = os.path.join(folder_path, file_name)
+                try:
+                    importer_for(path)
+                except (OSError, ValueError):
+                    continue
+                supported_files.append(file_name)
             supported_files.sort()
             if supported_files or folder_path == examples_root:
                 rows.append((folder_path, supported_files))
@@ -3829,8 +3908,7 @@ class ModelDeepenerApp(ctk.CTk):
     def _create_model(self) -> None:
         """Import a model and display the candidate only after it is saved.
 
-        Cancellation, source-copy errors and database failures leave the previous model and
-        workflow state in place. The report can be reviewed before any source is copied.
+        Cancellation and database failures leave the previous model and workflow state in place.
         """
         if not self.current_file_path:
             self._show_error("Import blocked", "Select a file first.")
@@ -3845,7 +3923,7 @@ class ModelDeepenerApp(ctk.CTk):
                     return
             if isinstance(importer, XmiImporter) and not model.get_objects():
                 return
-            source_path = self._persist_imported_source_file(self.current_file_path)
+            source_path = self.current_file_path
             file_type = importer.FORMAT_NAME.upper()
             if not self._store_loaded_model(file_type, model, source_path, selected_columns):
                 return
@@ -3877,38 +3955,6 @@ class ModelDeepenerApp(ctk.CTk):
                 return self.xml_preview.model, self.xml_preview.report, selected_columns
         model, report = importer.import_file(self.current_file_path)
         return model, report, selected_columns
-
-    def _persist_imported_source_file(self, source_path: Optional[str]) -> Optional[str]:
-        """Keep a copy of an imported file in the source folder of its format and return the path of the copy.
-
-        A file that already lies in that folder is used as it is. A name that is already taken gets a number.
-        """
-        if not source_path:
-            return source_path
-        importer = importer_for(source_path)
-        target_dir = importer.SOURCE_FOLDER
-        os.makedirs(target_dir, exist_ok=True)
-
-        source_abs = os.path.abspath(source_path)
-        target_abs_dir = os.path.abspath(target_dir)
-        if os.path.dirname(source_abs).lower() == target_abs_dir.lower():
-            return source_path
-
-        base_name = importer.source_file_name(source_path)
-        name, suffix = os.path.splitext(base_name)
-        target_path = os.path.join(target_dir, base_name)
-        counter = 1
-        while os.path.exists(target_path):
-            try:
-                if os.path.samefile(source_path, target_path):
-                    return target_path
-            except OSError:
-                pass
-            target_path = os.path.join(target_dir, f"{name}_{counter}{suffix}")
-            counter += 1
-
-        importer.copy_source_file(source_path, target_path)
-        return target_path
 
     def _store_loaded_model(self, file_type: str, model: BaseMlmModel,
                             source_path: str, selected_columns: List[str]) -> bool:
@@ -4220,7 +4266,7 @@ class ModelDeepenerApp(ctk.CTk):
                 "end",
                 text=enum.name,
                 open=False,
-                tags=("enum_item",),
+                tags=(self._import_note_tag(enum) or "enum_item",),
             )
             self.tree_item_payload[item_id] = enum
             self.tree_item_view[item_id] = "enumeration"
@@ -4278,7 +4324,7 @@ class ModelDeepenerApp(ctk.CTk):
             "end",
             text=obj.name,
             open=bool(query),
-            tags=("object_item" if obj.level == 0 else "class_item",),
+            tags=(self._import_note_tag(obj) or ("object_item" if obj.level == 0 else "class_item"),),
         )
         self.tree_item_payload[obj_id] = obj
         self.tree_item_view[obj_id] = "object" if obj.level == 0 else "class"
@@ -4419,7 +4465,9 @@ class ModelDeepenerApp(ctk.CTk):
             self.tree_item_view[group_id] = "group"
             for hit in hits:
                 text = self._search_hit_text(view_name, hit)
-                item_id = self.model_tree.insert(group_id, "end", text=text, open=False)
+                tag = self._import_note_tag(hit)
+                item_id = self.model_tree.insert(group_id, "end", text=text, open=False,
+                                                 tags=(tag,) if tag else ())
                 self.tree_item_payload[item_id] = (view_name, obj, hit)
                 self.tree_item_view[item_id] = view_name
 
@@ -4437,7 +4485,10 @@ class ModelDeepenerApp(ctk.CTk):
         self.tree_item_payload[group_id] = None
         self.tree_item_view[group_id] = "group"
         for value in matching_values:
-            item_id = self.model_tree.insert(group_id, "end", text=str(value), open=False)
+            notes = enum.get_import_notes_for(f"value:{value}")
+            tag = "serious_adaptation" if any(serious for _text, serious in notes) else "automatic_adaptation"
+            item_id = self.model_tree.insert(group_id, "end", text=str(value), open=False,
+                                             tags=(tag,) if notes else ())
             self.tree_item_payload[item_id] = ("enum_value", enum, value)
             self.tree_item_view[item_id] = "enum_value"
 
@@ -4569,7 +4620,9 @@ class ModelDeepenerApp(ctk.CTk):
             _view, enum, value = payload
             self.detail_title.configure(text=f"Enumeration Type: {enum.name}", text_color="#F59E0B")
             self.detail_subtitle.configure(text="Matching enumeration type slot.")
-            self._render_detail_table(("Enumeration Type", "Slot", "Index"), [(enum.name, value, enum.enum_values.index(value) + 1)])
+            self._render_detail_table(("Enumeration Type", "Slot", "Index"),
+                                      [(enum.name, value, enum.enum_values.index(value) + 1)],
+                                      cell_elements=[[(enum, "name"), (enum, f"value:{value}"), None]])
         else:
             self._render_empty_detail_state()
 
@@ -5313,18 +5366,27 @@ class ModelDeepenerApp(ctk.CTk):
             model_name: str,
             attributes: List[BaseMlmAttribute],
             prepared_rows: list,
+            column_widths: Optional[list[int]] = None,
     ):
         if token != getattr(self, "_detail_load_token", None):
             return
 
-        name_width = 220
-        attribute_width = 180
+        if not hasattr(self, "_table_column_widths"):
+            self._table_column_widths = {}
+        width_key = ("overview",)
+        default = [220] + [180] * len(attributes)
+        previous = column_widths if column_widths is not None else self._table_column_widths.get(width_key, default)
+        previous = [previous[index] if index < len(previous) else default[index]
+                    for index in range(len(default))]
+        viewport = self.detail_canvas.winfo_width()
+        widths = self._fit_column_widths(previous, viewport if viewport > 1 else sum(previous))
+        self._table_column_widths[width_key] = list(widths)
+        self._overview_resize_context = (token, model_name, attributes, prepared_rows, list(widths))
+        name_width = widths[0]
+        attribute_width = max(widths[1:], default=180)
         header_height = 42
         row_height = 46
-        total_width = max(
-            name_width + len(attributes) * attribute_width,
-            self.detail_canvas.winfo_width(),
-            )
+        total_width = sum(widths)
         total_cells = (len(prepared_rows) + 1) * (len(attributes) + 1)
         total_work = max(1, total_cells)
 
@@ -5351,7 +5413,7 @@ class ModelDeepenerApp(ctk.CTk):
         headers = [model_name] + [attr.name for attr in attributes]
         x = 0
         for column, text in enumerate(headers):
-            column_width = name_width if column == 0 else attribute_width
+            column_width = widths[column]
             self._draw_model_overview_cell(
                 x=x,
                 y=0,
@@ -5363,11 +5425,27 @@ class ModelDeepenerApp(ctk.CTk):
                 font=("Segoe UI", 12, "bold"),
                 tags=("overview_corner",) if column == 0 else ("overview_header",),
             )
+            if column + 1 < len(headers):
+                drag_tag = f"overview_resize_{column}"
+                handle = self.detail_canvas.create_rectangle(
+                    x + column_width - 5, 0, x + column_width, header_height,
+                    fill="#DFE9FD", outline="", tags=(drag_tag, "overview_corner" if column == 0 else "overview_header"))
+                self.detail_canvas.tag_bind(handle, "<Enter>", lambda _event: self.detail_canvas.configure(cursor="sb_h_double_arrow"))
+                self.detail_canvas.tag_bind(handle, "<Leave>", lambda _event: self.detail_canvas.configure(cursor=""))
+                self.detail_canvas.tag_bind(handle, "<ButtonPress-1>",
+                    lambda event, index=column: setattr(self, "_overview_drag", (index, event.x_root, list(widths))))
+                def finish_resize(event):
+                    index, origin, original = self._overview_drag
+                    adjusted = self._move_column_boundary(original, index, event.x_root - origin)
+                    self._table_column_widths[width_key] = list(adjusted)
+                    self._begin_prepared_model_overview_render(token, model_name, attributes, prepared_rows, adjusted)
+                self.detail_canvas.tag_bind(handle, "<ButtonRelease-1>", finish_resize)
             x += column_width
 
         state = {
             "name_width": name_width,
             "attribute_width": attribute_width,
+            "column_widths": widths,
             "header_height": header_height,
             "row_height": row_height,
             "total_width": total_width,
@@ -5467,11 +5545,11 @@ class ModelDeepenerApp(ctk.CTk):
                 ("Segoe UI", 12, "bold"),
             )
         ]
-        for value in row_values:
+        for column, value in enumerate(row_values, start=1):
             line_counts.append(
                 self._wrapped_line_count(
                     value,
-                    state["attribute_width"],
+                    state["column_widths"][column],
                     ("Segoe UI", 12),
                 )
             )
@@ -5517,14 +5595,14 @@ class ModelDeepenerApp(ctk.CTk):
                 self._draw_model_overview_cell(
                     x=x,
                     y=y,
-                    width=state["attribute_width"],
+                    width=state["column_widths"][column],
                     height=row_height,
-                    text=self._display_table_value(value),
+                    text=value,
                     background=row_bg,
                     foreground=self.colors["text"],
                     font=("Segoe UI", 12),
                 )
-                x += state["attribute_width"]
+                x += state["column_widths"][column]
 
         loaded = end_index
         rendered_cells = state["column_count"] + (loaded * state["column_count"])
@@ -5736,6 +5814,8 @@ class ModelDeepenerApp(ctk.CTk):
                 (enum.name, value, index)
                 for index, value in enumerate(enum.enum_values, start=1)
             ],
+            cell_elements=[[(enum, "name"), (enum, f"value:{value}"), None]
+                           for value in enum.enum_values],
         )
 
     def _render_detail_option_buttons(self, options):
@@ -5803,11 +5883,11 @@ class ModelDeepenerApp(ctk.CTk):
         return (
             name,
             self._class_with_access_name(association.source_object, association.get_target_access_name(),
-                                         self._has_duplicate_association_end(association.target_object,
-                                                                             association.source_object)),
+                                         (self._has_duplicate_association_end(association.target_object, association.source_object)
+                                          or bool(association.get_target_association_end().get_import_notes()))),
             self._class_with_access_name(association.target_object, association.get_source_access_name(),
-                                         self._has_duplicate_association_end(association.source_object,
-                                                                             association.target_object)),
+                                         (self._has_duplicate_association_end(association.source_object, association.target_object)
+                                          or bool(association.get_source_association_end().get_import_notes()))),
             self._association_multiplicity_text(association),
         )
 
@@ -5910,37 +5990,34 @@ class ModelDeepenerApp(ctk.CTk):
         return bool(self._inherited_associations(obj))
 
     def _render_class_attribute_table(self, obj: BaseMlmObject) -> None:
-        """Show declared attributes followed by muted attributes inherited from parent classes."""
-        rows = []
-        for attr in obj.get_regular_attributes():
-            rows.append((attr.name, attr.attr_type_str_short, attr.inst_level))
-        inherited_rows = []
-        for parent in self._all_parent_classes(obj):
-            for attr in parent.get_regular_attributes():
-                level = f"Level {attr.inst_level}, inherited from {parent.name}"
-                inherited_rows.append((attr.name, attr.attr_type_str_short, level))
-        self._render_detail_table(
-            ("Attribute", "Type", "Level"),
-            rows + inherited_rows,
-            muted_row_indexes=set(range(len(rows), len(rows) + len(inherited_rows))),
-        )
+        """Show declared and inherited attributes with field-specific import notes."""
+        attributes = list(obj.get_regular_attributes())
+        inherited = [(parent, attr) for parent in self._all_parent_classes(obj)
+                     for attr in parent.get_regular_attributes()]
+        rows = [(attr.name, attr.attr_type_str_short, str(attr.multiplicity or "-"), attr.inst_level)
+                for attr in attributes]
+        rows.extend((attr.name, attr.attr_type_str_short, str(attr.multiplicity or "-"),
+                     f"Level {attr.inst_level}, inherited from {parent.name}")
+                    for parent, attr in inherited)
+        cells = [[(attr, "name"), (attr, "type"), (attr, "multiplicity"), None] for attr in attributes]
+        cells.extend([[None, None, None, None] for _parent, _attr in inherited])
+        self._render_detail_table(("Attribute", "Type", "Multiplicity", "Level"), rows,
+                                  cell_elements=cells, highlight_column=1)
 
     def _render_class_association_table(self, obj: BaseMlmObject) -> None:
-        """Show the associations of a class. The inherited ones follow in a muted color."""
-        rows = [
-            self._association_table_row(association)
-            for association in self._associations_for_class(self.current_model, obj)
-        ]
-        inherited_rows = [
-            self._association_table_row(association, inherited_from=parent)
-            for parent, association in self._inherited_associations(obj)
-        ]
-        self._render_detail_table(
-            self.ASSOCIATION_TABLE_HEADERS,
-            rows + inherited_rows,
-            highlight_column=self.ASSOCIATION_TABLE_HEADERS.index("Multiplicity"),
-            muted_row_indexes=set(range(len(rows), len(rows) + len(inherited_rows))),
-        )
+        """Show declared and inherited associations with field-specific import notes."""
+        associations = self._associations_for_class(self.current_model, obj)
+        inherited = self._inherited_associations(obj)
+        rows = [self._association_table_row(association) for association in associations]
+        rows.extend(self._association_table_row(association, inherited_from=parent)
+                    for parent, association in inherited)
+        cells = [[(association, "name"), (association.get_target_association_end(), "name"),
+                  (association.get_source_association_end(), "name"), (association, "multiplicity")]
+                 for association in associations]
+        cells.extend([[None, None, None, None] for _parent, _association in inherited])
+        self._render_detail_table(self.ASSOCIATION_TABLE_HEADERS, rows,
+                                  highlight_column=self.ASSOCIATION_TABLE_HEADERS.index("Multiplicity"),
+                                  cell_elements=cells)
 
     def _render_class_operation_table(self, obj: BaseMlmObject):
         self._render_detail_table(
@@ -6003,6 +6080,57 @@ class ModelDeepenerApp(ctk.CTk):
     def _render_detail_rows(self, rows):
         self._render_detail_table(("Attribute", "Type", "Slot"), rows)
 
+    @staticmethod
+    def _standard_detail_column_widths(count: int, column_minsizes=None) -> list[int]:
+        """Return the default detail table widths, including explicit per-table widths."""
+        return [column_minsizes[column] if column_minsizes and column < len(column_minsizes)
+                else (220 if column == 0 else 170) for column in range(count)]
+
+    @staticmethod
+    def _fit_column_widths(widths: list[int], total: int, minimum: int = 60) -> list[int]:
+        """Fit column widths to the available space without going below the minimum."""
+        if not widths:
+            return []
+        total = max(total, minimum * len(widths))
+        extra = total - minimum * len(widths)
+        shares = [max(0, width - minimum) for width in widths]
+        if not sum(shares):
+            shares = [1] * len(widths)
+        result = [minimum + extra * share // sum(shares) for share in shares]
+        for index in range(total - sum(result)):
+            result[index % len(result)] += 1
+        return result
+
+    @staticmethod
+    def _move_column_boundary(widths: list[int], column: int, delta: int, minimum: int = 60) -> list[int]:
+        """Move one boundary while preserving the width of the two columns."""
+        result = list(widths)
+        if column < 0 or column + 1 >= len(result):
+            return result
+        delta = max(minimum - result[column], min(delta, result[column + 1] - minimum))
+        result[column] += delta
+        result[column + 1] -= delta
+        return result
+
+    def _start_detail_column_resize(self, event, column: int) -> None:
+        """Remember the position and widths at the start of a column drag."""
+        self._detail_resize_start = (column, event.x_root, list(self._detail_column_widths))
+
+    def _resize_detail_column(self, event) -> None:
+        """Move a boundary between two neighboring detail columns."""
+        column, start_x, original = self._detail_resize_start
+        widths = self._move_column_boundary(original, column, event.x_root - start_x)
+        self._detail_column_widths = widths
+        for index in (column, column + 1):
+            self.detail_table.grid_columnconfigure(index, minsize=widths[index])
+        self.detail_table.update_idletasks()
+        self.detail_canvas.configure(scrollregion=self.detail_canvas.bbox("all"))
+        self._update_detail_x_scrollbar_visibility()
+
+    def _finish_detail_column_resize(self, _event=None) -> None:
+        """Keep the selected widths for subsequent tables of the same kind."""
+        self._table_column_widths[self._detail_width_key] = list(self._detail_column_widths)
+
     def _render_detail_table(
             self,
             headers,
@@ -6011,18 +6139,22 @@ class ModelDeepenerApp(ctk.CTk):
             muted_row_indexes=None,
             column_weights=None,
             column_minsizes=None,
+            cell_elements=None,
     ):
         self._reset_detail_canvas_table()
         for child in self.detail_table.winfo_children():
             child.destroy()
         muted_row_indexes = muted_row_indexes or set()
 
-        for column in range(len(headers)):
-            self.detail_table.grid_columnconfigure(
-                column,
-                weight=(column_weights[column] if column_weights and column < len(column_weights) else (2 if column == 0 else 1)),
-                minsize=(column_minsizes[column] if column_minsizes and column < len(column_minsizes) else (220 if column == 0 else 170)),
-            )
+        if not hasattr(self, "_table_column_widths"):
+            self._table_column_widths = {}
+        self._detail_width_key = ("detail", tuple(headers))
+        default = self._standard_detail_column_widths(len(headers), column_minsizes)
+        saved = self._table_column_widths.get(self._detail_width_key, default)
+        viewport = self.detail_canvas.winfo_width()
+        self._detail_column_widths = self._fit_column_widths(saved, viewport if viewport > 1 else sum(saved))
+        for column, width in enumerate(self._detail_column_widths):
+            self.detail_table.grid_columnconfigure(column, weight=0, minsize=width)
 
         header_bg = "#DFE9FD"
 
@@ -6062,6 +6194,12 @@ class ModelDeepenerApp(ctk.CTk):
                     weight="bold",
                 ),
             ).place(relx=0.5, rely=0.5, anchor="center")
+            if column + 1 < len(headers):
+                handle = tk.Frame(cell, width=8, background=header_bg, cursor="sb_h_double_arrow")
+                handle.place(relx=1, y=0, anchor="ne", relheight=1)
+                handle.bind("<ButtonPress-1>", lambda event, index=column: self._start_detail_column_resize(event, index))
+                handle.bind("<B1-Motion>", self._resize_detail_column)
+                handle.bind("<ButtonRelease-1>", self._finish_detail_column_resize)
 
         if not rows:
             empty = tk.Frame(
@@ -6122,46 +6260,39 @@ class ModelDeepenerApp(ctk.CTk):
                             height=46,
                         )
 
-                    if column == highlight_column and cell_value:
-                        ctk.CTkLabel(
-                            cell,
-                            text=self._display_table_value(cell_value),
-                            height=24,
-                            corner_radius=12,
-                            fg_color="#E2E8F0" if is_muted_row else self.colors["primary_soft"],
-                            text_color="#64748B" if is_muted_row else "#013897",
-                            font=ctk.CTkFont(
-                                family="Segoe UI",
-                                size=11,
-                                weight="bold",
-                            ),
-                        ).place(
-                            relx=0.5,
-                            rely=0.5,
-                            anchor="center",
-                        )
+                    element = None
+                    if cell_elements and row_index - 1 < len(cell_elements) and column < len(cell_elements[row_index - 1]):
+                        element = cell_elements[row_index - 1][column]
+                    if isinstance(element, tuple):
+                        target, field = element
+                        notes = getattr(target, "get_import_notes_for", lambda _field: [])(field)
                     else:
-                        ctk.CTkLabel(
-                            cell,
-                            text=self._display_table_value(cell_value),
-                            anchor="center",
-                            justify="center",
-                            text_color=self.colors["muted"] if is_muted_row else self.colors["text"],
-                            font=ctk.CTkFont(
-                                family="Segoe UI",
-                                size=12,
-                            ),
-                        ).place(
-                            relx=0.5,
-                            rely=0.5,
-                            anchor="center",
-                            relwidth=0.92,
-                        )
+                        notes = getattr(element, "get_import_notes", lambda: [])()
+                    marked = bool(notes)
+                    highlight = column == highlight_column and bool(cell_value) and not marked
+                    color = ("#B45309" if any(serious for _text, serious in notes) else "#647A94") if marked else (
+                        "#64748B" if is_muted_row else "#013897") if highlight else (
+                        self.colors["muted"] if is_muted_row else self.colors["text"])
+                    label = ctk.CTkLabel(
+                        cell, text=self._display_table_value(cell_value), anchor="center", justify="center",
+                        text_color=color,
+                        fg_color=("#E2E8F0" if is_muted_row else self.colors["primary_soft"]) if highlight else "transparent",
+                        corner_radius=12 if highlight else 0,
+                        font=ctk.CTkFont(family="Segoe UI", size=11 if highlight else 12,
+                                         weight="bold" if highlight else "normal"))
+                    label.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.92)
+                    full_text = str(cell_value) if cell_value is not None else ""
+                    tooltip_notes = list(notes)
+                    if full_text:
+                        tooltip_notes.append((full_text, False))
+                    if tooltip_notes:
+                        label.bind("<Enter>", lambda event, texts=tooltip_notes: self._show_import_note_tooltip(event, texts))
+                        label.bind("<Leave>", self._hide_adapted_tooltip)
 
         self.detail_table.update_idletasks()
         self.detail_canvas.itemconfigure(
             self.detail_canvas_window,
-            width=max(self.detail_canvas.winfo_width(), 700),
+            width=sum(self._detail_column_widths),
         )
         self.detail_canvas.configure(
             scrollregion=self.detail_canvas.bbox("all")
@@ -6244,6 +6375,7 @@ class ModelDeepenerApp(ctk.CTk):
             x = 0
             row_items = []
             delete_items = []
+            badge = None
             for _column_index, ((key, _label, width), value) in enumerate(zip(columns, values)):
                 if key == "delete":
                     foreground = self.colors["danger"]
@@ -6267,11 +6399,23 @@ class ModelDeepenerApp(ctk.CTk):
                     foreground=foreground,
                     font=font,
                 )
+                if key == "name" and model.get_is_adapted():
+                    self.models_canvas.move(items[1], 0, -10)
+                    badge = self.models_canvas.create_text(
+                        x + width / 2, y + height / 2 + 13, text="adapted",
+                        fill="#A34D00", font=("Segoe UI", 9, "bold"))
+                    self.models_canvas.tag_bind(badge, "<Button-1>",
+                        lambda _event, target=loaded: self._open_loaded_model(target))
+                    self.models_canvas.tag_bind(badge, "<Enter>", self._show_adapted_tooltip)
+                    self.models_canvas.tag_bind(badge, "<Leave>", self._hide_adapted_tooltip)
+                    row_items.append(badge)
                 if key == "delete":
                     delete_items.extend(items)
                 row_items.extend(items)
                 x += width
             for item in row_items:
+                if item == badge:
+                    continue
                 if item in delete_items:
                     command = lambda _event, target=loaded: self._delete_loaded_model(target)
                 else:
@@ -6725,6 +6869,69 @@ class ModelDeepenerApp(ctk.CTk):
             text_color=self.colors["muted"],
             font=ctk.CTkFont(size=12),
         ).grid(row=1, column=0, sticky="w", pady=(3, 0))
+        return header
+
+    @staticmethod
+    def _import_note_tag(element) -> str:
+        """Return the display tag for an element's import notes."""
+        notes = getattr(element, "get_import_notes", lambda: [])()
+        if not notes:
+            return ""
+        return "serious_adaptation" if any(serious for _text, serious in notes) else "automatic_adaptation"
+
+    def _show_import_note_tooltip(self, event, notes: list[tuple[str, bool]]) -> None:
+        """Show the supplied import notes next to a marked element."""
+        self._hide_adapted_tooltip()
+        window = tk.Toplevel(self)
+        window.overrideredirect(True)
+        window.geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
+        tk.Label(window, text="\n".join(text for text, _serious in notes), justify="left", wraplength=700,
+                 background="#FFF8EC", foreground="#29384D", relief="solid",
+                 borderwidth=1, padx=6, pady=4).pack()
+        self._adapted_tooltip = window
+
+    def _show_tree_import_notes(self, event) -> None:
+        """Show the import notes of the tree element under the pointer."""
+        item = self.model_tree.identify_row(event.y)
+        if item == getattr(self, "_import_note_hover_item", None):
+            return
+        self._hide_adapted_tooltip()
+        self._import_note_hover_item = item
+        element = self.tree_item_payload.get(item)
+        if isinstance(element, tuple) and len(element) == 3 and element[0] == "enum_value":
+            notes = element[1].get_import_notes_for(f"value:{element[2]}")
+        else:
+            if isinstance(element, tuple) and len(element) == 3:
+                element = element[2]
+            notes = getattr(element, "get_import_notes", lambda: [])()
+        if not notes:
+            return
+        window = tk.Toplevel(self)
+        window.overrideredirect(True)
+        window.geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
+        tk.Label(window, text="\n".join(text for text, _serious in notes),
+                 justify="left", background="#FFF8EC", foreground="#29384D", relief="solid",
+                 borderwidth=1, padx=6, pady=4).pack()
+        self._adapted_tooltip = window
+
+    def _show_adapted_tooltip(self, event) -> None:
+        """Show the explanation of the import adaptation badge."""
+        self._hide_adapted_tooltip()
+        window = tk.Toplevel(self)
+        window.overrideredirect(True)
+        window.geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
+        tk.Label(window, text="Adapted during import. Orange cells show what was changed \u2013 hover over them for details.",
+                 background="#FFF0DF", foreground="#7A3F00", relief="solid",
+                 borderwidth=1, padx=6, pady=4).pack()
+        self._adapted_tooltip = window
+
+    def _hide_adapted_tooltip(self, _event=None) -> None:
+        """Hide the import adaptation tooltip."""
+        self._import_note_hover_item = None
+        window = getattr(self, "_adapted_tooltip", None)
+        if window is not None:
+            window.destroy()
+            self._adapted_tooltip = None
 
     def _card(self, parent) -> ctk.CTkFrame:
         return ctk.CTkFrame(
@@ -6776,7 +6983,7 @@ class ModelDeepenerApp(ctk.CTk):
             width=1,
             tags=tags,
         )
-        self.detail_canvas.create_text(
+        text_item = self.detail_canvas.create_text(
             x + (width / 2),
             y + (height / 2),
             text=self._display_table_value(text),
@@ -6787,6 +6994,10 @@ class ModelDeepenerApp(ctk.CTk):
             width=max(20, width - 18),
             tags=tags,
         )
+        if text is not None and str(text):
+            self.detail_canvas.tag_bind(text_item, "<Enter>",
+                lambda event, value=str(text): self._show_import_note_tooltip(event, [(value, False)]))
+            self.detail_canvas.tag_bind(text_item, "<Leave>", self._hide_adapted_tooltip)
 
     def _draw_models_table_cell(
             self,

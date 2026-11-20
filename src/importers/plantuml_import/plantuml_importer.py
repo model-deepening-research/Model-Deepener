@@ -22,7 +22,7 @@ class PlantUmlImporter(ModelImporter):
 
     def import_into(self, model: BaseMlmModel, path: str) -> ImportReport:
         """Import a normalized PlantUML diagram into the model."""
-        return ClassDiagramBuilder().build(model, self._read_and_rewrite(path))
+        return self._finish_import(model, ClassDiagramBuilder().build(model, self._read_and_rewrite(path)))
 
     @staticmethod
     def _read_and_rewrite(path: str) -> ClassDiagram:

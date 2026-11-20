@@ -40,7 +40,7 @@ class BaseMlmModel:
         XModeler version details, imported type references, and diagram data
         are retained so a later export can reproduce the source information.
 
-        is_adapted means is_marked when something is changed in import
+        is_adapted is True if the import report contains a serious problem.
         """
         self.path_name = ""
         self.mlm_objects: List[BaseMlmObject] = []
@@ -52,15 +52,15 @@ class BaseMlmModel:
         self.xml_root_attributes = {}
         self.model_name: str = ""
         self.print_progress = print_progress
+        self.is_adapted = is_adapted
         if file_path != "":
             self._import_file(file_path, selected_csv_columns)
-        self.is_adapted = is_adapted
 
 
     def get_is_adapted(self) -> bool:
-        return self.is_adapted
+        return getattr(self, "is_adapted", False)
 
-    def set_is_adapted(self, is_adapted: bool):
+    def set_is_adapted(self, is_adapted: bool) -> None:
         self.is_adapted = is_adapted
 
 
@@ -151,6 +151,15 @@ class BaseMlmModel:
         if diagram_mode not in {"fmmlx", "uml", "both"}:
             raise ValueError("The diagram mode must be fmmlx, uml, or both.")
 
+        from src.basemlm.export_name_normalizer import normalize_export_names
+
+        export_model = copy.deepcopy(self)
+        normalize_export_names(export_model)
+        return export_model._export_xml_normalized(filepath, project_name, max_instances_per_class, diagram_mode)
+
+    def _export_xml_normalized(self, filepath: str, project_name: str,
+                               max_instances_per_class: Optional[int], diagram_mode: str):
+        """Serialize a model whose names are prepared for XML."""
         exported_objects = self._objects_for_export(max_instances_per_class)
         # create the root
         root = export_xml.preamble(project_name)

@@ -1,0 +1,143 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<XModelerPackage path="Root::examMgmt" version="4">
+    <Imports/>
+    <Model name="Root::examMgmt">
+        <addMetaClass abstract="false" level="3" maxLevel="3" name="Klausur" package="Root::examMgmt" singleton="false"/>
+        <addMetaClass abstract="false" level="2" maxLevel="2" name="Studenttyp" package="Root::examMgmt" singleton="false"/>
+        <addMetaClass abstract="false" level="2" maxLevel="2" name="Mitarbeiter" package="Root::examMgmt" singleton="false"/>
+        <addMetaClass abstract="false" level="1" maxLevel="1" name="abgelegteKlausur" package="Root::examMgmt" singleton="false"/>
+        <addMetaClass abstract="false" level="1" maxLevel="1" name="Modul" package="Root::examMgmt" singleton="false"/>
+        <addMetaClass abstract="false" level="1" maxLevel="1" name="Lehrstuhl" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="2" maxLevel="2" name="MuendlichePruefung" of="Root::examMgmt::Klausur" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="2" maxLevel="2" name="SchriftlichePruefung" of="Root::examMgmt::Klausur" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="2" maxLevel="2" name="Hausarbeit" of="Root::examMgmt::Klausur" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="2" maxLevel="2" name="Praesenzpruefung" of="Root::examMgmt::Klausur" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="1" maxLevel="1" name="Student" of="Root::examMgmt::Studenttyp" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="1" maxLevel="1" name="Austauschsstudent" of="Root::examMgmt::Studenttyp" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="1" maxLevel="1" name="Gastprofessor" of="Root::examMgmt::Mitarbeiter" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="1" maxLevel="1" name="WissenschaftlicherMitarbeiter" of="Root::examMgmt::Mitarbeiter" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="1" maxLevel="1" name="AkademischerRat" of="Root::examMgmt::Mitarbeiter" package="Root::examMgmt" singleton="false"/>
+        <addInstance abstract="false" level="1" maxLevel="1" name="Professor" of="Root::examMgmt::Mitarbeiter" package="Root::examMgmt" singleton="false"/>
+        <addEnumeration name="LanguageEnum"/>
+        <addEnumeration name="noteEnum"/>
+        <addEnumerationValue enum_name="LanguageEnum" enum_value_name="Deutsch"/>
+        <addEnumerationValue enum_name="LanguageEnum" enum_value_name="Englisch"/>
+        <addAttribute class="Root::examMgmt::Austauschsstudent" level="0" multiplicity="Seq{1,1,true,false}" name="geplanteSemesterdauer" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Austauschsstudent" level="0" multiplicity="Seq{1,1,true,false}" name="herkunfstland" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Austauschsstudent" level="0" multiplicity="Seq{1,1,true,false}" name="startdatum" package="Root::examMgmt" type="Root::Auxiliary::Date"/>
+        <addAttribute class="Root::examMgmt::Hausarbeit" level="0" multiplicity="Seq{1,1,true,false}" name="echteAnzahlSeiten" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Hausarbeit" level="0" multiplicity="Seq{1,1,true,false}" name="echteAnzahlWoerter" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Hausarbeit" level="0" multiplicity="Seq{1,1,true,false}" name="titel" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Hausarbeit" level="1" multiplicity="Seq{1,1,true,false}" name="deadline" package="Root::examMgmt" type="Root::Auxiliary::Date"/>
+        <addAttribute class="Root::examMgmt::Hausarbeit" level="1" multiplicity="Seq{1,1,true,false}" name="erforderteAnzahlSeiten" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Hausarbeit" level="1" multiplicity="Seq{1,1,true,false}" name="erforderteAnzahlWoerter" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Hausarbeit" level="1" multiplicity="Seq{1,1,true,false}" name="onlineEinreichungErlaubt" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::Klausur" level="0" multiplicity="Seq{1,1,true,false}" name="echteDauer" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Klausur" level="1" multiplicity="Seq{1,1,true,false}" name="geplanteDauer" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Klausur" level="1" multiplicity="Seq{1,1,true,false}" name="sprache" package="Root::examMgmt" type="Root::examMgmt::LanguageEnum"/>
+        <addAttribute class="Root::examMgmt::Klausur" level="2" multiplicity="Seq{1,1,true,false}" name="erfordertKlausuraufsicht" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::Klausur" level="2" multiplicity="Seq{1,1,true,false}" name="istVorort" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::Lehrstuhl" level="0" multiplicity="Seq{1,1,true,false}" name="gruendungsDatum" package="Root::examMgmt" type="Root::Auxiliary::Date"/>
+        <addAttribute class="Root::examMgmt::Lehrstuhl" level="0" multiplicity="Seq{1,1,true,false}" name="lehrstuhlName" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Mitarbeiter" level="0" multiplicity="Seq{1,1,true,false}" name="einstiegsDatum" package="Root::examMgmt" type="Root::Auxiliary::Date"/>
+        <addAttribute class="Root::examMgmt::Mitarbeiter" level="0" multiplicity="Seq{1,1,true,false}" name="nachname" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Mitarbeiter" level="0" multiplicity="Seq{1,1,true,false}" name="vorname" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Mitarbeiter" level="1" multiplicity="Seq{1,1,true,false}" name="istProf" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::Mitarbeiter" level="1" multiplicity="Seq{1,1,true,false}" name="istPromoviert" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::Mitarbeiter" level="1" multiplicity="Seq{1,1,true,false}" name="leitetLehrstuhl" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::Modul" level="0" multiplicity="Seq{1,1,true,false}" name="anzahlECTS" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Modul" level="0" multiplicity="Seq{1,1,true,false}" name="modulName" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::MuendlichePruefung" level="1" multiplicity="Seq{1,1,true,false}" name="vorbereitungszeit" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Praesenzpruefung" level="0" multiplicity="Seq{1,1,true,false}" name="datum" package="Root::examMgmt" type="Root::Auxiliary::Date"/>
+        <addAttribute class="Root::examMgmt::Praesenzpruefung" level="0" multiplicity="Seq{1,1,true,false}" name="raum" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::SchriftlichePruefung" level="1" multiplicity="Seq{1,1,true,false}" name="einlesezeit" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Studenttyp" level="0" multiplicity="Seq{1,1,true,false}" name="fachsemester" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Studenttyp" level="0" multiplicity="Seq{1,1,true,false}" name="matrikelNummer" package="Root::examMgmt" type="Root::XCore::Integer"/>
+        <addAttribute class="Root::examMgmt::Studenttyp" level="0" multiplicity="Seq{1,1,true,false}" name="nachname" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Studenttyp" level="0" multiplicity="Seq{1,1,true,false}" name="vorname" package="Root::examMgmt" type="Root::XCore::String"/>
+        <addAttribute class="Root::examMgmt::Studenttyp" level="1" multiplicity="Seq{1,1,true,false}" name="istEingeschrieben" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::WissenschaftlicherMitarbeiter" level="0" multiplicity="Seq{1,1,true,false}" name="istEingeschrieben" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::WissenschaftlicherMitarbeiter" level="0" multiplicity="Seq{1,1,true,false}" name="istExtern" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::abgelegteKlausur" level="0" multiplicity="Seq{1,1,true,false}" name="hatTaeuschungsversuch" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::abgelegteKlausur" level="0" multiplicity="Seq{1,1,true,false}" name="istBestanden" package="Root::examMgmt" type="Root::XCore::Boolean"/>
+        <addAttribute class="Root::examMgmt::abgelegteKlausur" level="0" multiplicity="Seq{1,1,true,false}" name="note" package="Root::examMgmt" type="Root::XCore::Float"/>
+        <addConstraint body="true" class="Root::examMgmt::SchriftlichePruefung" constName="klausurzeitValide" instLevel="0" package="Root::examMgmt" reason="&quot;This constraint always fails.&quot;"/>
+        <changeSlotValue class="Root::examMgmt::AkademischerRat" package="Root::examMgmt" slotName="istProf" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::AkademischerRat" package="Root::examMgmt" slotName="istPromoviert" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::AkademischerRat" package="Root::examMgmt" slotName="leitetLehrstuhl" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::Austauschsstudent" package="Root::examMgmt" slotName="istEingeschrieben" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::Gastprofessor" package="Root::examMgmt" slotName="istProf" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::Gastprofessor" package="Root::examMgmt" slotName="istPromoviert" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::Gastprofessor" package="Root::examMgmt" slotName="leitetLehrstuhl" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::Hausarbeit" package="Root::examMgmt" slotName="erfordertKlausuraufsicht" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::Hausarbeit" package="Root::examMgmt" slotName="istVorort" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::MuendlichePruefung" package="Root::examMgmt" slotName="erfordertKlausuraufsicht" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::MuendlichePruefung" package="Root::examMgmt" slotName="istVorort" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::Praesenzpruefung" package="Root::examMgmt" slotName="erfordertKlausuraufsicht" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::Praesenzpruefung" package="Root::examMgmt" slotName="istVorort" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::Professor" package="Root::examMgmt" slotName="istProf" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::Professor" package="Root::examMgmt" slotName="istPromoviert" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::Professor" package="Root::examMgmt" slotName="leitetLehrstuhl" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::SchriftlichePruefung" package="Root::examMgmt" slotName="erfordertKlausuraufsicht" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::SchriftlichePruefung" package="Root::examMgmt" slotName="istVorort" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::Student" package="Root::examMgmt" slotName="istEingeschrieben" valueToBeParsed="true"/>
+        <changeSlotValue class="Root::examMgmt::WissenschaftlicherMitarbeiter" package="Root::examMgmt" slotName="istProf" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::WissenschaftlicherMitarbeiter" package="Root::examMgmt" slotName="istPromoviert" valueToBeParsed="false"/>
+        <changeSlotValue class="Root::examMgmt::WissenschaftlicherMitarbeiter" package="Root::examMgmt" slotName="leitetLehrstuhl" valueToBeParsed="false"/>
+        <addAssociation accessSourceFromTargetName="abgelegteKlausur" accessTargetFromSourceName="klausur" classSource="Root::examMgmt::abgelegteKlausur" classTarget="Root::examMgmt::Klausur" fwName="bezieht_sich_auf" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{1,1,true,false}" multTargetToSource="Seq{0,-1,false,false}" package="Root::examMgmt" reverseName="-1" sourceVisibleFromTarget="false" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="lehrstuhl" accessTargetFromSourceName="modul" classSource="Root::examMgmt::Lehrstuhl" classTarget="Root::examMgmt::Modul" fwName="verantwortlich_fuer" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{0,-1,false,false}" multTargetToSource="Seq{1,1,true,false}" package="Root::examMgmt" reverseName="-1" sourceVisibleFromTarget="false" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="mitarbeiter" accessTargetFromSourceName="hausarbeit" classSource="Root::examMgmt::Mitarbeiter" classTarget="Root::examMgmt::Hausarbeit" fwName="betreut" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{0,-1,false,false}" multTargetToSource="Seq{1,1,true,false}" package="Root::examMgmt" reverseName="-1" sourceVisibleFromTarget="false" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="mitarbeiter" accessTargetFromSourceName="lehrstuhl" classSource="Root::examMgmt::Mitarbeiter" classTarget="Root::examMgmt::Lehrstuhl" fwName="arbeitet_fuer" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{1,1,true,false}" multTargetToSource="Seq{1,-1,false,false}" package="Root::examMgmt" reverseName="-1" sourceVisibleFromTarget="false" targetVisibleFromSource="true"/>
+        <addAssociation accessSourceFromTargetName="student" accessTargetFromSourceName="lehrstuhl" classSource="Root::examMgmt::Student" classTarget="Root::examMgmt::Lehrstuhl" fwName="angestellt_bei" instLevelSource="0" instLevelTarget="0" multSourceToTarget="Seq{0,1,true,false}" multTargetToSource="Seq{0,-1,false,false}" package="Root::examMgmt" reverseName="-1" sourceVisibleFromTarget="false" targetVisibleFromSource="true"/>
+    </Model>
+    <Diagrams>
+        <Diagram name="examMgmt">
+            <Instances>
+                <Instance hidden="false" path="Root::examMgmt::Professor" xCoordinate="-146" yCoordinate="457"/>
+                <Instance hidden="false" path="Root::examMgmt::abgelegteKlausur" xCoordinate="777" yCoordinate="-467"/>
+                <Instance hidden="false" path="Root::examMgmt::Austauschsstudent" xCoordinate="303" yCoordinate="-741"/>
+                <Instance hidden="false" path="Root::examMgmt::Modul" xCoordinate="351" yCoordinate="-151"/>
+                <Instance hidden="false" path="Root::examMgmt::Mitarbeiter" xCoordinate="482" yCoordinate="109"/>
+                <Instance hidden="true" path="Root::examMgmt::noteEnum" xCoordinate="0" yCoordinate="0"/>
+                <Instance hidden="false" path="Root::examMgmt::Gastprofessor" xCoordinate="194" yCoordinate="723"/>
+                <Instance hidden="false" path="Root::examMgmt::WissenschaftlicherMitarbeiter" xCoordinate="-145" yCoordinate="697"/>
+                <Instance hidden="true" path="Root::examMgmt::LanguageEnum" xCoordinate="0" yCoordinate="0"/>
+                <Instance hidden="false" path="Root::examMgmt::Lehrstuhl" xCoordinate="40" yCoordinate="50"/>
+                <Instance hidden="false" path="Root::examMgmt::Student" xCoordinate="-90" yCoordinate="-685"/>
+                <Instance hidden="false" path="Root::examMgmt::MuendlichePruefung" xCoordinate="1727" yCoordinate="253"/>
+                <Instance hidden="false" path="Root::examMgmt::SchriftlichePruefung" xCoordinate="1387" yCoordinate="249"/>
+                <Instance hidden="false" path="Root::examMgmt::Studenttyp" xCoordinate="75" yCoordinate="-889"/>
+                <Instance hidden="false" path="Root::examMgmt::Praesenzpruefung" xCoordinate="1632" yCoordinate="-11"/>
+                <Instance hidden="false" path="Root::examMgmt::Klausur" xCoordinate="1229" yCoordinate="-200"/>
+                <Instance hidden="false" path="Root::examMgmt::AkademischerRat" xCoordinate="214" yCoordinate="454"/>
+                <Instance hidden="false" path="Root::examMgmt::Hausarbeit" xCoordinate="1002" yCoordinate="23"/>
+            </Instances>
+            <Edges>
+                <Edge path="AssociationMapping: Root::examMgmt::Student::lehrstuhl" sourcePort="SOUTH" targetPort="WEST" type="Association">
+                    <IntermediatePoints>
+                        <IntermediatePoint xCoordinate="61.634678" yCoordinate="-439.72723"/>
+                        <IntermediatePoint xCoordinate="-58.06615" yCoordinate="-439.72723"/>
+                        <IntermediatePoint xCoordinate="-58.06615" yCoordinate="93.24219"/>
+                    </IntermediatePoints>
+                    <Labels/>
+                </Edge>
+            </Edges>
+            <DiagramDisplayProperties>
+                <SLOTS>true</SLOTS>
+                <CONCRETESYNTAX>true</CONCRETESYNTAX>
+                <METACLASSNAME>false</METACLASSNAME>
+                <ISSUETABLE>false</ISSUETABLE>
+                <OPERATIONS>true</OPERATIONS>
+                <DERIVEDATTRIBUTES>true</DERIVEDATTRIBUTES>
+                <CONSTRAINTS>true</CONSTRAINTS>
+                <CONSTRAINTREPORTS>true</CONSTRAINTREPORTS>
+                <DERIVEDOPERATIONS>true</DERIVEDOPERATIONS>
+                <OPERATIONVALUES>true</OPERATIONVALUES>
+                <GETTERSANDSETTERS>true</GETTERSANDSETTERS>
+            </DiagramDisplayProperties>
+            <Views>
+                <View name="Main View" tx="54.05202" ty="258.72202" xx="0.45850202"/>
+            </Views>
+        </Diagram>
+    </Diagrams>
+</XModelerPackage>

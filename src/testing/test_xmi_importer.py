@@ -74,6 +74,35 @@ class XmiImporterTests(unittest.TestCase):
         xml_assoc = ET.parse(out).getroot().find('Model/addAssociation')
         self.assertEqual((xml_assoc.get('sourceVisibleFromTarget'), xml_assoc.get('targetVisibleFromSource')), ('true', 'true'))
 
+    def test_class_typed_property_remains_attribute(self) -> None:
+        """Keep a class-typed property as an attribute."""
+        model, _ = self._import('''
+        <packagedElement xsi:type="uml:Class" xmi:id="a" name="A">
+          <ownedAttribute xmi:id="prop" name="ref" type="b" lower="0" upper="1"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Class" xmi:id="b" name="B"/>''')
+        objects = {obj.name: obj for obj in model.get_objects()}
+        attribute = objects['A'].get_regular_attributes()[0]
+        self.assertEqual(attribute.name, 'ref')
+        self.assertIs(attribute.get_type_spec(), objects['B'])
+        self.assertEqual(model.get_associations(), [])
+
+    def test_unnamed_association_kinds(self) -> None:
+        """Use the aggregation kind only when an association has no name."""
+        model, _ = self._import('''
+        <packagedElement xsi:type="uml:Class" xmi:id="a" name="A"/>
+        <packagedElement xsi:type="uml:Class" xmi:id="b" name="B"/>
+        <packagedElement xsi:type="uml:Association" xmi:id="r1" memberEnd="a1 b1">
+          <ownedEnd xmi:id="a1" type="a"/><ownedEnd xmi:id="b1" type="b" aggregation="composite"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Association" xmi:id="r2" memberEnd="a2 b2">
+          <ownedEnd xmi:id="a2" type="a"/><ownedEnd xmi:id="b2" type="b" aggregation="shared"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Association" xmi:id="r3" memberEnd="a3 b3" name="named">
+          <ownedEnd xmi:id="a3" type="a"/><ownedEnd xmi:id="b3" type="b" aggregation="composite"/>
+        </packagedElement>''')
+        self.assertEqual([a.name for a in model.get_associations()], ['composition_of', 'aggregation_of', 'named'])
+
     def test_composition_whole_explicit_bounds(self) -> None:
         for bounds, expected, warning in [('', '(1..1)', False), ('lower="0" upper="1"', '(0..1)', False),
                                           ('upper="*"', '(0..*)', True), ('lower="2" upper="3"', '(2..3)', True),

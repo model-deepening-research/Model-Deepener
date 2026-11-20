@@ -12,6 +12,7 @@ from src.basemlm.basemlm_predefined_type import StringType
 from src.basemlm.basemlm_slot import BaseMlmSlot
 from src.importers.csv_import.csv_reader import CsvReader
 from src.importers.import_report import ImportReport
+from src.importers.model_names import normalized_name, unique_name
 from src.importers.model_importer import ModelImporter, register_importer
 from src.importers.slot_value_converter import SlotValueConverter
 
@@ -46,7 +47,7 @@ class CsvImporter(ModelImporter):
     """
 
     EXTENSIONS = (".csv",)
-    SOURCE_FOLDER = "csv_files"
+    SOURCE_FOLDER = os.path.join("models", "csv")
     FORMAT_NAME = "CSV"
 
     def __init__(self) -> None:
@@ -70,7 +71,7 @@ class CsvImporter(ModelImporter):
         if self._selected_columns is not None:
             header_row, data_rows = self._select_csv_columns(header_row, data_rows, self._selected_columns)
 
-        class_name = self._make_csv_class_name(path)
+        class_name = normalized_name(os.path.splitext(os.path.basename(path))[0])
         project_name = f"Root::{class_name}"
         model.set_path_name(project_name)
         mlm_class = BaseMlmObject(f"{project_name}::{class_name}", class_name, CLASS_LEVEL,
@@ -87,7 +88,7 @@ class CsvImporter(ModelImporter):
 
         for mlm_object in all_mlm_objects:
             model.add_mlm_object(mlm_object)
-        return report
+        return self._finish_import(model, report)
 
     @staticmethod
     def _check_file(reader: CsvReader) -> None:
@@ -112,13 +113,14 @@ class CsvImporter(ModelImporter):
                            data_rows: List[List[str]]) -> List[BaseMlmAttribute]:
         """Create one attribute per column. Its type is the one that fits all values of the column."""
         attributes = []
-        used_attribute_names = []
+        used_attribute_names: set[str] = set()
         for column_number, raw_attribute_name in enumerate(header_row):
-            attribute_name = self._make_csv_attribute_name(raw_attribute_name)
-            attribute_name = self._make_unique_csv_attribute_name(attribute_name, used_attribute_names)
+            attribute_name = unique_name(normalized_name(raw_attribute_name, attribute=True), used_attribute_names)
             attribute_type = f"Root::XCore::{CsvReader.column_type(self._column_values(data_rows, column_number))}"
             attribute = BaseMlmAttribute(attribute_name, attribute_type, ATTRIBUTE_LEVEL,
                                          model.parse_attribute_type(attribute_type))
+            if attribute_name != raw_attribute_name:
+                attribute.add_import_note(f"{raw_attribute_name} \u2192 {attribute_name}")
             attribute.set_owner(mlm_class)
             attributes.append(attribute)
             mlm_class.add_attr(attribute)

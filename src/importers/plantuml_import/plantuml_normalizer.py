@@ -136,19 +136,34 @@ class PlantUmlNormalizer(ClassDiagramNormalizer):
     def _convert_associations(self) -> None:
         """Take over associations, written A "1" -- "0..*" B : label, and their direction.
 
-        A trailing reading-direction marker determines the source and target. Arrowheads do not
-        change navigability. The remaining label is the association name.
+        A reading-direction marker takes precedence over an arrowhead. Both ends remain navigable.
         """
         for position, relation in self._association_relations:
             source_multiplicity = self._read_multiplicity(relation.get_left_multiplicity(), position)
             target_multiplicity = self._read_multiplicity(relation.get_right_multiplicity(), position)
-            association = UmlAssociation(relation.get_left(), relation.get_right(), source_multiplicity,
-                                         target_multiplicity, self._association_name(relation.get_label()))
-            if relation.get_label() and relation.get_label().rstrip().endswith("<"):
+            name = self._association_name(relation.get_label())
+            if not name:
+                arrow = relation.get_arrow()
+                name = "composition_of" if "*" in arrow else "aggregation_of" if "o" in arrow else "associated_to"
+            if self._reverse_association(relation):
                 association = UmlAssociation(relation.get_right(), relation.get_left(), target_multiplicity,
-                                             source_multiplicity, self._association_name(relation.get_label()))
+                                             source_multiplicity, name)
+            else:
+                association = UmlAssociation(relation.get_left(), relation.get_right(), source_multiplicity,
+                                             target_multiplicity, name)
+            if not self._association_name(relation.get_label()):
+                association.mark_name_generated()
             self._diagram.add_association(association)
             self._association_of_position[position] = association
+
+    @staticmethod
+    def _reverse_association(relation: RawRelation) -> bool:
+        """Return whether the right-hand class is the source of a relation."""
+        label = (relation.get_label() or "").rstrip()
+        if label.endswith(("<", ">")):
+            return label.endswith("<")
+        arrow = relation.get_arrow()
+        return arrow.startswith("<") and not arrow.endswith(">")
 
     def _read_multiplicity(self, text: Optional[str], position: int) -> Optional[UmlMultiplicity]:
         """Return the multiplicity of a text such as 0..*. None means that nothing was written.
@@ -191,7 +206,7 @@ class PlantUmlNormalizer(ClassDiagramNormalizer):
             association = self._association_of_position[position]
             if COMPOSITION_ARROW_SIGN not in arrow:
                 continue
-            reverse = bool(relation.get_label() and relation.get_label().rstrip().endswith("<"))
+            reverse = self._reverse_association(relation)
             if arrow.startswith(COMPOSITION_ARROW_SIGN) != reverse:
                 association.set_source_multiplicity(self._check_whole_end(
                     association.get_source_multiplicity(), association.get_source(), association.get_target(), position))
@@ -237,6 +252,9 @@ class PlantUmlNormalizer(ClassDiagramNormalizer):
             base.get_source(), middle, EXACTLY_ONE, base.get_target_multiplicity(), base.get_name())
         target_association = UmlAssociation(
             middle, base.get_target(), base.get_source_multiplicity(), EXACTLY_ONE, base.get_name())
+        if base.is_name_generated():
+            source_association.mark_name_generated()
+            target_association.mark_name_generated()
         self._diagram.add_association(source_association)
         self._diagram.add_association(target_association)
 
@@ -254,7 +272,11 @@ class PlantUmlNormalizer(ClassDiagramNormalizer):
         base = candidates[0]
         chosen = f"named {base.get_name()}"
         for candidate in candidates:
-            if candidate.get_name() is None:
+            is_unnamed = any(
+                candidate is association and not self._association_name(self._diagram.get_relations()[index].get_label())
+                for index, association in self._association_of_position.items()
+            )
+            if is_unnamed:
                 base = candidate
                 chosen = "without a name"
                 break
