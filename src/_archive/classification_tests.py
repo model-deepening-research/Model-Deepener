@@ -94,7 +94,7 @@ car_simple_v3 = "C:\\Users\\PierreM\\git\\MosaicFX\\AutoMLM\\mlm_files\\MD_CarSi
 car_simple_v4 = "C:\\Users\\PierreM\\git\\MosaicFX\\AutoMLM\\mlm_files\\CarSimple-v4.xml"
 car_simple_v5 = "C:\\Users\\PierreM\\git\\MosaicFX\\AutoMLM\\mlm_files\\CarSimple-v5.xml"
 car = "C:\\Users\\PierreM\\git\\MosaicFX\\AutoMLM\\mlm_files\\MD_CarComplex.xml"
-csv_model = "C:\\Users\\PierreM\\git\\MosaicFX\\AutoMLM\\csv_files\\news_decline.csv"
+csv_model = "C:\\Users\\PierreM\\git\\MosaicFX\\AutoMLM\\models\\csv\\news_decline.csv"
 
 cars_to_path = "/type-object/RentalCars_TypeObject.xml"
 

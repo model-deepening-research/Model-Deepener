@@ -161,7 +161,9 @@ class EcoreReader:
             return mapped
         if resolved and resolved[0] in ('EClass', 'EEnum'):
             return resolved[1]
-        kind = 'EDataType' if ((resolved and resolved[0] == 'EDataType') or ECORE_URI in ref or XMLTYPE_URI in ref) else 'Unknown type'
+        kind = ('Missing type' if not ref else
+                'EDataType' if ((resolved and resolved[0] == 'EDataType') or ECORE_URI in ref or XMLTYPE_URI in ref)
+                else 'Unknown type')
         self._diagram.add_adaptation(kind, owner, f"Attribute '{owner}.{name}': {kind} '{ref}' replaced by String.")
         return 'String'
 
@@ -219,7 +221,7 @@ class EcoreReader:
             return ZERO_TO_MANY
 
     def _read_references(self) -> None:
-        """Create attributes or paired associations, processing containment first."""
+        """Create associations for references, processing containment first."""
         done: set[str] = set()
         incoming: dict[str, Reference] = {}
         for reference in self._references:
@@ -254,21 +256,22 @@ class EcoreReader:
                 done.add(ref.path)
                 continue
             bounds = self._bounds(ref)
-            if ref.element.get('containment') != 'true' and opposite is None and bounds.get_upper() == 1:
-                self._diagram.get_class(ref.owner).add_attribute(UmlAttribute(name, target[1], EXACTLY_ONE))
+            if ref.element.get('containment') == 'true':
+                explicit = opposite and any(key in opposite.element.attrib for key in ('lowerBound', 'upperBound'))
+                whole_bounds = self._bounds(opposite) if explicit else None
+                source_bounds = ClassDiagramNormalizer.composition_whole(self._diagram, whole_bounds, ref.owner, target[1])
             else:
-                if ref.element.get('containment') == 'true':
-                    explicit = opposite and any(key in opposite.element.attrib for key in ('lowerBound', 'upperBound'))
-                    whole_bounds = self._bounds(opposite) if explicit else None
-                    source_bounds = ClassDiagramNormalizer.composition_whole(self._diagram, whole_bounds, ref.owner, target[1])
-                else:
-                    source_bounds = self._bounds(opposite) if opposite else ZERO_TO_MANY
-                association = UmlAssociation(ref.owner, target[1], source_bounds, bounds)
-                association.set_target_role(name)
-                association.set_source_role(opposite.element.get('name') if opposite else lower_first(ref.owner))
-                self._diagram.add_association(association)
-                if opposite:
-                    done.add(opposite.path)
+                source_bounds = self._bounds(opposite) if opposite else ZERO_TO_MANY
+            association_name = 'composition_of' if ref.element.get('containment') == 'true' else 'associated_to'
+            association = UmlAssociation(ref.owner, target[1], source_bounds, bounds, association_name)
+            association.mark_name_generated()
+            if not opposite:
+                association.mark_source_role_generated()
+            association.set_target_role(name)
+            association.set_source_role(opposite.element.get('name') if opposite else lower_first(ref.owner))
+            self._diagram.add_association(association)
+            if opposite:
+                done.add(opposite.path)
             done.add(ref.path)
 
 

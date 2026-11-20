@@ -7,6 +7,7 @@ from src.basemlm.basemlm_type_spec import TypeSpec
 from src.basemlm.multiplicity import Multiplicity
 
 from src.basemlm.basemlm_model import BaseMlmModel
+from src.importers.model_names import normalized_name, unique_name, make_inherited_names_unique
 from src.importers.import_report import ImportReport
 from src.importers.class_diagram import ClassDiagram, UNKNOWN_TYPE
 
@@ -32,7 +33,36 @@ class ClassDiagramBuilder:
         self._set_generalizations(diagram, classes)
         self._create_attributes(model, diagram, package, classes, enums)
         self._create_associations(model, diagram, classes)
-        return self._create_import_report(diagram)
+        make_inherited_names_unique(model.get_objects())
+        report = self._create_import_report(diagram)
+        for adaptation in report.get_adaptations():
+            element = classes.get(adaptation.get_object_name()) or enums.get(adaptation.get_object_name())
+            if element is None and adaptation.get_problem_type() == "Constraint not exported":
+                for alias, left, right in diagram.get_association_classes():
+                    if (alias == adaptation.get_object_name() and diagram.has_note(alias)
+                            and f"on ({left}, {right})" in adaptation.get_description()):
+                        for name in (left, right):
+                            if name in classes:
+                                classes[name].add_import_note(adaptation.get_description(), True)
+            if element is not None:
+                description = adaptation.get_description()
+                kind = adaptation.get_problem_type()
+                if kind == UNKNOWN_TYPE:
+                    continue
+                if hasattr(element, "get_regular_attributes"):
+                    for attribute in element.get_regular_attributes():
+                        original = getattr(attribute, "_import_source_name", attribute.get_name())
+                        if f"{adaptation.get_object_name()}.{original}" in description:
+                            element = attribute
+                            break
+                field = "name"
+                if hasattr(element, "get_type_spec"):
+                    if "multiplicity" in kind.lower() or "multiplicity" in description.lower():
+                        field = "multiplicity"
+                    elif "type" in kind.lower() or "type" in description.lower():
+                        field = "type"
+                element.add_import_note(description, report.is_serious_adaptation(adaptation), field)
+        return report
 
     @staticmethod
     def _create_classes_and_enums(
@@ -41,9 +71,15 @@ class ClassDiagramBuilder:
         """Create classes and enums and report names that match primitive types."""
         classes: dict[str, BaseMlmObject] = {}
         enums: dict[str, BaseMlmEnumType] = {}
+        used_names: set[str] = set()
         for item in diagram.get_classes():
-            obj = BaseMlmObject(f"{package}::{item.get_name()}", item.get_name(), "1",
+            name = unique_name(normalized_name(item.get_name()), used_names)
+            obj = BaseMlmObject(f"{package}::{name}", name, "1",
                                 BaseMlmObject.meta_class(), str(item.is_abstract()).lower(), model)
+            if name != item.get_name():
+                obj.add_import_note(f"{item.get_name()} \u2192 {name}")
+            for operation in item.get_skipped_operations():
+                obj.add_import_note(f"Operation skipped: {operation}")
             classes[item.get_name()] = obj
             model.add_mlm_object(obj)
             if item.get_name().lower() in PRIMITIVE_TYPES:
@@ -51,9 +87,16 @@ class ClassDiagramBuilder:
                                        f"Class '{item.get_name()}' has the name of a primitive type; "
                                        "the primitive type takes precedence for attributes.")
         for item in diagram.get_enums():
-            enum = BaseMlmEnumType(item.get_name())
+            name = unique_name(normalized_name(item.get_name()), used_names)
+            enum = BaseMlmEnumType(name)
+            if name != item.get_name():
+                enum.add_import_note(f"{item.get_name()} \u2192 {name}")
+            used_literals: set[str] = set()
             for literal in item.get_literals():
-                enum.add_enum_value(literal)
+                value = unique_name(normalized_name(literal), used_literals)
+                enum.add_enum_value(value)
+                if value != literal:
+                    enum.add_import_note(f"{literal} \u2192 {value}", field=f"value:{value}")
             enums[item.get_name()] = enum
             model.add_enum(enum)
             if item.get_name().lower() in PRIMITIVE_TYPES:
@@ -75,11 +118,19 @@ class ClassDiagramBuilder:
         """Create attributes and connect each one to its owner and type."""
         for item in diagram.get_classes():
             owner = classes[item.get_name()]
+            used_names: set[str] = set()
             for attribute in item.get_attributes():
+                name = unique_name(normalized_name(attribute.get_name(), attribute=True), used_names)
                 type_path, spec = self._resolve_attribute_type(
                     model, diagram, package, item.get_name(), attribute.get_type_name(), classes, enums)
-                attr = BaseMlmAttribute(attribute.get_name(), type_path, 0, spec,
+                attr = BaseMlmAttribute(name, type_path, 0, spec,
                                         multiplicity=Multiplicity(1, 1))
+                attr._import_source_name = attribute.get_name()
+                if (attribute.get_type_name().lower() not in PRIMITIVE_TYPES
+                        and attribute.get_type_name() not in enums and attribute.get_type_name() not in classes):
+                    attr.add_import_note(f"Unknown type '{attribute.get_type_name()}' replaced by String.", True, "type")
+                if name != attribute.get_name():
+                    attr.add_import_note(f"{attribute.get_name()} \u2192 {name}")
                 attr.set_owner(owner)
                 owner.add_attr(attr)
 
@@ -92,9 +143,9 @@ class ClassDiagramBuilder:
         if type_path:
             return type_path, model.parse_attribute_type(type_path)
         if type_name in enums:
-            return f"{package}::{type_name}", enums[type_name]
+            return f"{package}::{enums[type_name].get_name()}", enums[type_name]
         if type_name in classes:
-            return f"{package}::{type_name}", classes[type_name]
+            return f"{package}::{classes[type_name].get_name()}", classes[type_name]
         type_path = PRIMITIVE_TYPES["string"]
         diagram.add_adaptation(UNKNOWN_TYPE, owner_name, f"Unknown type '{type_name}' replaced by String.")
         return type_path, model.parse_attribute_type(type_path)
@@ -103,9 +154,17 @@ class ClassDiagramBuilder:
     def _create_associations(model: BaseMlmModel, diagram: ClassDiagram,
                              classes: dict[str, BaseMlmObject]) -> None:
         """Create associations and their ends using the normalized classes and bounds."""
+        used_roles = {name: {attr.get_name() for attr in obj.get_regular_attributes()}
+                      for name, obj in classes.items()}
         for item in diagram.get_associations():
-            association = BaseMlmAssociation(item.get_name() or "associated_to", 0, 0,
-                                             item.get_target_role(), item.get_source_role())
+            name = normalized_name(item.get_name() or "associated_to", association=True)
+            target_role = unique_name(normalized_name(item.get_target_role()), used_roles[item.get_source()])
+            source_role = unique_name(normalized_name(item.get_source_role()), used_roles[item.get_target()])
+            association = BaseMlmAssociation(name, 0, 0, target_role, source_role)
+            if item.is_name_generated():
+                association.add_import_note(f"Association name assigned: {name}.")
+            if item.get_name() and name != item.get_name():
+                association.add_import_note(f"{item.get_name()} \u2192 {name}")
             association.xml_attributes = {"sourceVisibleFromTarget": "true", "targetVisibleFromSource": "true"}
             association.set_source_object(classes[item.get_source()])
             association.set_target_object(classes[item.get_target()])
@@ -114,10 +173,26 @@ class ClassDiagramBuilder:
             association.set_source_multiplicity(source.get_lower(), source.get_upper())
             association.set_target_multiplicity(target.get_lower(), target.get_upper())
             model.add_association(association)
+            association._generated_source_role = item.is_target_role_generated()
+            association._generated_target_role = item.is_source_role_generated()
+            association._original_source_role = item.get_target_role()
+            association._original_target_role = item.get_source_role()
         model.add_association_ends()
         for association in model.get_associations():
             association.get_source_association_end().set_owner(association.get_source_object())
             association.get_target_association_end().set_owner(association.get_target_object())
+            if association.source_access_name != association._original_source_role:
+                association.get_source_association_end().add_import_note(
+                    f"{association._original_source_role} \u2192 {association.source_access_name}")
+            if association.target_access_name != association._original_target_role:
+                association.get_target_association_end().add_import_note(
+                    f"{association._original_target_role} \u2192 {association.target_access_name}")
+            if association._generated_source_role:
+                association.get_source_association_end().add_import_note(
+                    f"Role name assigned: {association.source_access_name}.")
+            if association._generated_target_role:
+                association.get_target_association_end().add_import_note(
+                    f"Role name assigned: {association.target_access_name}.")
 
     @staticmethod
     def _create_import_report(diagram: ClassDiagram) -> ImportReport:

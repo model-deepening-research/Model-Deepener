@@ -218,12 +218,19 @@ class PlantUmlImporterTests(unittest.TestCase):
         self.assertTrue(any("Unknown type 'Unknown'" in a.get_description() for a in report.get_adaptations()))
         self.assertEqual(model.get_associations(), [])
 
+    def test_ebike_frame_remains_class_typed_attribute(self) -> None:
+        """Keep the Frame property as an attribute in the EBike example."""
+        model, _ = PlantUmlImporter().import_file(os.path.join('models', 'plantuml', 'Ebike.txt'))
+        objects = {obj.name: obj for obj in model.get_objects()}
+        frame = next(attr for attr in objects['EBike'].get_regular_attributes() if attr.name == 'frame')
+        self.assertIs(frame.get_type_spec(), objects['Frame'])
+
     def test_type_precedence_with_name_collisions(self) -> None:
         """Prefer primitives to enums and enums to classes with the same name."""
         model, _ = self._import("enum String {\n X\n}\nenum Shared {\n Y\n}\nclass Shared\nclass A {\n String title\n Shared value\n}")
         attrs = {a.get_name(): a for o in model.get_objects() if o.get_name() == "A" for a in o.get_regular_attributes()}
         self.assertEqual(attrs["title"].attr_type_str, "Root::XCore::String")
-        self.assertIs(attrs["value"].get_type_spec(), next(e for e in model.get_enum_types() if e.get_name() == "Shared"))
+        self.assertIs(attrs["value"].get_type_spec(), next(e for e in model.get_enum_types() if e.get_name() == "Shared1"))
 
     def test_reading_direction_and_default_association_name(self) -> None:
         """Use the label direction and ignore arrowheads for exported navigation."""
@@ -240,6 +247,20 @@ class PlantUmlImporterTests(unittest.TestCase):
         for association in ElementTree.parse(target).getroot().findall("Model/addAssociation"):
             self.assertEqual(association.get("sourceVisibleFromTarget"), "true")
             self.assertEqual(association.get("targetVisibleFromSource"), "true")
+
+    def test_arrow_direction_and_association_default_names(self) -> None:
+        """Use label direction first, then arrowheads, and retain relationship kinds."""
+        model, _ = self._import("A <-- B\nC --> D\nE -- F\nG <-- H : label >\n"
+                                "I --> J : label <\nK o-- L\nM --* N\nO *-- P : named")
+        associations = model.get_associations()
+        self.assertEqual([(a.source_object.name, a.target_object.name, a.name) for a in associations], [
+            ('B', 'A', 'associated_to'), ('C', 'D', 'associated_to'),
+            ('E', 'F', 'associated_to'), ('G', 'H', 'label'),
+            ('J', 'I', 'label'), ('K', 'L', 'aggregation_of'),
+            ('M', 'N', 'composition_of'), ('O', 'P', 'named')])
+        for association in associations:
+            self.assertEqual(association.xml_attributes['sourceVisibleFromTarget'], 'true')
+            self.assertEqual(association.xml_attributes['targetVisibleFromSource'], 'true')
 
     def test_operations_and_arrays_reported(self) -> None:
         """Skip all operations with one hint and report each array."""

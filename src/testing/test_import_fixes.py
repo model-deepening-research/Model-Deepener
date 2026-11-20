@@ -133,7 +133,7 @@ class ImportFixTests(unittest.TestCase):
         self.assertEqual(rows[1][4], rows[2][4])
 
     def test_duplicate_roles_are_numbered_and_only_duplicates_are_displayed(self) -> None:
-        """Show both role names for repeated class pairs and none for single pairs."""
+        """Show role names for repeated pairs and automatically named roles."""
         path = self._write("roles.puml", '@startuml\nA "1" -- "1" B : first\n'
                            'A "1" -- "1" B : second\nA "1" -- "1" C : third\n@enduml')
         model, _ = PlantUmlImporter().import_file(path)
@@ -146,7 +146,7 @@ class ImportFixTests(unittest.TestCase):
             setattr(ui, name, MethodType(getattr(ModelDeepenerApp, name), ui))
         self.assertEqual(ui._association_table_row(first)[1:3], ("A (a)", "B (b)"))
         self.assertEqual(ui._association_table_row(second)[1:3], ("A (a1)", "B (b1)"))
-        self.assertEqual(ui._association_table_row(single)[1:3], ("A", "C"))
+        self.assertEqual(ui._association_table_row(single)[1:3], ("A (a)", "C (c)"))
 
     def test_visibility_prefixes_do_not_change_attributes_or_operations(self) -> None:
         """Read all four visibility prefixes without putting their symbols into names or types."""
@@ -215,7 +215,6 @@ class ImportSaveTests(unittest.TestCase):
             action_completed={1: False}, action_unlocked={2: False},
             _importer_for_file=Mock(return_value=importer),
             _read_import_candidate=Mock(return_value=(model, ImportReport(), [])),
-            _persist_imported_source_file=Mock(return_value="copy.puml"),
             _store_loaded_model=Mock(return_value=True), _show_error=Mock(), _show_model_page=Mock())
 
     def test_plantuml_examples_are_listed_and_already_in_source_folder(self) -> None:
@@ -226,25 +225,31 @@ class ImportSaveTests(unittest.TestCase):
             path = root / "Example.txt"
             path.write_text("@startuml\nclass A\n@enduml\n", encoding="utf-8")
             self.assertEqual(ModelDeepenerApp._collect_example_files(str(root)), [(str(root), ["Example.txt"])])
-            with patch.object(PlantUmlImporter, "SOURCE_FOLDER", str(root)):
-                self.assertEqual(ModelDeepenerApp._persist_imported_source_file(None, str(path)), str(path))
 
-    def test_failed_source_copy_keeps_previous_model_and_workflow(self) -> None:
-        """Report a source-copy error without saving or replacing any active GUI state."""
-        ui = self._ui()
-        previous = vars(ui).copy()
-        ui._persist_imported_source_file.side_effect = OSError("Disk full")
-        ModelDeepenerApp._create_model(ui)
-        self.assertIs(ui.current_model, previous["current_model"])
-        self.assertEqual(ui.current_selected_columns, ["old"])
-        self.assertEqual(ui.current_file_path, "source.puml")
-        self.assertEqual(ui.current_file_type, "XML")
-        self.assertFalse(ui.action_completed[1])
-        self.assertFalse(ui.action_unlocked[2])
-        ui._store_loaded_model.assert_not_called()
-        ui._show_model_page.assert_not_called()
-        ui.file_path_var.set.assert_not_called()
-        self.assertIn("Disk full", ui._show_error.call_args.args[1])
+    def test_import_from_external_file_never_copies_source(self) -> None:
+        """Keep the original path and create no numbered files in the model folder."""
+        with tempfile.TemporaryDirectory() as folder:
+            root = Path(folder)
+            source = root / 'external' / 'Example.txt'
+            source.parent.mkdir()
+            source.write_text('@startuml\nclass A\n@enduml\n', encoding='utf-8')
+            models = root / 'models' / 'plantuml'
+            models.mkdir(parents=True)
+            (models / 'Example.txt').write_text('@startuml\nclass B\n@enduml\n', encoding='utf-8')
+            ui = self._ui()
+            ui.current_file_path = str(source)
+            importer = PlantUmlImporter()
+            ui._importer_for_file.return_value = importer
+            def read_candidate(_importer):
+                model, report = importer.import_file(str(source))
+                return model, report, []
+            ui._read_import_candidate.side_effect = read_candidate
+            with patch.object(PlantUmlImporter, 'SOURCE_FOLDER', str(models)):
+                ModelDeepenerApp._create_model(ui)
+                ModelDeepenerApp._create_model(ui)
+            self.assertEqual([path.name for path in models.iterdir()], ['Example.txt'])
+            self.assertEqual(ui.current_file_path, str(source))
+            self.assertEqual(ui._store_loaded_model.call_count, 2)
 
     def test_failed_commit_does_not_display_candidate(self) -> None:
         """Keep the previous model and workflow when the storage helper reports a failed commit."""
@@ -258,12 +263,13 @@ class ImportSaveTests(unittest.TestCase):
         ui.file_path_var.set.assert_not_called()
 
     def test_successful_save_adopts_candidate_and_enables_next_step(self) -> None:
-        """Display the new PlantUML model only after its copy and storage have succeeded."""
+        """Display the new model after it is saved without copying the source."""
         ui = self._ui()
         candidate = ui._read_import_candidate.return_value[0]
         ModelDeepenerApp._create_model(ui)
         self.assertIs(ui.current_model, candidate)
-        self.assertEqual(ui.current_file_path, "copy.puml")
+        self.assertEqual(ui.current_file_path, "source.puml")
+        ui._store_loaded_model.assert_called_once_with("PLANTUML", candidate, "source.puml", [])
         self.assertEqual(ui.current_file_type, "PLANTUML")
         self.assertTrue(ui.action_completed[1])
         self.assertTrue(ui.action_unlocked[2])

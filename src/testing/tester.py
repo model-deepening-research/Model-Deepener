@@ -8,7 +8,7 @@ class Tester:
 
     def __init__(self, input_file_sub_path: str = "", file_name: str = ""):
         self.test_name: str = "Name of Test"
-        self.files_base_path: str = os.path.join(os.getcwd(), "example_models")
+        self.files_base_path: str = os.path.join(os.getcwd(), "models", "fmmlx")
         self.input_file_sub_path: str = input_file_sub_path
         self.input_file_folder_path: str = os.path.join(self.files_base_path, self.input_file_sub_path)
         self.file_name: str = ""

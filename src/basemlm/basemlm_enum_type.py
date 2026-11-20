@@ -13,6 +13,20 @@ class BaseMlmEnumType(ModelMember, TypeSpec):
     def add_enum_value(self, enum_value: str):
         self.enum_values.append(enum_value)
 
+    def get_import_notes_for(self, field: str) -> list[tuple[str, bool]]:
+        """Return notes for the enumeration name or one literal."""
+        notes = super().get_import_notes_for(field)
+        if field == "name":
+            notes = [(text, serious) for text, serious in notes
+                     if not any(text.endswith("\u2192 " + value) for value in self.enum_values)]
+        if field.startswith("value:"):
+            value = field.removeprefix("value:")
+            for text, serious in self.get_import_notes():
+                note = (text, serious)
+                if text.endswith("\u2192 " + value) and note not in notes:
+                    notes.append(note)
+        return notes
+
     def get_type_name(self) -> str:
         return self.name
 

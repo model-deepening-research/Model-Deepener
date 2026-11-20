@@ -18,9 +18,9 @@ class XmiImporter(ModelImporter):
         """Read and import an XMI model when it contains classes."""
         diagram = XmiReader(path).read_diagram()
         if not diagram.get_classes():
-            return ClassDiagramBuilder._create_import_report(diagram)
+            return self._finish_import(model, ClassDiagramBuilder._create_import_report(diagram))
         ClassDiagramNormalizer(diagram).normalize()
-        return ClassDiagramBuilder().build(model, diagram)
+        return self._finish_import(model, ClassDiagramBuilder().build(model, diagram))
 
 
 register_importer(XmiImporter)

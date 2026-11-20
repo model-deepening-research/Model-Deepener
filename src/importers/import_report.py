@@ -133,6 +133,14 @@ class ImportReport:
     DATA_TYPE_PROBLEM = "Data type mismatch"
     PROBLEM_LIST_HEADER = ["Problem type", "Object", "Slot", "Class.Attribute", "Raw value", "Expected type"]
 
+    # Adaptations that indicate lost types, unresolved references, invalid structure,
+    # or a constraint that could not be imported. Other hints remain in the report.
+    SERIOUS_ADAPTATION_TYPES = frozenset({
+        "DataType", "Unresolved type", "Unknown type", "Unresolved reference",
+        "Unresolved generalization", "Unresolved association end", "Unresolved association type",
+        "Invalid association", "Invalid multiplicity", "Composition whole end", "Constraint not exported",
+    })
+
     MAX_GROUPS = 10
     MAX_EXAMPLES = 3
     MAX_EXAMPLE_LENGTH = 40
@@ -158,6 +166,20 @@ class ImportReport:
     def has_problems(self) -> bool:
         """Return True if the report holds anything at all."""
         return self.has_conversion_failures() or self.has_structure_problems() or self.has_adaptations()
+
+    def has_serious_problems(self) -> bool:
+        """Return whether the report contains a serious import problem."""
+        if self.has_conversion_failures() or self.has_structure_problems():
+            return True
+        return any(self.is_serious_adaptation(adaptation) for adaptation in self._adaptations)
+
+    @classmethod
+    def is_serious_adaptation(cls, adaptation: ImportAdaptation) -> bool:
+        """Return whether an adaptation is classified as serious."""
+        return (adaptation.get_problem_type() in cls.SERIOUS_ADAPTATION_TYPES
+                or (adaptation.get_problem_type() == "EDataType" and (
+                    "represented as String" in adaptation.get_description()
+                    or "replaced by String" in adaptation.get_description())))
 
     def has_adaptations(self) -> bool:
         """Return True if the import changed something."""

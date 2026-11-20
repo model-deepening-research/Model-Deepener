@@ -136,6 +136,7 @@ class UmlClass:
         self._is_abstract = False
         self._attributes: List[UmlAttribute] = []
         self._operations: List[UmlOperation] = []
+        self._skipped_operations: List[str] = []
         self._parents: List[str] = []
 
     def get_name(self) -> str:
@@ -161,6 +162,14 @@ class UmlClass:
     def remove_attribute(self, attribute: UmlAttribute) -> None:
         """Discard a property after its meaning has been transferred to an association."""
         self._attributes.remove(attribute)
+
+    def add_skipped_operation(self, signature: str) -> None:
+        """Record a skipped operation signature."""
+        self._skipped_operations.append(signature)
+
+    def get_skipped_operations(self) -> List[str]:
+        """Return the skipped operation signatures."""
+        return list(self._skipped_operations)
 
     def get_operations(self) -> List[UmlOperation]:
         """Return a copy of the operations, so that only the class can change its list."""
@@ -217,10 +226,37 @@ class UmlAssociation:
         self._source_multiplicity = source_multiplicity
         self._target_multiplicity = target_multiplicity
         self._name = name
+        self._name_generated = name is None
+        self._source_role_generated = False
+        self._target_role_generated = False
         self._source_role: Optional[str] = None
         self._target_role: Optional[str] = None
         self._source_navigable = True
         self._target_navigable = True
+
+    def mark_name_generated(self) -> None:
+        """Mark the association name as generated during import."""
+        self._name_generated = True
+
+    def is_name_generated(self) -> bool:
+        """Return whether the association name was generated."""
+        return self._name_generated
+
+    def mark_source_role_generated(self) -> None:
+        """Mark the source role as generated during normalization."""
+        self._source_role_generated = True
+
+    def mark_target_role_generated(self) -> None:
+        """Mark the target role as generated during normalization."""
+        self._target_role_generated = True
+
+    def is_source_role_generated(self) -> bool:
+        """Return whether the source role was generated."""
+        return self._source_role_generated
+
+    def is_target_role_generated(self) -> bool:
+        """Return whether the target role was generated."""
+        return self._target_role_generated
 
     def get_source(self) -> str:
         """Return the name of the source class, so normalization and XML output can preserve the relationship ends and navigation."""

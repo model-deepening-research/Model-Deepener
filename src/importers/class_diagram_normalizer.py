@@ -64,6 +64,8 @@ class ClassDiagramNormalizer:
 
     def _assign_target_role(self, association: UmlAssociation, used: Set[str]) -> None:
         """Set the name under which the source reaches the target, unless an attribute has already set it."""
+        if not association.get_target_role():
+            association.mark_target_role_generated()
         wish = association.get_target_role() or lower_first(association.get_target())
         association.set_target_role(self._unique_name(wish, used))
 
@@ -80,5 +82,7 @@ class ClassDiagramNormalizer:
 
     def _assign_source_role(self, association: UmlAssociation, used: Set[str]) -> None:
         """Name the source reached from the target, preserving a role supplied by an attribute."""
+        if not association.get_source_role():
+            association.mark_source_role_generated()
         wish = association.get_source_role() or lower_first(association.get_source())
         association.set_source_role(self._unique_name(wish, used))

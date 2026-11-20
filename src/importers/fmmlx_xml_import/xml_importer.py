@@ -1,4 +1,5 @@
 """Builds a model from an XModeler XML file."""
+import os
 import re
 import xml.etree.ElementTree as ElementTree
 from typing import Dict, List, Optional, Tuple, Union
@@ -36,7 +37,7 @@ class XmlImporter(ModelImporter):
     """Reads an XModeler XML file. The steps do not depend on the order of the commands in the file."""
 
     EXTENSIONS = (".xml",)
-    SOURCE_FOLDER = "example_models"
+    SOURCE_FOLDER = os.path.join("models", "fmmlx")
     FORMAT_NAME = "XML"
 
     def __init__(self) -> None:
@@ -59,7 +60,7 @@ class XmlImporter(ModelImporter):
         self._report = ImportReport()
         self._converter = SlotValueConverter(model, self._report)
         self._extract_model()
-        return self._report
+        return self._finish_import(model, self._report)
 
     def _extract_model(self) -> None:
         """Read the semantic model and keep its complete diagram section.

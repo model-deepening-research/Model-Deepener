@@ -41,22 +41,46 @@ class EcoreImporterTests(unittest.TestCase):
         </eClassifiers>''')
         objects = {obj.name: obj for obj in model.get_objects()}
         attrs = {a.name: a for a in objects['A'].get_regular_attributes()}
-        self.assertIs(attrs['single'].get_type_spec(), objects['B'])
+        self.assertNotIn('single', attrs)
         self.assertEqual(attrs['missing'].get_attr_type(), 'String')
         self.assertTrue(any('other.ecore#//Lost' in a.get_description() for a in report.get_adaptations()))
-        self.assertEqual(len(model.get_associations()), 2)
-        contained, many = model.get_associations()
+        self.assertEqual(len(model.get_associations()), 3)
+        contained, single, many = model.get_associations()
+        self.assertEqual((single.source_object.name, single.target_object.name, single.source_access_name), ('A', 'B', 'single'))
+        self.assertEqual(str(single.target_multiplicity), '(0..1)')
         self.assertEqual((contained.source_object.name, contained.target_object.name), ('A', 'B'))
         self.assertEqual((contained.source_access_name, contained.target_access_name), ('contained', 'parent'))
         self.assertEqual(str(contained.source_multiplicity), '(1..1)')
         self.assertEqual(str(contained.target_multiplicity), '(0..*)')
-        self.assertEqual((many.source_access_name, many.target_access_name), ('many', 'a'))
+        self.assertEqual((many.source_access_name, many.target_access_name), ('many', 'a1'))
         out = os.path.join(self.directory.name, 'out.xml')
         model.export_xml(out, project_name='Root::sample')
-        for assoc in ET.parse(out).getroot().findall('Model/addAssociation'):
-            self.assertEqual(assoc.get('fwName'), 'associated_to')
+        associations = ET.parse(out).getroot().findall('Model/addAssociation')
+        self.assertEqual([assoc.get('fwName') for assoc in associations], ['composition_of', 'associated_to', 'associated_to'])
+        for assoc in associations:
             self.assertEqual(assoc.get('sourceVisibleFromTarget'), 'true')
             self.assertEqual(assoc.get('targetVisibleFromSource'), 'true')
+
+    def test_reciprocal_references_require_eopposite(self) -> None:
+        """Keep unrelated reciprocal references separate and pair explicit opposites."""
+        model, _ = self._import('''
+        <eClassifiers xsi:type="ecore:EClass" name="A">
+          <eStructuralFeatures xsi:type="ecore:EReference" name="b" eType="#//B" lowerBound="0" upperBound="1"/>
+          <eStructuralFeatures xsi:type="ecore:EReference" name="pairedB" eType="#//B" eOpposite="#//B/pairedA"/>
+        </eClassifiers>
+        <eClassifiers xsi:type="ecore:EClass" name="B">
+          <eStructuralFeatures xsi:type="ecore:EReference" name="a" eType="#//A" lowerBound="1" upperBound="1"/>
+          <eStructuralFeatures xsi:type="ecore:EReference" name="pairedA" eType="#//A" eOpposite="#//A/pairedB"/>
+        </eClassifiers>''')
+        associations = model.get_associations()
+        self.assertEqual(len(associations), 3)
+        by_role = {a.source_access_name: a for a in associations}
+        self.assertEqual(str(by_role['b'].target_multiplicity), '(0..1)')
+        self.assertEqual(str(by_role['a1'].target_multiplicity), '(1..1)')
+        self.assertEqual((by_role['b'].source_object.name, by_role['b'].target_object.name), ('A', 'B'))
+        self.assertEqual((by_role['a1'].source_object.name, by_role['a1'].target_object.name), ('B', 'A'))
+        self.assertEqual(by_role['pairedB'].target_access_name, 'pairedA')
+        self.assertTrue(all(not obj.get_regular_attributes() for obj in model.get_objects()))
 
     def test_containment_whole_explicit_bounds(self) -> None:
         for bounds, expected, warning in [('', '(1..1)', False), ('lowerBound="0" upperBound="1"', '(0..1)', False),
@@ -91,7 +115,7 @@ class EcoreImporterTests(unittest.TestCase):
         child = objects['Child']
         self.assertEqual([p.name for p in child.get_parents()], ['Parent', 'Other'])
         self.assertTrue(child.is_abstract())
-        self.assertIs(objects['Holder'].get_regular_attributes()[0].get_type_spec(), objects['Parent1'])
+        self.assertEqual([(a.source_object.name, a.target_object.name) for a in model.get_associations()], [('Holder', 'Parent1')])
         self.assertEqual({a.name: a.get_attr_type() for a in child.get_regular_attributes()},
                          {'text': 'String', 'color': 'Color', 'custom': 'String'})
         kinds = {a.get_problem_type() for a in report.get_adaptations()}
@@ -194,9 +218,10 @@ class EcoreImporterTests(unittest.TestCase):
         objects = {o.name: o for o in model.get_objects()}
         self.assertEqual([p.name for p in objects['Holder'].get_parents()], ['Node1'])
         attrs = {a.name: a for a in objects['Holder'].get_regular_attributes()}
-        self.assertIs(attrs['local'].get_type_spec(), objects['Node1'])
-        self.assertIs(attrs['first'].get_type_spec(), objects['Node'])
-        self.assertEqual(len(model.get_associations()), 1)
+        self.assertEqual(attrs, {})
+        self.assertEqual({(a.source_object.name, a.target_object.name) for a in model.get_associations()},
+                         {('Holder', 'Node1'), ('Holder', 'Node'), ('Node', 'Node1')})
+        self.assertEqual(len(model.get_associations()), 3)
         self.assertEqual((model.get_associations()[0].source_object.name,
                           model.get_associations()[0].target_object.name), ('Node', 'Node1'))
         descriptions = [a.get_description() for a in report.get_adaptations()]

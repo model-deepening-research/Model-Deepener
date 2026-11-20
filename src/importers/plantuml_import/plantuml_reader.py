@@ -206,6 +206,7 @@ class PlantUmlReader:
 
         Recognized operations are skipped with a single adaptation.
         """
+        self._current_class.add_skipped_operation(line)
         match = OPERATION_PATTERN.match(line)
         if match is None:
             self._diagram.add_adaptation(NOT_UNDERSTOOD, self._current_class.get_name(),
