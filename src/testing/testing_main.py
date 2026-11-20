@@ -1,5 +1,6 @@
 import os.path
 
+from basemlm.model_part import ModelPart
 from src.basemlm.basemlm_model import BaseMlmModel
 from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
 
@@ -17,3 +18,8 @@ my_model: BaseMlmModel = BaseMlmModel(model_name)
 print(my_model.get_mlm_object_by_shortname("user3").get_descendants())
 
 print(my_model.get_mlm_object_by_shortname("AbstractVideo").get_descendants())
+
+my_part: ModelPart = ModelPart()
+my_part.add_model_member(my_model.get_mlm_object_by_shortname("user3"))
+my_part.add_model_member(my_model.get_mlm_object_by_shortname("AbstractVideo"))
+print(my_part)
