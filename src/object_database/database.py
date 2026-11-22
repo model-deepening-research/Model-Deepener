@@ -2,6 +2,9 @@
 
 Changes are saved with commit() or thrown away with abort().
 """
+import hashlib
+import threading
+
 from src.object_database.persistent import Persistent
 from src.object_database.storage import FileStorage
 
@@ -20,6 +23,8 @@ class Database:
         (see FileStorage.load()).
         """
         self._storage = storage
+        self._lock = threading.RLock()
+        self._revision = 0
         # These attributes are set in _start_empty() and _load().
         self._objects: dict[int, Persistent]
         self._next_oid: int
@@ -33,13 +38,15 @@ class Database:
         An object without an OID gets the next free OID. An object that already has an OID keeps
         it. Raises a TypeError if the object is not a Persistent object.
         """
-        if not isinstance(stored_object, Persistent):
-            raise TypeError("Only Persistent objects can be stored.")
-        if stored_object.get_oid() is None:
-            stored_object.assign_oid(self._next_oid)
-            self._next_oid = self._next_oid + 1
-        self._objects[stored_object.get_oid()] = stored_object
-        return stored_object.get_oid()
+        with self._lock:
+            if not isinstance(stored_object, Persistent):
+                raise TypeError("Only Persistent objects can be stored.")
+            if stored_object.get_oid() is None:
+                stored_object.assign_oid(self._next_oid)
+                self._next_oid = self._next_oid + 1
+            self._objects[stored_object.get_oid()] = stored_object
+            self._revision += 1
+            return stored_object.get_oid()
 
     def get(self, oid: int) -> Persistent:
         """Return the object with the given OID.
@@ -56,21 +63,37 @@ class Database:
         Like every change, the deletion is only saved by commit(). Raises a KeyError if no object
         has this OID.
         """
-        if oid not in self._objects:
-            raise KeyError(f"No object with the OID: {oid}")
-        del self._objects[oid]
+        with self._lock:
+            if oid not in self._objects:
+                raise KeyError(f"No object with the OID: {oid}")
+            del self._objects[oid]
+            self._revision += 1
 
     def get_all(self) -> list[Persistent]:
         """Return all stored objects, ordered by their OID, which is the order of storing."""
-        objects = []
-        for oid in sorted(self._objects):
-            objects.append(self._objects[oid])
-        return objects
+        with self._lock:
+            return [self._objects[oid] for oid in sorted(self._objects)]
 
     def commit(self) -> None:
         """Make all changes since the last commit permanent by writing them to the file."""
-        data = {"objects": self._objects, "next_oid": self._next_oid}
-        self._storage.save(data)
+        with self._lock:
+            data = {"objects": self._objects, "next_oid": self._next_oid}
+            self._storage.save(data)
+            self._revision += 1
+
+    def save_if_changed(self) -> bool:
+        """Write a serialized snapshot if it differs and no database commit overtook it."""
+        with self._lock:
+            revision = self._revision
+            data = {"objects": self._objects.copy(), "next_oid": self._next_oid}
+        encoded = self._storage.serialize(data)
+        digest = hashlib.sha256(encoded).digest()
+        with self._lock:
+            if revision != self._revision or digest == self._storage.saved_digest:
+                return False
+            self._storage.save_serialized(encoded, digest)
+            self._revision += 1
+            return True
 
     def abort(self) -> None:
         """Throw away all changes since the last commit.
@@ -79,10 +102,12 @@ class Database:
         objects are not updated, so fetch objects again via get() or get_all() after an abort.
         Raises a ValueError if the data file has a different format version.
         """
-        if self._storage.exists():
-            self._load()
-        else:
-            self._start_empty()
+        with self._lock:
+            if self._storage.exists():
+                self._load()
+            else:
+                self._start_empty()
+            self._revision += 1
 
     def _start_empty(self) -> None:
         """Reset the database to the empty state."""

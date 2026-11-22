@@ -11,7 +11,7 @@ from src.basemlm.basemlm_model import BaseMlmModel
 from src.basemlm.basemlm_predefined_type import DateType
 from src.basemlm.basemlm_attribute import BaseMlmAttribute
 from src.basemlm.basemlm_slot import BaseMlmSlot
-from src.gui.app import ModelDeepenerApp
+from src.gui.app import ModelDeepenerApp, XmlImportPreview
 from src.importers import CsvImporter, PlantUmlImporter, XmlImporter
 from src.importers.csv_import.csv_reader import CsvReader
 from src.importers.import_report import ImportReport
@@ -209,13 +209,21 @@ class ImportSaveTests(unittest.TestCase):
         importer = Mock()
         importer.FORMAT_NAME = "PlantUML"
         model = BaseMlmModel()
+        importer.import_file.return_value = (model, ImportReport())
+        def run(_total, _message, work, success, failure):
+            try:
+                result = work(lambda *_args: None)
+            except Exception as error:
+                failure(error)
+            else:
+                success(result)
         return SimpleNamespace(
             current_model=object(), current_selected_columns=["old"], current_file_path="source.puml",
-            current_file_type="XML", file_path_var=Mock(),
-            action_completed={1: False}, action_unlocked={2: False},
-            _importer_for_file=Mock(return_value=importer),
-            _read_import_candidate=Mock(return_value=(model, ImportReport(), [])),
-            _store_loaded_model=Mock(return_value=True), _show_error=Mock(), _show_model_page=Mock())
+            current_file_type="XML", file_path_var=Mock(), loaded_models=[], _database=Mock(),
+            action_completed={1: False}, action_unlocked={2: False}, ACTION_TITLES={2: "Imported"},
+            _importer_for_file=Mock(return_value=importer), _run_model_task=run,
+            _unique_model_name=lambda name: name, _current_timestamp_text=lambda: "now",
+            _show_error=Mock(), _show_model_page=Mock())
 
     def test_plantuml_examples_are_listed_and_already_in_source_folder(self) -> None:
         """Offer PlantUML sources and keep files already stored in the source folder."""
@@ -240,22 +248,18 @@ class ImportSaveTests(unittest.TestCase):
             ui.current_file_path = str(source)
             importer = PlantUmlImporter()
             ui._importer_for_file.return_value = importer
-            def read_candidate(_importer):
-                model, report = importer.import_file(str(source))
-                return model, report, []
-            ui._read_import_candidate.side_effect = read_candidate
             with patch.object(PlantUmlImporter, 'SOURCE_FOLDER', str(models)):
                 ModelDeepenerApp._create_model(ui)
                 ModelDeepenerApp._create_model(ui)
             self.assertEqual([path.name for path in models.iterdir()], ['Example.txt'])
             self.assertEqual(ui.current_file_path, str(source))
-            self.assertEqual(ui._store_loaded_model.call_count, 2)
+            self.assertEqual(ui._database.commit.call_count, 2)
 
     def test_failed_commit_does_not_display_candidate(self) -> None:
         """Keep the previous model and workflow when the storage helper reports a failed commit."""
         ui = self._ui()
         previous = ui.current_model
-        ui._store_loaded_model.return_value = False
+        ui._database.commit.side_effect = OSError("Disk full")
         ModelDeepenerApp._create_model(ui)
         self.assertIs(ui.current_model, previous)
         self.assertFalse(ui.action_completed[1])
@@ -265,29 +269,59 @@ class ImportSaveTests(unittest.TestCase):
     def test_successful_save_adopts_candidate_and_enables_next_step(self) -> None:
         """Display the new model after it is saved without copying the source."""
         ui = self._ui()
-        candidate = ui._read_import_candidate.return_value[0]
+        candidate = ui._importer_for_file.return_value.import_file.return_value[0]
         ModelDeepenerApp._create_model(ui)
         self.assertIs(ui.current_model, candidate)
         self.assertEqual(ui.current_file_path, "source.puml")
-        ui._store_loaded_model.assert_called_once_with("PLANTUML", candidate, "source.puml", [])
+        ui._database.commit.assert_called_once()
         self.assertEqual(ui.current_file_type, "PLANTUML")
         self.assertTrue(ui.action_completed[1])
         self.assertTrue(ui.action_unlocked[2])
         ui._show_model_page.assert_called_once()
 
+    def test_xml_selection_prepares_preview_and_create_reuses_it(self) -> None:
+        """Keep the XML validation summary and reuse its parsed model on create."""
+        importer = XmlImporter()
+        importer.import_file = Mock(side_effect=AssertionError("Preview should be reused"))
+        model, report = BaseMlmModel(), ImportReport()
+        preview = XmlImportPreview(file_path="source.xml", errors=[], model=model, report=report)
+        ui = self._ui()
+        ui.current_file_path = "source.xml"
+        ui.file_path_var.get.return_value = "source.xml"
+        ui._importer_for_file = Mock(return_value=importer)
+        ui.current_batch_paths, ui.current_batch_folders = [], {}
+        ui.batch_file_list, ui.batch_folder_panel, ui.file_entry = Mock(), Mock(), Mock()
+        ui.selected_csv_columns = {}
+        ui._set_column_selection_enabled = Mock()
+        ui._set_validation_badge_visible = Mock()
+        ui._set_create_button_enabled = Mock()
+        ui._render_xml_validation = Mock()
+        ui._render_empty_preview = Mock()
+        ui._build_xml_preview = Mock(return_value=preview)
+        ui._can_create_current_file = Mock(return_value=True)
+        ModelDeepenerApp._validate_current_file(ui)
+        ui._render_xml_validation.assert_called_once_with(preview)
+        ui._render_empty_preview.assert_called_once_with("Column selection is only available for CSV files.")
+        self.assertIs(ui.xml_preview, preview)
+        ModelDeepenerApp._create_model(ui)
+        importer.import_file.assert_not_called()
+        self.assertIs(ui.current_model, model)
+        ui._database.commit.assert_called_once()
+
     def test_database_failure_removes_unsaved_candidate(self) -> None:
         """A failed real database save leaves existing objects intact and no candidate in memory."""
         with tempfile.TemporaryDirectory() as folder:
             database = DatabaseFolder(folder).create_database("Models")
-            ui = SimpleNamespace(_database=database, loaded_models=[], _unique_model_name=Mock(return_value="New"),
-                                 _current_timestamp_text=Mock(return_value="now"), ACTION_TITLES={2: "Imported"},
-                                 _show_error=Mock())
-            model = BaseMlmModel()
+            ui = self._ui()
+            ui._database = database
+            previous = ui.current_model
             with patch.object(database, "commit", side_effect=OSError("Disk full")):
-                self.assertFalse(ModelDeepenerApp._store_loaded_model(ui, "CSV", model, "source.csv", []))
+                ModelDeepenerApp._create_model(ui)
             self.assertEqual(database.get_all(), [])
             self.assertEqual(ui.loaded_models, [])
+            self.assertIs(ui.current_model, previous)
             ui._show_error.assert_called_once()
+
 
 
 if __name__ == "__main__":

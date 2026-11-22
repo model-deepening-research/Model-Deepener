@@ -2,10 +2,13 @@
 # Keeping one shared environment makes the GUI use the same library versions on every start.
 # noinspection PyPackageRequirements
 import csv
+import textwrap
 import ctypes
 import math
 import os
 import pickle
+import queue
+import threading
 import random
 import re
 import sys
@@ -13,7 +16,7 @@ import tkinter as tk
 import customtkinter as ctk
 from dataclasses import dataclass, field
 from datetime import datetime
-from functools import partial
+from functools import partial, wraps
 from PIL import Image
 from tkinter import filedialog, messagebox, ttk
 from tkinter import font as tk_font
@@ -26,6 +29,13 @@ from src.basemlm.basemlm_link import BaseMlmLink
 from src.basemlm.basemlm_model import BaseMlmModel
 from src.basemlm.basemlm_object import BaseMlmObject
 from src.basemlm.basemlm_slot import BaseMlmSlot
+from src.gui.bulk_export import check_models, export_models, models_newest_first
+from src.gui.batch_reports import (batch_problem_summary, batch_report_rows, write_batch_problem_list,
+                                   visible_import_report, visible_import_notes)
+from src.gui.deepening import export_tell_table, save_deepened_models
+from src.gui.folder_dialog import choose_windows_folders
+from src.gui.tell_results import TELL_CHOICES, analyze_tells, tell_columns, tell_description
+from src.gui.view_loading import ViewLoadingIndicator, set_window_redraw
 from src.importers import CsvImporter, EcoreImporter, PlantUmlImporter, XmiImporter, XmlImporter, importer_for, supported_extensions
 from src.importers.csv_import.csv_reader import CsvReader
 from src.importers.import_report import ImportReport
@@ -270,6 +280,32 @@ class LoadedModel(Persistent):
 
 
 # noinspection PyAttributeOutsideInit,PyUnresolvedReferences,PyTypeChecker,SpellCheckingInspection
+def atomic_page(build):
+    """Keep the previous content above a new page until construction finishes."""
+    @wraps(build)
+    def wrapped(self, *args, **kwargs):
+        old = self.content
+        layout = old.grid_info()
+        new = ctk.CTkFrame(self.shell, fg_color=self.colors["app_bg"], corner_radius=0)
+        new.grid_columnconfigure(0, weight=1)
+        new.grid_rowconfigure(1, weight=1)
+        new.grid(**layout)
+        old.lift()
+        self.content = new
+        try:
+            result = build(self, *args, **kwargs)
+        except Exception:
+            self.content = old
+            _cancel_widget_timers(new)
+            new.destroy()
+            raise
+        new.lift()
+        _cancel_widget_timers(old)
+        old.destroy()
+        return result
+    return wrapped
+
+
 class ModelDeepenerApp(ctk.CTk):
     """
     Main window of the Model Deepener desktop application.
@@ -282,6 +318,9 @@ class ModelDeepenerApp(ctk.CTk):
     5. Models Overview lists all imported models and opens or deletes them.
     6. Shared helpers create repeated UI elements such as cards, headers, and table cells.
     """
+
+    # The application draws its own title bar; avoid CTk mapping a temporary Windows window during setup.
+    _deactivate_windows_window_header_manipulation = True
 
     ASSOCIATION_TABLE_HEADERS = ("Associationname", "Source", "Target", "Multiplicity")
 
@@ -298,7 +337,7 @@ class ModelDeepenerApp(ctk.CTk):
     VALIDATION_ROW_HEIGHT = 42
 
     ACTION_TITLES = {
-        1: "Upload File or Select Example",
+        1: "Import Models",
         2: "Inspect Model",
         3: "Conduct Model Deepening Analysis",
     }
@@ -351,6 +390,8 @@ class ModelDeepenerApp(ctk.CTk):
         self.current_file_path: Optional[str] = None
         self.current_file_type: str = ""
         self.current_selected_columns: List[str] = []
+        self._file_input_mode = "upload"
+        self._file_selection_mode = None
         self.csv_preview: Optional[CsvImportPreview] = None
         self.xml_preview: Optional[XmlImportPreview] = None
         self.selected_csv_columns: Dict[str, tk.BooleanVar] = {}
@@ -366,7 +407,15 @@ class ModelDeepenerApp(ctk.CTk):
         self.action_completed = {1: False, 2: False, 3: False}
         self.current_action = 1
         self.active_top_tab = "new"
+        self._tell_menu_open = {False: False, True: False}
+        self._tell_selection = {False: TELL_CHOICES[0], True: TELL_CHOICES[0]}
         self.model_tab = None
+        self._model_tab_state = None
+        self._model_tabs = {}
+        self._active_model_tab = None
+        self._batch_view = "inspect"
+        self.batch_models = []
+        self.batch_tab = None
         self.logo_image = None
         self.titlebar_logo_image = None
         # These values remember how the user moves and resizes the window.
@@ -388,8 +437,10 @@ class ModelDeepenerApp(ctk.CTk):
         self._configure_ttk_style()
         self._build_layout()
         self._overlay = Overlay(self)
+        self._view_loading = ViewLoadingIndicator(self.colors)
         self._show_import_page()
         self.after_idle(self._show_configured_window)
+        self.after(1500, self._view_loading.prepare)
         self.after(2000, self._autosave_models)
 
     def _configure_ttk_style(self):
@@ -675,19 +726,30 @@ class ModelDeepenerApp(ctk.CTk):
         the background. If saving fails, the user decides whether to close without
         saving. The database file then keeps its last saved state.
         """
-        if self._is_closing:
+        if self._is_closing or getattr(self, "_model_task_active", False):
             return
-        try:
-            if getattr(self, "_database", None) is not None:
-                self._database.commit()
-        except SAVE_ERRORS as error:
+        if getattr(self, "_autosave_in_progress", False):
+            if not getattr(self, "_close_wait_scheduled", False):
+                self._close_wait_scheduled = True
+                def retry_close():
+                    self._close_wait_scheduled = False
+                    self._close_application()
+                self.after(50, retry_close)
+            return
+        database = getattr(self, "_database", None)
+        if database is None:
+            self._finish_close()
+            return
+        def failed(error):
             close_without_saving = popup_message(
-                self, "Save failed",
-                f"Saving failed. Close without saving?\n\n{save_error_message(error)}",
-                confirm=True,
-            )
-            if not close_without_saving:
-                return
+                self, "Save failed", f"Saving failed. Close without saving?\n\n{save_error_message(error)}", confirm=True)
+            if close_without_saving:
+                self._finish_close()
+        self._run_model_task(1, "Saving database...", lambda _progress: database.commit(),
+                             lambda _result: self._finish_close(), failed)
+
+    def _finish_close(self) -> None:
+        """Cancel pending callbacks and destroy the application window."""
         self._is_closing = True
         try:
             for after_id in self.tk.call("after", "info"):
@@ -699,6 +761,9 @@ class ModelDeepenerApp(ctk.CTk):
                     pass
         except tk.TclError:
             pass
+        view_loading = getattr(self, "_view_loading", None)
+        if view_loading is not None:
+            view_loading.close()
         self.quit()
         self.destroy()
 
@@ -843,7 +908,7 @@ class ModelDeepenerApp(ctk.CTk):
         )
         self.header.grid(row=1, column=0, sticky="ew")
         self.header.grid_propagate(False)
-        self.header.grid_columnconfigure(4, weight=1)
+        self.header.grid_columnconfigure(5, weight=1)
 
         self._build_database_area()
 
@@ -874,24 +939,45 @@ class ModelDeepenerApp(ctk.CTk):
             command=self._show_models_overview_page,
         )
         self.models_tab.grid(row=0, column=2, padx=(0, 8), pady=12)
+        self._new_models_separator = tk.Frame(self.header, bg=self.colors["border"], width=1, height=30)
+        self._models_tabs_separator = tk.Frame(self.header, bg=self.colors["border"], width=1, height=30)
+        self.header.bind("<Configure>", self._position_header_separators, add="+")
 
-        self.model_tab = ctk.CTkButton(
-            self.header,
-            text="",
-            width=160,
-            height=42,
-            corner_radius=8,
-            fg_color="transparent",
-            hover_color=self.colors["surface_alt"],
-            text_color=self.colors["text"],
-            font=ctk.CTkFont(size=14),
-            command=self._show_model_page,
+        # An empty CTkFrame requests 200 x 200 pixels. That would make the header row taller than
+        # the header and push all header buttons out of view, so the container has the tab height
+        # and is only shown while model tabs exist.
+        self.model_tabs_container = ctk.CTkFrame(self.header, fg_color="transparent", width=1, height=42)
+        self.model_tabs_container.grid(row=0, column=3, pady=12)
+        self.model_tabs_container.grid_remove()
+        self.header.bind("<Configure>", lambda _event: self._layout_model_tabs(), add="+")
+        self.model_tab = None
+        self.model_tab_close = None
+        # The overflow button lies right of all tabs and lists the model tabs that do not fit.
+        self.model_tabs_more = ctk.CTkButton(
+            self.header, text="+", width=42, height=42, corner_radius=8, fg_color="transparent",
+            hover_color=self.colors["surface_alt"], text_color=self.colors["text"], border_width=1,
+            border_color=self.colors["border"], font=ctk.CTkFont(size=18), command=self._show_more_model_tabs)
+        self.model_tabs_more.grid(row=0, column=5, sticky="w", pady=12)
+        self.model_tabs_more.grid_remove()
+
+        self.batch_tab = ctk.CTkButton(
+            self.header, text="  Batch Process", width=160, height=42, corner_radius=8, anchor="w",
+            fg_color="transparent", hover_color=self.colors["surface_alt"],
+            text_color=self.colors["text"], font=ctk.CTkFont(size=14),
+            command=self._reopen_batch_tab,
         )
-        self.model_tab.grid(row=0, column=3, padx=(0, 8), pady=12)
-        self.model_tab.grid_remove()
+        self.batch_tab.grid(row=0, column=4, padx=(0, 8), pady=12)
+        self.batch_tab.grid_remove()
+        # Showing or hiding the batch tab changes the space that is left for the model tabs.
+        for event in ("<Map>", "<Unmap>"):
+            self.batch_tab.bind(event, lambda _event: self.after_idle(self._layout_model_tabs), add="+")
+        self.batch_tab_close = ctk.CTkButton(self.batch_tab, text="x", width=18, height=18,
+            fg_color="transparent", hover_color=self.colors["border"], text_color=self.colors["muted"],
+            font=ctk.CTkFont(size=12), command=lambda: self._close_top_tab("batch"))
+        self.batch_tab_close.place(relx=1, x=-7, y=5, anchor="ne")
 
         self.logo_label = ctk.CTkLabel(self.header, text="", width=1)
-        self.logo_label.grid(row=0, column=5, sticky="e", padx=(8, 24), pady=8)
+        self.logo_label.grid(row=0, column=6, sticky="e", padx=(8, 24), pady=8)
         self._load_header_logo()
 
         self.shell = ctk.CTkFrame(
@@ -926,29 +1012,8 @@ class ModelDeepenerApp(ctk.CTk):
 
         for action in self.ACTION_TITLES:
             self._build_action_card(action)
-
-        sidebar_note = ctk.CTkFrame(self.sidebar, fg_color="transparent")
-        sidebar_note.pack(fill="x", side="bottom", padx=20, pady=24)
-
-        ctk.CTkLabel(
-            sidebar_note,
-            text="i",
-            text_color=self.colors["muted"],
-            font=ctk.CTkFont(size=15),
-        ).grid(row=0, column=0, sticky="nw", padx=(0, 8))
-
-        ctk.CTkLabel(
-            sidebar_note,
-            text=(
-                "Upload a file first.\n"
-                "Then switch between the available\n"
-                "model actions whenever needed."
-            ),
-            justify="left",
-            anchor="w",
-            text_color=self.colors["muted"],
-            font=ctk.CTkFont(size=11),
-        ).grid(row=0, column=1, sticky="w")
+        self._single_tell_menu = self._make_tell_menu(self.sidebar, batch=False)
+        self._single_tell_menu.pack_forget()
 
         self.content = ctk.CTkFrame(
             self.shell,
@@ -1075,15 +1140,107 @@ class ModelDeepenerApp(ctk.CTk):
         self.action_cards[action] = card
         self.action_title_labels[action] = title
 
+    TELL_MENU_ENTRY_HEIGHT = 40
+    TELL_MENU_ENTRY_GAP = 6
+
+    def _make_tell_menu(self, parent, batch):
+        """Build the tell list and fit its entries into the available height."""
+        count = len(TELL_CHOICES)
+        menu = ctk.CTkFrame(parent, fg_color=self.colors["surface"], corner_radius=8,
+                            height=count * ModelDeepenerApp.TELL_MENU_ENTRY_HEIGHT + (count - 1) * ModelDeepenerApp.TELL_MENU_ENTRY_GAP)
+        menu.pack_propagate(False)
+        buttons = []
+        for index, choice in enumerate(TELL_CHOICES):
+            button = ctk.CTkButton(menu, text=choice, anchor="w", height=ModelDeepenerApp.TELL_MENU_ENTRY_HEIGHT, corner_radius=8,
+                                   fg_color=self.colors["surface"], border_width=1, border_color=self.colors["border"],
+                                   hover_color=self.colors["primary_soft"], text_color=self.colors["text"],
+                                   font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                                   command=lambda value=choice: self._select_tell(value, batch))
+            button.pack(fill="x", padx=0, pady=(0, ModelDeepenerApp.TELL_MENU_ENTRY_GAP if index < count - 1 else 0))
+            buttons.append(button)
+            description = tell_description(choice)[0]
+            button.bind("<Enter>", lambda event, text=description: self._show_import_note_tooltip(event, [(text, False)]), add="+")
+            button.bind("<Leave>", lambda _event: self._hide_adapted_tooltip(), add="+")
+        def fit(event):
+            scaling = ctk.ScalingTracker.get_widget_scaling(menu)
+            available = event.height / scaling - (count - 1) * ModelDeepenerApp.TELL_MENU_ENTRY_GAP
+            height = max(1, min(ModelDeepenerApp.TELL_MENU_ENTRY_HEIGHT, int(available // count)))
+            for button in buttons:
+                if button.cget("height") != height:
+                    button.configure(height=height)
+        menu.bind("<Configure>", fit, add="+")
+        menu._tell_buttons = dict(zip(TELL_CHOICES, buttons))
+        ModelDeepenerApp._refresh_tell_menu(self, batch, menu)
+        return menu
+
+    def _refresh_tell_menu(self, batch: bool, menu=None) -> None:
+        """Highlight the currently selected tell in its sidebar menu."""
+        if menu is None:
+            menu = getattr(self, "_batch_tell_menu" if batch else "_single_tell_menu", None)
+        if menu is None or not hasattr(menu, "_tell_buttons"):
+            return
+        selection = getattr(self, "_tell_selection", {}).get(batch, TELL_CHOICES[0])
+        for name, button in menu._tell_buttons.items():
+            active = name == selection
+            button.configure(fg_color=self.colors["primary_soft"] if active else self.colors["surface"],
+                             border_color=self.colors["primary"] if active else self.colors["border"],
+                             text_color=self.colors["primary"] if active else self.colors["text"])
+
+    def _select_tell(self, selection, batch):
+        self._tell_selection[batch] = selection
+        ModelDeepenerApp._refresh_tell_menu(self, batch)
+        if batch:
+            self._show_batch_analysis()
+        else:
+            self._open_placeholder_action(3)
+
+    def _toggle_tell_menu(self, batch):
+        self._tell_menu_open[batch] = not self._tell_menu_open[batch]
+        if batch:
+            if self._tell_menu_open[batch]:
+                self._show_batch_analysis()
+            else:
+                self._batch_tell_menu.pack_forget()
+        else:
+            if self._tell_menu_open[batch]:
+                self._single_tell_menu.pack(fill="both", expand=True, padx=14, pady=(0, 6), after=self.action_cards[3])
+                self._open_placeholder_action(3)
+            else:
+                self._single_tell_menu.pack_forget()
+
     def _clear_content(self):
         for child in self.content.winfo_children():
             child.destroy()
 
+    @staticmethod
+    def _autohide_scroll(scrollbar) -> Callable[[str, str], None]:
+        """Return a scroll command that shows a gridded scrollbar only while the content does not fit."""
+        def update(first, last):
+            scrollbar.set(first, last)
+            if float(first) > 0.0 or float(last) < 1.0:
+                if not scrollbar.winfo_manager():
+                    scrollbar.grid()
+            elif scrollbar.winfo_manager():
+                scrollbar.grid_remove()
+        return update
+
     def _show_workflow_sidebar(self):
         self.sidebar.grid(row=0, column=0, sticky="nsw")
         self.content.grid_configure(row=0, column=1, columnspan=1, sticky="nsew", padx=18, pady=18)
+        if hasattr(self, "_batch_tell_menu"):
+            self._batch_tell_menu.pack_forget()
+        if self.current_action == 3 and self._tell_menu_open[False]:
+            ModelDeepenerApp._refresh_tell_menu(self, False)
+            self._single_tell_menu.pack(fill="both", expand=True, padx=14, pady=(0, 6), after=self.action_cards[3])
+        else:
+            self._single_tell_menu.pack_forget()
+        for action, card in self.action_cards.items():
+            for widget in (card, self.action_title_labels[action]):
+                widget.bind("<Button-1>", lambda _event, selected_action=action: self._try_open_action(selected_action))
 
     def _hide_workflow_sidebar(self):
+        if hasattr(self, "batch_sidebar"):
+            self.batch_sidebar.grid_remove()
         self.sidebar.grid_remove()
         self.content.grid_configure(row=0, column=0, columnspan=2, sticky="nsew", padx=18, pady=18)
 
@@ -1092,7 +1249,7 @@ class ModelDeepenerApp(ctk.CTk):
         for button, is_active in (
                 (self.new_model_tab, active == "new"),
                 (self.models_tab, active == "models"),
-                (self.model_tab, active == "model"),
+                (self.batch_tab, active == "batch"),
         ):
             if button is None:
                 continue
@@ -1103,6 +1260,60 @@ class ModelDeepenerApp(ctk.CTk):
                 border_width=1 if is_active else 0,
                 border_color="#bfdbfe" if is_active else self.colors["surface"],
             )
+        for key, state in getattr(self, "_model_tabs", {}).items():
+            button = state["button"]
+            selected = active == "model" and key == self._active_model_tab
+            button.configure(fg_color=self.colors["primary_soft"] if selected else "transparent",
+                             hover_color=self.colors["primary_soft"] if selected else self.colors["surface_alt"],
+                             text_color=self.colors["primary"] if selected else self.colors["text"],
+                             border_width=1 if selected else 0, border_color="#bfdbfe" if selected else self.colors["surface"])
+            state["close"].lift()
+        for name in ("model_tab_close", "batch_tab_close"):
+            close = getattr(self, name, None)
+            if close is not None:
+                close.lift()
+
+    def _close_top_tab(self, tab: str) -> None:
+        """Close a model-specific tab without deleting its saved models."""
+        if tab == "batch":
+            self.batch_models = []
+            self.batch_tab.grid_remove()
+        elif tab == "model" and getattr(self, "_model_tabs", None):
+            self._close_model_tab(self._active_model_tab)
+            return
+        elif tab == "model":
+            self.current_model = None
+            self._model_tab_state = None
+            self.model_tab.grid_remove()
+        else:
+            return
+        if self.active_top_tab == tab:
+            self._show_models_overview_page()
+
+    def _show_batch_sidebar(self, analysis: bool) -> None:
+        """Use the workflow sidebar for batch actions and the batch tell menu."""
+        self.sidebar.grid(row=0, column=0, sticky="nsw")
+        self.content.grid_configure(row=0, column=1, columnspan=1, sticky="nsew", padx=18, pady=18)
+        self._single_tell_menu.pack_forget()
+        if not hasattr(self, "_batch_tell_menu"):
+            self._batch_tell_menu = self._make_tell_menu(self.sidebar, batch=True)
+        if analysis:
+            ModelDeepenerApp._refresh_tell_menu(self, True)
+            self._batch_tell_menu.pack(fill="both", expand=True, padx=14, pady=(0, 6), after=self.action_cards[3])
+        else:
+            self._batch_tell_menu.pack_forget()
+        actions = {1: self._show_import_page, 2: self._show_batch_page,
+                   3: lambda: self._toggle_tell_menu(True)}
+        for action, card in self.action_cards.items():
+            selected = action == (3 if analysis else 2)
+            card.configure(fg_color=self.colors["primary_soft"] if selected else self.colors["surface"],
+                           border_color=self.colors["primary"] if selected else self.colors["border"],
+                           border_width=1, cursor="hand2")
+            title = self.action_title_labels[action]
+            title.configure(text=self.ACTION_TITLES[action],
+                            text_color=self.colors["primary"] if selected else self.colors["text"], cursor="hand2")
+            for widget in (card, title):
+                widget.bind("<Button-1>", lambda _event, command=actions[action]: command())
 
     def _refresh_actions(self):
         for action, card in self.action_cards.items():
@@ -1141,29 +1352,168 @@ class ModelDeepenerApp(ctk.CTk):
         elif action == 2:
             self._show_model_page()
         else:
-            self._open_placeholder_action(action)
+            self._toggle_tell_menu(False)
 
     def _is_navigation_item_available(self, action: int) -> bool:
         if action == 1:
-            return self.current_model is None
+            return True
         if action != 1:
             return self.current_model is not None
         return True
 
     def _update_model_tab(self):
-        """
-        Shows or hides the top tab for the open model.
-
-        The New Model tab starts a new import. The model tab returns to the
-        currently opened model.
-        """
-        if self.model_tab is None:
-            return
+        """Create or update the tab belonging to the current model."""
         if self.current_model is None:
-            self.model_tab.grid_remove()
             return
-        self.model_tab.configure(text=self._short_tab_text(self._current_model_display_name()))
-        self.model_tab.grid()
+        if not hasattr(self, "_model_tabs"):
+            if self.model_tab is not None:
+                self._model_tab_state = (self.current_model, self.current_file_path, self.current_file_type,
+                                         list(self.current_selected_columns))
+                self.model_tab.configure(text="  " + self._short_tab_text(self._current_model_display_name(), 18))
+                self.model_tab.grid()
+            return
+        key = id(self.current_model)
+        state = self._model_tabs.get(key)
+        if state is None:
+            button = ctk.CTkButton(self.model_tabs_container, text="", width=180, height=42, corner_radius=8,
+                                   anchor="w", fg_color="transparent", text_color=self.colors["text"],
+                                   font=ctk.CTkFont(size=14), command=lambda tab=key: self._reopen_model_tab(tab))
+            close = ctk.CTkButton(button, text="x", width=18, height=18, fg_color="transparent",
+                                  hover_color=self.colors["border"], text_color=self.colors["muted"],
+                                  font=ctk.CTkFont(size=12), command=lambda tab=key: self._close_model_tab(tab))
+            close.place(relx=1, x=-7, y=5, anchor="ne")
+            state = {"button": button, "close": close, "view": "inspect", "tell": "Check All Tells"}
+            self._model_tabs[key] = state
+        state.update(model=self.current_model, path=self.current_file_path, file_type=self.current_file_type,
+                     columns=list(self.current_selected_columns), name=self._current_model_display_name())
+        state["button"].configure(text="  " + self._short_tab_text(state["name"], 18))
+        self._active_model_tab = key
+        self.model_tab = state["button"]
+        self.model_tab_close = state["close"]
+        self._model_tab_state = (self.current_model, self.current_file_path, self.current_file_type,
+                                 list(self.current_selected_columns))
+        self._layout_model_tabs()
+
+    def _position_header_separators(self, _event=None) -> None:
+        """Align navigation separators with the tab buttons."""
+        if not hasattr(self, "_new_models_separator"):
+            return
+        y = self.new_model_tab.winfo_y() + max(0, (self.new_model_tab.winfo_height() - 30) // 2)
+        self._new_models_separator.place(x=self.new_model_tab.winfo_x() + self.new_model_tab.winfo_width() + 3, y=y)
+        if self._model_tabs or (self.batch_tab is not None and self.batch_tab.winfo_manager()):
+            self._models_tabs_separator.place(x=self.models_tab.winfo_x() + self.models_tab.winfo_width() + 3, y=y)
+        else:
+            self._models_tabs_separator.place_forget()
+
+    def _layout_model_tabs(self):
+        """Show the tabs that fit and put the remaining tabs in the overflow menu."""
+        if not hasattr(self, "model_tabs_container"):
+            return
+        ModelDeepenerApp._position_header_separators(self)
+        keys = list(self._model_tabs)
+        gap = round(8 * ctk.ScalingTracker.get_widget_scaling(self))
+        tab_width = max((state["button"].winfo_reqwidth() for state in self._model_tabs.values()), default=0) + gap
+        space = self._model_tab_space()
+        available = len(keys)
+        if tab_width * len(keys) > space:
+            more_width = self.model_tabs_more.winfo_reqwidth() + gap
+            available = max(1, (space - more_width) // tab_width)
+        visible = keys[:available]
+        if self._active_model_tab in keys and self._active_model_tab not in visible:
+            visible[-1:] = [self._active_model_tab]
+        self._overflow_model_tabs = [key for key in keys if key not in visible]
+        # Widget names identify the buttons, so a new tab is packed even if its key was used before.
+        layout = (tuple(str(self._model_tabs[key]["button"]) for key in visible), bool(self._overflow_model_tabs))
+        if getattr(self, "_model_tabs_layout", None) == layout:
+            return
+        self._model_tabs_layout = layout
+        for key, state in self._model_tabs.items():
+            state["button"].pack_forget()
+        for key in visible:
+            self._model_tabs[key]["button"].pack(side="left", padx=(0, gap))
+        if self._overflow_model_tabs:
+            self.model_tabs_more.grid()
+        else:
+            self.model_tabs_more.grid_remove()
+        if visible:
+            self.model_tabs_container.grid()
+        else:
+            self.model_tabs_container.grid_remove()
+
+    def _model_tab_space(self) -> int:
+        """Return the header width in pixels that remains for the model tabs."""
+        header = getattr(self, "header", None)
+        if header is None or header.winfo_width() <= 1:
+            return self.winfo_width()
+        padding = round(32 * ctk.ScalingTracker.get_widget_scaling(self))
+        # The tabs start right of Models Overview; the hidden container has no position of its own.
+        models_tab = getattr(self, "models_tab", None)
+        if models_tab is not None:
+            used = models_tab.winfo_x() + models_tab.winfo_width() + round(8 * ctk.ScalingTracker.get_widget_scaling(self))
+        else:
+            used = self.model_tabs_container.winfo_x()
+        for widget in (getattr(self, "batch_tab", None), getattr(self, "logo_label", None)):
+            if widget is not None and widget.winfo_manager():
+                used += widget.winfo_reqwidth() + padding
+        return header.winfo_width() - used
+
+    def _show_more_model_tabs(self):
+        """List the model tabs that do not fit into the header."""
+        menu = tk.Menu(self, tearoff=False, font=("Segoe UI", 11), activebackground=self.colors["primary_soft"],
+                       activeforeground=self.colors["primary"])
+        for key in self._overflow_model_tabs:
+            menu.add_command(label=self._model_tabs[key]["name"], command=lambda tab=key: self._reopen_model_tab(tab))
+        menu.tk_popup(self.model_tabs_more.winfo_rootx(), self.model_tabs_more.winfo_rooty() + self.model_tabs_more.winfo_height())
+
+    def _close_model_tab(self, key):
+        state = self._model_tabs.pop(key, None)
+        if state is None:
+            return
+        state["button"].destroy()
+        if self._active_model_tab == key:
+            self._active_model_tab = None
+            self.current_model = None
+            self.model_tab = None
+            self.model_tab_close = None
+            self._model_tab_state = None
+            if self.active_top_tab == "model":
+                self._show_models_overview_page()
+        self._layout_model_tabs()
+
+    def _reopen_model_tab(self, key=None) -> None:
+        """Restore a model tab and its last selected view."""
+        if getattr(self, "_model_task_active", False):
+            return
+        if hasattr(self, "_model_tabs"):
+            key = self._active_model_tab if key is None else key
+            state = self._model_tabs.get(key)
+            if state is None:
+                return
+            self._active_model_tab = key
+            self.current_model, self.current_file_path = state["model"], state["path"]
+            self.current_file_type, self.current_selected_columns = state["file_type"], list(state["columns"])
+            self._tell_selection[False] = state["tell"]
+            # The tell menu belongs to the analysis view, so each tab shows it only there.
+            self._tell_menu_open[False] = state["view"] == "analysis"
+            if state["view"] == "analysis":
+                self._open_placeholder_action(3)
+            else:
+                self._show_model_page()
+            return
+        if self._model_tab_state is not None:
+            model, path, file_type, columns = self._model_tab_state
+            self.current_model, self.current_file_path, self.current_file_type = model, path, file_type
+            self.current_selected_columns = list(columns)
+            self._show_model_page()
+
+    def _reopen_batch_tab(self):
+        if getattr(self, "_model_task_active", False):
+            return
+        if self._batch_view == "analysis":
+            self._tell_menu_open[True] = True
+            self._show_batch_analysis()
+        else:
+            self._show_batch_page()
 
     def _current_model_display_name(self) -> str:
         """
@@ -1192,6 +1542,7 @@ class ModelDeepenerApp(ctk.CTk):
             return text
         return f"{text[:max_length - 3]}..."
 
+    @atomic_page
     def _show_import_page(self) -> None:
         """
         Shows the New Model page.
@@ -1199,8 +1550,9 @@ class ModelDeepenerApp(ctk.CTk):
         This page contains Upload File, Select Example, Validation Results,
         Column Selection, and the Create Model and Continue button.
         """
+        if self.current_model is not None:
+            self._update_model_tab()
         self._reset_current_import_state()
-        self._update_model_tab()
         self.current_action = 1
         self._set_last_action(1)
         self._show_workflow_sidebar()
@@ -1209,8 +1561,8 @@ class ModelDeepenerApp(ctk.CTk):
         self._clear_content()
 
         self._page_header(
-            "Upload File or Select Example",
-            "Import a CSV, FMMLx/XML, PlantUML, Ecore or UML-XMI file. Validation starts automatically after a file is selected.",
+            "Import Models",
+            "Import a CSV, FMMLx, PlantUML, Ecore or UML-XMI file. Validation starts automatically after a file is selected.",
         )
 
         body = ctk.CTkFrame(self.content, fg_color="transparent")
@@ -1233,33 +1585,19 @@ class ModelDeepenerApp(ctk.CTk):
 
         tab_row = ctk.CTkFrame(file_card, fg_color="transparent")
         tab_row.grid(row=1, column=0, sticky="ew", padx=16, pady=(0, 12))
-        tab_row.grid_columnconfigure((0, 1), weight=1)
+        tab_row.grid_columnconfigure((0, 1, 2), weight=1)
 
-        ctk.CTkButton(
-            tab_row,
-            text="Upload File",
-            height=38,
-            corner_radius=7,
-            fg_color=self.colors["primary"],
-            hover_color=self.colors["primary_hover"],
-            text_color="#ffffff",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            command=self._browse_file,
-        ).grid(row=0, column=0, sticky="ew", padx=(0, 5))
-
-        ctk.CTkButton(
-            tab_row,
-            text="Select Example",
-            height=38,
-            corner_radius=7,
-            fg_color=self.colors["surface_alt"],
-            hover_color="#EEF2F7",
-            text_color=self.colors["text"],
-            border_width=1,
-            border_color=self.colors["border"],
-            font=ctk.CTkFont(family="Segoe UI", size=12),
-            command=self._select_example_file,
-        ).grid(row=0, column=1, sticky="ew", padx=(5, 0))
+        self._file_input_buttons = {}
+        for column, (mode, label, action) in enumerate((
+                ("upload", "Upload File", self._browse_file),
+                ("example", "Select Example", self._select_example_file),
+                ("batch", "Batch Import", self._browse_batch))):
+            button = ctk.CTkButton(
+                tab_row, text=label, height=38, corner_radius=7, border_width=1,
+                font=ctk.CTkFont(family="Segoe UI", size=12),
+                command=lambda value=mode, callback=action: self._activate_file_input(value, callback))
+            button.grid(row=0, column=column, sticky="ew", padx=(0 if column == 0 else 5, 5 if column == 0 else 0))
+            self._file_input_buttons[mode] = button
 
         self._card_title(file_card, "Selected File").grid(
             row=2, column=0, sticky="w", padx=16, pady=(0, 7)
@@ -1281,7 +1619,16 @@ class ModelDeepenerApp(ctk.CTk):
         )
         self.file_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
 
-        ctk.CTkButton(
+        self.batch_file_list = ctk.CTkTextbox(
+            file_row, height=100, corner_radius=7, border_width=1,
+            border_color=self.colors["border"], fg_color="#F8FAFC",
+            font=ctk.CTkFont(family="Segoe UI", size=13),
+        )
+        self.batch_file_list.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.batch_file_list.grid_remove()
+        self._build_batch_folder_panel(file_row)
+
+        self.file_browse_button = ctk.CTkButton(
             file_row,
             text="Browse...",
             width=105,
@@ -1293,7 +1640,9 @@ class ModelDeepenerApp(ctk.CTk):
             border_width=1,
             border_color="#AFCBFF",
             command=self._browse_file,
-        ).grid(row=0, column=1)
+        )
+        self.file_browse_button.grid(row=0, column=1)
+        self._set_file_input_mode(self._file_input_mode)
 
         # -------------------------------------------------------------
         # Validation card
@@ -1364,13 +1713,14 @@ class ModelDeepenerApp(ctk.CTk):
         self.expand_columns_button.grid(row=0, column=1, sticky="e")
         self._update_expand_columns_button()
 
-        ctk.CTkLabel(
+        self.column_selection_description = ctk.CTkLabel(
             selection_card,
             text="Selected columns become attributes of the generated class.",
             anchor="w",
             text_color=self.colors["muted"],
             font=ctk.CTkFont(family="Segoe UI", size=13),
-        ).grid(row=1, column=0, sticky="w", padx=16, pady=(0, 10))
+        )
+        self.column_selection_description.grid(row=1, column=0, sticky="w", padx=16, pady=(0, 10))
 
         # One shared grid for header and all data cells.
         # This keeps every value exactly aligned under its column heading.
@@ -1408,7 +1758,7 @@ class ModelDeepenerApp(ctk.CTk):
             button_hover_color=self.colors["primary"],
         )
         self.column_scrollbar.grid(row=0, column=1, sticky="ns", padx=(4, 0))
-        self.column_canvas.configure(yscrollcommand=self.column_scrollbar.set)
+        self.column_canvas.configure(yscrollcommand=ModelDeepenerApp._autohide_scroll(self.column_scrollbar))
 
         # Mouse wheel / touchpad scrolling while the pointer is over
         # the Column Selection area.
@@ -1438,11 +1788,15 @@ class ModelDeepenerApp(ctk.CTk):
         if self.current_file_path:
             self._validate_current_file()
         else:
-            self._render_empty_preview(f"Select a {supported_formats_text(' or ')} file to start.")
+            self._set_column_selection_enabled(False)
+            self._render_empty_preview("Select a file to start.")
 
     def _reset_current_import_state(self):
         self.current_model = None
         self.current_file_path = None
+        self._file_selection_mode = None
+        self.current_batch_paths = []
+        self.current_batch_folders = {}
         self.current_file_type = ""
         self.current_selected_columns = []
         self.csv_preview = None
@@ -1451,6 +1805,16 @@ class ModelDeepenerApp(ctk.CTk):
         self.action_completed = {1: False, 2: False, 3: False}
 
     def _show_model_page(self):
+        if self.current_model is None:
+            return
+        model = self.current_model
+        self._run_model_task(1, "Preparing model...",
+                             lambda progress: self._model_metrics(model),
+                             lambda metrics: self._render_model_page(model, metrics),
+                             lambda error: self._show_error("Inspect Model", str(error)))
+
+    @atomic_page
+    def _render_model_page(self, model, metrics):
         """
         Shows the Inspect Model page.
 
@@ -1464,8 +1828,11 @@ class ModelDeepenerApp(ctk.CTk):
 
         self.current_action = 2
         self.action_completed[2] = True
+        self._tell_menu_open[False] = False
         self._show_workflow_sidebar()
         self._update_model_tab()
+        if getattr(self, "_model_tabs", None):
+            self._model_tabs[self._active_model_tab]["view"] = "inspect"
         self._set_top_tab("model")
         self._refresh_actions()
         self._clear_content()
@@ -1474,20 +1841,14 @@ class ModelDeepenerApp(ctk.CTk):
             "Inspect Model",
             "Review the imported or generated model structure and content.",
         )
-        name_row = ctk.CTkFrame(header, fg_color="transparent")
-        name_row.grid(row=2, column=0, sticky="w", pady=(6, 0))
-        ctk.CTkLabel(name_row, text=self._current_model_display_name()).pack(side="left")
         if self.current_model.get_is_adapted():
-            badge = ctk.CTkLabel(name_row, text="adapted", text_color="#A34D00",
-                                 fg_color="#FFF0DF", corner_radius=5, width=65)
-            badge.pack(side="left", padx=(8, 0))
-            badge.bind("<Enter>", self._show_adapted_tooltip)
-            badge.bind("<Leave>", self._hide_adapted_tooltip)
-
-        legend = ctk.CTkFrame(header, fg_color="transparent")
-        legend.grid(row=0, column=1, rowspan=2, sticky="ne")
-        ctk.CTkLabel(legend, text="Orange: serious adaptation", text_color="#B45309").pack(anchor="e")
-        ctk.CTkLabel(legend, text="Grey-blue: automatic adaptation", text_color="#647A94").pack(anchor="e")
+            title_widget = header.grid_slaves(row=0, column=0)[0]
+            info = ctk.CTkLabel(header, text="i", width=20, height=20, corner_radius=10,
+                                fg_color=self.colors["primary_soft"], text_color=self.colors["primary"],
+                                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"), cursor="hand2")
+            info.place(in_=title_widget, relx=1, x=8, rely=0.5, anchor="w")
+            info.bind("<Enter>", self._show_adaptation_legend)
+            info.bind("<Leave>", self._hide_adapted_tooltip)
 
         model = self.current_model
         self._attach_active_model_reference(model)
@@ -1504,18 +1865,9 @@ class ModelDeepenerApp(ctk.CTk):
         summary = ctk.CTkFrame(body, fg_color="transparent")
         summary.grid(row=0, column=0, columnspan=2, sticky="ew", pady=(0, 14))
 
-        summary_items = [
-            ("Higher Level Classes", self._count_higher_level_classes(model), "#315D9B"),
-            ("Classes", len(model.get_all_flat_classes()), "#2563EB"),
-            ("Attributes", self._count_attributes(model), "#7C3AED"),
-            ("Enumeration Types", len(model.enums), "#F59E0B"),
-            ("Operations", self._count_operations(model), "#0D9488"),
-            ("Generalizations", self._count_generalizations(model), "#E11D48"),
-            ("Associations", len(model.associations), "#64748B"),
-            ("Objects", len(model.get_all_pure_objects()), "#16A34A"),
-            ("Slots", self._count_slots(model), "#EA580C"),
-            ("Links", len(model.links), "#0891B2"),
-        ]
+        metric_colors = ("#315D9B", "#2563EB", "#7C3AED", "#F59E0B", "#E11D48",
+                         "#64748B", "#16A34A", "#EA580C", "#0891B2")
+        summary_items = [(label, value, color) for (label, value), color in zip(metrics, metric_colors)]
 
         for index, (label, value, value_color) in enumerate(summary_items):
             summary.grid_columnconfigure(index, weight=1)
@@ -1661,6 +2013,7 @@ class ModelDeepenerApp(ctk.CTk):
             column=0,
             sticky="nsew",
         )
+        self.model_tree.bind("<<TreeviewOpen>>", self._open_model_tree_group)
         self.model_tree.bind(
             "<<TreeviewSelect>>",
             self._show_selected_details,
@@ -1681,7 +2034,7 @@ class ModelDeepenerApp(ctk.CTk):
             padx=(4, 0),
         )
         self.model_tree.configure(
-            yscrollcommand=self.model_tree_scrollbar.set,
+            yscrollcommand=ModelDeepenerApp._autohide_scroll(self.model_tree_scrollbar),
         )
 
         # -------------------------------------------------------------
@@ -1781,7 +2134,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         self.detail_canvas.configure(
             xscrollcommand=self.detail_x_scrollbar.set,
-            yscrollcommand=self.detail_scrollbar.set,
+            yscrollcommand=ModelDeepenerApp._autohide_scroll(self.detail_scrollbar),
         )
         self.detail_canvas.bind("<Enter>", self._bind_detail_scroll_events)
         self.detail_canvas.bind("<Leave>", self._unbind_detail_scroll_events)
@@ -2016,85 +2369,246 @@ class ModelDeepenerApp(ctk.CTk):
 
 
     def _open_placeholder_action(self, action: int):
-        """
-        Shows workflow steps that are not implemented yet.
+        """Prepare the single-model analysis before displaying it."""
+        selection = self._tell_selection[False]
+        model = self.current_model
+        model_name = self._current_model_display_name()
+        self._run_model_task(1, "Preparing analysis...",
+                             lambda progress: analyze_tells(selection, [(model_name, model)], progress),
+                             lambda rows: self._build_view_hidden(
+                                 lambda: self._render_single_analysis(action, selection, rows)),
+                             lambda error: self._show_error("Analysis", str(error)))
 
-        This block also contains the export logic, so the current model can be
-        written back as CSV or XML from the workflow.
+    def _build_view_hidden(self, build: Callable[[], None], message: str = "Preparing analysis...") -> None:
+        """Build a view while the screen still shows the previous one.
+
+        Building the analysis widgets blocks Tk. If it takes longer than half a second, a large
+        loading window with a running bar appears until the new view is complete.
         """
+        geometry = (self.winfo_rootx(), self.winfo_rooty(), self.winfo_width(), self.winfo_height())
+        self._view_loading.start(geometry, message, ctk.ScalingTracker.get_widget_scaling(self))
+        frozen = set_window_redraw(self, False)
+        try:
+            build()
+            self.update_idletasks()
+        finally:
+            if frozen:
+                set_window_redraw(self, True)
+            self._view_loading.stop()
+
+    @atomic_page
+    def _render_single_analysis(self, action, selection, rows):
+        """Display the selected tell analysis for the current model."""
         self.current_action = action
         self._set_last_action(action)
+        self._show_workflow_sidebar()
         self._update_model_tab()
+        if getattr(self, "_model_tabs", None):
+            self._model_tabs[self._active_model_tab].update(view="analysis", tell=self._tell_selection[False])
         self._set_top_tab("model")
         self._refresh_actions()
         self._clear_content()
-        self._page_header(
-            self.ACTION_TITLES[action],
-            "This action will be implemented next.",
-        )
+        self._page_header(*tell_description(selection))
         body = ctk.CTkFrame(self.content, fg_color="transparent")
         body.grid(row=1, column=0, sticky="nsew")
         body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        panel = self._card(body)
-        panel.grid(row=0, column=0, sticky="nsew")
+        self._build_tell_results(body, batch=False, row_provider=lambda _selection: rows).grid(row=0, column=0, sticky="nsew")
+
+    # The same heights as the header and rows of the detail tables in Inspect Model.
+    TELL_HEADER_HEIGHT = 42
+    TELL_ROW_HEIGHT = 46
+    # Unscaled widths of the indicator IDs and the Yes/No choices.
+    TELL_INDICATOR_WIDTH = 260
+    TELL_TRANSFORM_WIDTH = 160
+
+    @classmethod
+    def _balanced_tell_widths(cls, count: int, total: int, scaling: float = 1.0) -> list[int]:
+        """Give name columns the available space while keeping the last columns compact."""
+        wide = count - 2
+        indicators = round(cls.TELL_INDICATOR_WIDTH * scaling)
+        transform = round(cls.TELL_TRANSFORM_WIDTH * scaling)
+        each = max(round(200 * scaling), (total - indicators - transform) // wide)
+        widths = [each] * wide + [indicators, transform]
+        widths[wide - 1] += max(0, total - sum(widths))
+        return widths
+
+    def _build_tell_results(self, parent, batch: bool, row_provider=None):
+        """Display results in a resizable table and retain each displayed decision."""
+        provider = row_provider or (lambda _selection: [])
+        panel = ctk.CTkFrame(parent, fg_color="transparent")
         panel.grid_columnconfigure(0, weight=1)
         panel.grid_rowconfigure(0, weight=1)
-        ctk.CTkLabel(
-            panel,
-            text="Action area not implemented yet.",
-            text_color=self.colors["muted"],
-            font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold"),
-        ).grid(row=0, column=0, sticky="nsew", padx=24, pady=24)
+        card = self._card(panel)
+        card.grid(row=0, column=0, sticky="nsew")
+        card.grid_columnconfigure(0, weight=1)
+        card.grid_rowconfigure(0, weight=1)
+        selected = tk.StringVar(value=self._tell_selection[batch])
+        panel._tell_choice = selected
+        panel._transform_choices = []
+        panel._tell_rows = []
+        columns = tell_columns(batch)
+        scaling = ctk.ScalingTracker.get_widget_scaling(self)
+        panel._tell_widths = self._balanced_tell_widths(len(columns), 1000, scaling)
+        panel._tell_resized = False
+        wrapper = ctk.CTkFrame(card, fg_color="#FFFFFF", corner_radius=0)
+        wrapper.grid(row=0, column=0, sticky="nsew", padx=16, pady=(14, 16))
+        wrapper.grid_columnconfigure(0, weight=1)
+        wrapper.grid_rowconfigure(0, weight=1)
+        canvas = tk.Canvas(wrapper, background="#FFFFFF", highlightthickness=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ctk.CTkScrollbar(wrapper, orientation="vertical", command=canvas.yview, width=14,
+                                     button_color="#AFCBFF", button_hover_color=self.colors["primary"])
+        scrollbar.grid(row=0, column=1, sticky="ns", padx=(4, 0))
+        horizontal = ctk.CTkScrollbar(wrapper, orientation="horizontal", command=canvas.xview, height=14,
+                                      button_color="#AFCBFF", button_hover_color=self.colors["primary"])
+        horizontal.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        canvas.configure(yscrollcommand=ModelDeepenerApp._autohide_scroll(scrollbar),
+                         xscrollcommand=ModelDeepenerApp._autohide_scroll(horizontal))
+        table = tk.Frame(canvas, bg="#FFFFFF")
+        table_window = canvas.create_window(0, 0, anchor="nw", window=table)
+        table.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+        panel._tell_text_labels = []
 
-        actions = ctk.CTkFrame(self.content, fg_color="transparent")
-        actions.grid(row=2, column=0, sticky="ew", pady=(14, 0))
-        actions.grid_columnconfigure(0, weight=1)
-        if action == 3 and self.current_model is not None:
-            ctk.CTkButton(
-                actions,
-                text="Inspect Model",
-                width=150,
-                height=42,
-                corner_radius=8,
-                fg_color="#FFFFFF",
-                hover_color=self.colors["primary_soft"],
-                border_width=1,
-                border_color="#C7D2E3",
-                text_color=self.colors["text"],
-                font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                command=self._show_model_page,
-            ).grid(row=0, column=1, sticky="e", padx=(0, 10))
-        ctk.CTkButton(
-            actions,
-            text="Check Constraints",
-            width=180,
-            height=42,
-            corner_radius=8,
-            fg_color="#FFFFFF",
-            hover_color=self.colors["primary_soft"],
-            border_width=1,
-            border_color="#C7D2E3",
-            text_color=self.colors["text"],
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            command=self._check_current_constraints,
-        ).grid(row=0, column=2, sticky="e", padx=(0, 10))
+        def apply_widths():
+            for index, width in enumerate(panel._tell_widths):
+                table.grid_columnconfigure(index, minsize=width, weight=0)
+            # CTkLabel scales its wrap length itself, while the column widths are screen pixels.
+            scaling = ctk.ScalingTracker.get_widget_scaling(self)
+            for label, column in panel._tell_text_labels:
+                label.configure(wraplength=max(40, (panel._tell_widths[column] - 24) / scaling))
+            canvas.itemconfigure(table_window, width=sum(panel._tell_widths))
 
-        ctk.CTkButton(
-            actions,
-            text="Export Model",
-            width=170,
-            height=42,
-            corner_radius=8,
-            fg_color=self.colors["primary"],
-            hover_color=self.colors["primary_hover"],
-            text_color="#FFFFFF",
-            font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-            command=self._export_current_model_placeholder,
-        ).grid(row=0, column=3, sticky="e")
+        def fit_to_canvas(event):
+            # Until the user drags a column, the columns share the visible width.
+            if not panel._tell_resized and event.width > 1:
+                panel._tell_widths = self._balanced_tell_widths(len(columns), event.width, scaling)
+                apply_widths()
 
-        self._add_export_without_check_button(actions)
+        canvas.bind("<Configure>", fit_to_canvas)
+
+        def start_resize(event, column):
+            panel._tell_resize = (column, event.x_root, list(panel._tell_widths))
+
+        def resize(event):
+            column, start_x, original = panel._tell_resize
+            panel._tell_resized = True
+            panel._tell_widths = self._move_column_boundary(original, column, event.x_root - start_x, minimum=100)
+            apply_widths()
+
+        def render(selection):
+            # Cells keep fixed heights like the tables of Inspect Model, so their content is placed, not packed.
+            for child in table.winfo_children():
+                child.destroy()
+            panel._transform_choices = []
+            panel._tell_rows = []
+            panel._tell_text_labels = []
+            header_bg = "#DFE9FD"
+            for index, title in enumerate(columns):
+                cell = tk.Frame(table, bg=header_bg, bd=0, highlightthickness=1, highlightbackground="#AFC1D9", highlightcolor="#AFC1D9", height=self.TELL_HEADER_HEIGHT)
+                cell.grid(row=0, column=index, sticky="nsew")
+                cell.grid_propagate(False)
+                if index > 0:
+                    tk.Frame(cell, width=1, background="#AFC1D9").place(x=0, y=0, width=1, relheight=1)
+                ctk.CTkLabel(cell, text=title, text_color="#04173D",
+                             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold")).place(
+                                 relx=0.5, rely=0.5, anchor="center")
+                if index < len(columns) - 1:
+                    handle = tk.Frame(cell, bg=header_bg, width=8, cursor="sb_h_double_arrow")
+                    handle.place(relx=1, rely=0, relheight=1, anchor="ne")
+                    handle.bind("<ButtonPress-1>", lambda event, col=index: start_resize(event, col))
+                    handle.bind("<B1-Motion>", resize)
+            result_rows = provider(selection)
+            if not result_rows:
+                empty = tk.Frame(table, bg="#FFFFFF", height=self.TELL_ROW_HEIGHT, highlightthickness=1,
+                                 highlightbackground="#AFC1D9")
+                empty.grid(row=1, column=0, columnspan=len(columns), sticky="nsew")
+                empty.grid_propagate(False)
+                ctk.CTkLabel(empty, text="No affected parts found.", text_color=self.colors["muted"]).place(
+                    relx=0.5, rely=0.5, anchor="center")
+            for row_index, result in enumerate(result_rows, 1):
+                values = ([result.model_name] if batch else []) + [result.affected_parts, result.indicators]
+                color = "#FFFFFF" if row_index % 2 else "#F3F7FD"
+                for column, value in enumerate(values + [None]):
+                    cell = tk.Frame(table, bg=color, bd=0, highlightthickness=1, highlightbackground="#AFC1D9", highlightcolor="#AFC1D9", height=self.TELL_ROW_HEIGHT)
+                    cell.grid(row=row_index, column=column, sticky="nsew")
+                    cell.grid_propagate(False)
+                    if column > 0:
+                        tk.Frame(cell, width=1, background="#AFC1D9").place(x=0, y=0, width=1, relheight=1)
+                    if column < len(values):
+                        label = ctk.CTkLabel(cell, text=str(value), text_color=self.colors["text"], justify="center",
+                                             font=ctk.CTkFont(family="Segoe UI", size=12))
+                        label.place(relx=0.5, rely=0.5, anchor="center")
+                        if column == len(values) - 1 and result.indicator_details:
+                            label.bind("<Enter>", lambda event, text=result.indicator_details: self._show_import_note_tooltip(event, [(text, False)]))
+                            label.bind("<Leave>", lambda _event: self._hide_adapted_tooltip())
+                        panel._tell_text_labels.append((label, column))
+                        continue
+                    decision = tk.StringVar(value="No")
+                    panel._transform_choices.append(decision)
+                    panel._tell_rows.append((result, decision))
+                    choices = tk.Frame(cell, bg=color)
+                    choices.place(relx=0.5, rely=0.5, anchor="center")
+                    for text in ("Yes", "No"):
+                        ctk.CTkCheckBox(choices, text=text, variable=decision, onvalue=text,
+                                        offvalue="No" if text == "Yes" else "Yes",
+                                        bg_color=color, width=60).pack(side="left", padx=6)
+            apply_widths()
+
+        render(selected.get())
+        ctk.CTkButton(panel, text="Perform Deepening Transformation", height=42, corner_radius=8,
+                      fg_color=self.colors["primary"], hover_color=self.colors["primary_hover"], text_color="#FFFFFF",
+                      font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                      command=lambda: self._prompt_deepening(panel, batch)).grid(
+                          row=1, column=0, sticky="e", pady=(14, 0))
+        return panel
+
+    def _prompt_deepening(self, panel, batch: bool) -> None:
+        """Offer to save the placeholder result and optionally export the table."""
+        originals = list(self.batch_models) if batch else [item for item in self.loaded_models if item.model is self.current_model]
+        if not originals:
+            self._show_error("Deepening", "No saved model is selected.")
+            return
+        rows = [(result, choice.get()) for result, choice in panel._tell_rows]
+        dialog = _styled_dialog(self, "Deepening Transformation")
+        _dialog_heading(dialog, "Perform Deepening Transformation", self.colors)
+        ctk.CTkLabel(dialog, text="Transformed models are saved as new models.",
+                     text_color=self.colors["text"], wraplength=520, justify="left", anchor="w").pack(fill="x", padx=18, pady=(0, 12))
+        buttons = ctk.CTkFrame(dialog, fg_color="transparent")
+        buttons.pack(fill="x", padx=18, pady=(8, 18))
+
+        def save(export):
+            path = None
+            if export:
+                path = filedialog.asksaveasfilename(parent=self, title="Export analysis table",
+                                                     defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+                if not path:
+                    return
+            def work(progress):
+                save_deepened_models(self._database, self.loaded_models, originals, rows, batch, LoadedModel, progress)
+                if path:
+                    try:
+                        export_tell_table(path, rows, batch)
+                    except Exception as error:
+                        raise RuntimeError(f"Models were saved, but CSV export failed: {error}") from error
+
+            def finished(_result):
+                dialog.destroy()
+                self._show_information("Deepening", f"Saved {len(originals)} model(s).")
+            def failed(error):
+                dialog.destroy()
+                self._show_error("Deepening failed", str(error))
+            self._run_model_task(len(originals), "Saving models...", work, finished, failed, dialog=dialog)
+
+        _dialog_primary_button(buttons, "Save and Export CSV", lambda: save(True), self.colors).pack(side="right")
+        _dialog_plain_button(buttons, "Save to Database", lambda: save(False), self.colors).pack(side="right", padx=(0, 8))
+        _dialog_plain_button(buttons, "Cancel", dialog.destroy, self.colors).pack(side="right", padx=(0, 8))
+        dialog.bind("<Return>", lambda _event: save(True))
+        dialog.bind("<Escape>", lambda _event: dialog.destroy())
+        self._overlay.cover(dialog)
+        dialog.grab_set()
+        self.wait_window(dialog)
 
     def _add_export_without_check_button(self, actions) -> None:
         """Add the unchecked XML export action to an action bar."""
@@ -2127,31 +2641,16 @@ class ModelDeepenerApp(ctk.CTk):
             )
             return
 
-        try:
-            violations = self.current_model.validate_basemlm_integrity()
-        except (AttributeError, TypeError, ValueError) as error:
-            self._show_warning(
-                "Check Constraints",
-                "The model could not be checked. It remains saved, but export is blocked "
-                f"until the constraint check succeeds.\n\n{error}",
-            )
-            return
-        if not violations:
-            self._show_information(
-                "Check Constraints",
-                "The model is valid according to the constraints.",
-            )
-            return
-
-        lines = []
-        for violation in violations:
-            lines.append(f"- {violation}")
-        details = "\n".join(lines)
-        self._show_warning(
-            "Check Constraints",
-            "The model is not valid. The following constraints are violated:\n\n"
-            + details,
-        )
+        model = self.current_model
+        def checked(violations):
+            if not violations:
+                self._show_information("Check Constraints", "The model is valid according to the constraints.")
+            else:
+                details = "\n".join(f"- {violation}" for violation in violations)
+                self._show_warning("Check Constraints", "The model is not valid. The following constraints are violated:\n\n" + details)
+        def failed(error):
+            self._show_warning("Check Constraints", "The model could not be checked. It remains saved, but export is blocked until the constraint check succeeds.\n\n" + str(error))
+        self._run_model_task(1, "Checking constraints...", lambda _progress: model.validate_basemlm_integrity(), checked, failed)
 
     def _export_current_model_placeholder(self):
         """Export the current model only when all constraints are satisfied."""
@@ -2159,32 +2658,22 @@ class ModelDeepenerApp(ctk.CTk):
             self._show_information("Export Model", "Create or open a model before exporting.")
             return
 
-        try:
-            violations = self.current_model.validate_basemlm_integrity()
-        except (AttributeError, TypeError, ValueError) as error:
-            self._show_warning(
-                "Check Constraints",
-                "The model could not be checked. It remains saved, but export is blocked "
-                f"until the constraint check succeeds.\n\n{error}",
-            )
-            return
-        if violations:
-            details = "\n".join(f"- {violation}" for violation in violations)
-            self._show_warning(
-                "Export Model",
-                "The model cannot be exported because it is not valid.\n\n"
-                + details,
-            )
-            return
-
-        file_type = (self.current_file_type or os.path.splitext(self.current_file_path or "")[1].lstrip(".")).upper()
-        if file_type in ("XML", PlantUmlImporter.FORMAT_NAME.upper(), EcoreImporter.FORMAT_NAME.upper(),
-                         XmiImporter.FORMAT_NAME.upper()):
-            self._export_current_xml_model()
-        elif file_type == "CSV":
-            self._export_current_csv_model()
-        else:
-            self._show_error("Export Model", "Only CSV and XML models can be exported.")
+        model = self.current_model
+        def checked(violations):
+            if violations:
+                details = "\n".join(f"- {violation}" for violation in violations)
+                self._show_warning("Export Model", "The model cannot be exported because it is not valid.\n\n" + details)
+                return
+            file_type = (self.current_file_type or os.path.splitext(self.current_file_path or "")[1].lstrip(".")).upper()
+            if file_type in ("XML", PlantUmlImporter.FORMAT_NAME.upper(), EcoreImporter.FORMAT_NAME.upper(), XmiImporter.FORMAT_NAME.upper()):
+                self._export_current_xml_model()
+            elif file_type == "CSV":
+                self._export_current_csv_model()
+            else:
+                self._show_error("Export Model", "Only CSV and FMMLx models can be exported.")
+        def failed(error):
+            self._show_warning("Check Constraints", "The model could not be checked. It remains saved, but export is blocked until the constraint check succeeds.\n\n" + str(error))
+        self._run_model_task(1, "Checking constraints...", lambda _progress: model.validate_basemlm_integrity(), checked, failed)
 
     def _export_current_xml_model(self):
         """
@@ -2216,21 +2705,17 @@ class ModelDeepenerApp(ctk.CTk):
             title="Export Model",
             initial_file=source_name,
             default_extension=".xml",
-            file_types=[("XML files", "*.xml"), ("All files", "*.*")],
+            file_types=[("FMMLx files", "*.xml"), ("All files", "*.*")],
         )
         if not target_path:
             return
-        try:
-            self.current_model.export_xml(
-                target_path,
-                project_name=self.current_model.path_name,
-                max_instances_per_class=instances_per_class,
-                diagram_mode=diagram_mode,
-            )
-        except (AttributeError, OSError, TypeError, ValueError) as exc:
-            self._show_error("Export Model", f"Could not export XML: {exc}")
-            return
-        self._show_information("Export Model", f"Model exported to:\n{target_path}")
+        model = self.current_model
+        self._run_model_task(1, "Exporting model...",
+                             lambda _progress: model.export_xml(target_path, project_name=model.path_name,
+                                                                max_instances_per_class=instances_per_class,
+                                                                diagram_mode=diagram_mode),
+                             lambda _result: self._show_information("Export Model", f"Model exported to:\n{target_path}"),
+                             lambda error: self._show_error("Export Model", f"Could not export FMMLx: {error}"))
 
     def _ask_instances_per_class(self):
         """
@@ -2458,7 +2943,7 @@ class ModelDeepenerApp(ctk.CTk):
         for column, value in enumerate(("CSV", "XML")):
             button = ctk.CTkButton(
                 format_row,
-                text=value,
+                text="FMMLx" if value == "XML" else value,
                 height=42,
                 corner_radius=8,
                 border_width=1,
@@ -2471,7 +2956,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         ctk.CTkLabel(
             dialog,
-            text="XML diagram type",
+            text="FMMLx Diagram Type",
             anchor="w",
             text_color=self.colors["text"],
             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
@@ -2603,29 +3088,22 @@ class ModelDeepenerApp(ctk.CTk):
             title="Export Model",
             initial_file=source_name,
             default_extension=f".{extension}",
-            file_types=[(f"{export_format} files", f"*.{extension}"), ("All files", "*.*")],
+            file_types=[(f"{self._display_file_type(export_format)} files", f"*.{extension}"), ("All files", "*.*")],
         )
         if not target_path:
             return
-        try:
+        model = self.current_model
+        source_path = self.current_file_path
+        def export(_progress):
             if export_format == "XML":
-                self.current_model.export_xml(
-                    target_path,
-                    project_name=self.current_model.path_name,
-                    max_instances_per_class=instances_per_class,
-                    diagram_mode=diagram_mode,
-                )
+                model.export_xml(target_path, project_name=model.path_name,
+                                 max_instances_per_class=instances_per_class, diagram_mode=diagram_mode)
             else:
-                self._write_selected_csv_columns(
-                    self.current_file_path,
-                    target_path,
-                    selected_columns,
-                    max_instances=instances_per_class,
-                )
-        except (AttributeError, OSError, TypeError, csv.Error, ValueError) as exc:
-            self._show_error("Export Model", f"Could not export {export_format}: {exc}")
-            return
-        self._show_information("Export Model", f"Model exported to:\n{target_path}")
+                self._write_selected_csv_columns(source_path, target_path, selected_columns,
+                                                 max_instances=instances_per_class)
+        self._run_model_task(1, "Exporting model...", export,
+                             lambda _result: self._show_information("Export Model", f"Model exported to:\n{target_path}"),
+                             lambda error: self._show_error("Export Model", f"Could not export {self._display_file_type(export_format)}: {error}"))
 
     def _write_selected_csv_columns(self, source_path: str, target_path: str,
                                     selected_columns: List[str], max_instances: Optional[int] = None):
@@ -2656,7 +3134,157 @@ class ModelDeepenerApp(ctk.CTk):
                 ])
         os.utime(target_path, None)
 
+    def _export_all_models(self) -> None:
+        """Select models and export them to a single chosen directory."""
+        self._select_models_for_batch(inspect=False)
+
+    def _inspect_all_models(self) -> None:
+        self._select_models_for_batch(inspect=True)
+
+    def _select_models_for_batch(self, inspect: bool) -> None:
+        title = "Inspect All" if inspect else "Export All"
+        if not self.loaded_models:
+            self._show_information(title, "There are no models to select.")
+            return
+        dialog = _styled_dialog(self, title)
+        _dialog_heading(dialog, "Select Models to Inspect" if inspect else "Select Models to Export", self.colors)
+        listing = VirtualModelSelector(dialog, self.loaded_models, self.colors)
+        listing.pack(fill="both", expand=True, padx=18, pady=(6, 10))
+        run_check = tk.BooleanVar(master=dialog, value=True)
+        if not inspect:
+            _dialog_checkbox(dialog, "Run Constraint Check", run_check, self.colors).pack(anchor="w", padx=18, pady=(0, 10))
+        row = ctk.CTkFrame(dialog, fg_color="transparent")
+        row.pack(fill="x", padx=18, pady=(8, 18))
+        dialog._progress_anchor = row
+        def close_dialog():
+            _cancel_widget_timers(dialog)
+            dialog.destroy()
+
+        def start():
+            selected_models = listing.selected_models()
+            if not selected_models:
+                messagebox.showwarning(title, "Select at least one model.", parent=dialog)
+                return
+            if inspect:
+                def prepared(result):
+                    self.batch_models = selected_models
+                    close_dialog()
+                    self.batch_tab.grid()
+                    self._render_batch_page(*result)
+                self._run_model_task(len(selected_models), "Preparing models...",
+                                     lambda progress: self._prepare_batch_page(selected_models, progress),
+                                     prepared, lambda error: self._show_error("Inspect All", str(error)),
+                                     dialog=dialog)
+                return
+            if not run_check.get():
+                export_to_folder(selected_models)
+                return
+
+            def checked(result):
+                passed, failures = result
+                if not failures:
+                    export_to_folder(passed)
+                elif self._ask_export_check_result(len(passed), failures):
+                    export_to_folder(passed, len(failures))
+
+            # All selected models are checked before anything is exported.
+            self._run_model_task(len(selected_models), "Checking constraints...",
+                                 lambda progress: check_models(selected_models, progress),
+                                 checked, lambda error: self._show_error("Export All", str(error)), dialog=dialog)
+
+        def export_to_folder(models, not_valid=0):
+            """Choose the export folder and export the models without checking them again."""
+            directory = filedialog.askdirectory(parent=self, title="Choose export folder")
+            if not directory:
+                return
+            def exported(results):
+                close_dialog()
+                failures = [(name, error) for name, _, error in results if error is not None]
+                text = f"Successful: {len(results) - len(failures)}\nFailed: {len(failures)}"
+                if not_valid:
+                    text += f"\nNot exported (constraint check): {not_valid}"
+                if failures:
+                    text += "\n\n" + "\n".join(f"{name}: {error}" for name, error in failures)
+                self._show_information("Export All", text)
+
+            self._run_model_task(len(models), "Exporting models...",
+                                 lambda progress: export_models(models, directory, True, progress),
+                                 exported, lambda error: self._show_error("Export All", str(error)), dialog=dialog)
+
+        _dialog_primary_button(row, "Inspect" if inspect else "Export", start, self.colors).pack(side="right")
+        _dialog_plain_button(row, "Cancel", close_dialog, self.colors).pack(side="right", padx=(0, 8))
+        dialog.bind("<Return>", lambda _event: start())
+        dialog.bind("<Escape>", lambda _event: close_dialog())
+        self._overlay.cover(dialog)
+        dialog.grab_set()
+        self.wait_window(dialog)
+
+    def _ask_export_check_result(self, passed: int, failures: list[tuple[str, str]]) -> bool:
+        """Show the constraint check result of Export All; True exports the valid models."""
+        result = False
+        previous_grab = self.grab_current()
+        dialog = _styled_dialog(self, "Constraint Check")
+        _add_dialog_heading(dialog, "Constraint Check", self.colors)
+        ctk.CTkLabel(dialog, text=f"Passed: {passed}\nFailed: {len(failures)}", justify="left", anchor="w",
+                     text_color=self.colors["text"], font=ctk.CTkFont(family=FONT_FAMILY, size=13)).pack(
+                         fill="x", padx=DIALOG_PADDING, pady=(0, 10))
+        ctk.CTkLabel(dialog, text="Failed Models", anchor="w", text_color=self.colors["text"],
+                     font=ctk.CTkFont(family=FONT_FAMILY, size=14, weight="bold")).pack(
+                         fill="x", padx=DIALOG_PADDING, pady=(0, 4))
+        failed_list = ctk.CTkTextbox(dialog, width=520, height=180, wrap="word", text_color=self.colors["text"],
+                                     font=ctk.CTkFont(family=FONT_FAMILY, size=12))
+        failed_list.pack(fill="both", expand=True, padx=DIALOG_PADDING, pady=(0, DIALOG_PADDING))
+        failed_list.insert("1.0", "\n".join(f"{name}: {reason}" for name, reason in failures))
+        failed_list.configure(state="disabled")
+        row = _add_dialog_button_row(dialog)
+
+        def close(accepted: bool) -> None:
+            """Close the dialog and remember whether the valid models are exported."""
+            nonlocal result
+            result = accepted
+            _cancel_widget_timers(dialog)
+            dialog.destroy()
+
+        export_button = ctk.CTkButton(row, text="Export Valid Models", height=BUTTON_HEIGHT,
+                                      fg_color=self.colors["primary"], hover_color=self.colors["primary_hover"],
+                                      text_color=WHITE, command=lambda: close(True))
+        export_button.pack(side="right")
+        if not passed:
+            export_button.configure(state="disabled")
+        ctk.CTkButton(row, text="Cancel", width=BUTTON_WIDTH, height=BUTTON_HEIGHT, fg_color=WHITE,
+                      hover_color=LIGHT_BUTTON_HOVER, border_width=1, border_color=self.colors["border"],
+                      text_color=self.colors["text"], command=lambda: close(False)).pack(side="right", padx=(0, 8))
+        dialog.protocol("WM_DELETE_WINDOW", lambda: close(False))
+        dialog.bind("<Escape>", lambda _event: close(False))
+        _show_dialog_and_wait(dialog, self)
+        if previous_grab is not None and previous_grab.winfo_exists():
+            previous_grab.grab_set()
+        return result and passed > 0
+
     def _show_models_overview_page(self) -> None:
+        """Prepare the overview model data before displaying the page."""
+        models = list(self.loaded_models)
+        def prepare(progress):
+            values = {}
+            for index, loaded in enumerate(models, 1):
+                model = loaded.model
+                values[id(loaded)] = (self._count_higher_level_classes(model),
+                                      len(model.get_all_flat_classes()),
+                                      self._count_attributes(model),
+                                      len(model.get_all_pure_objects()))
+                progress(index, len(models))
+            return values
+        def ready(values, release):
+            self._overview_model_counts = values
+            try:
+                self._render_models_overview_page()
+            finally:
+                release()
+        self._run_model_task(len(models), "Loading models...", prepare, ready,
+                             lambda error: self._show_error("Models Overview", str(error)), handoff=True)
+
+    @atomic_page
+    def _render_models_overview_page(self) -> None:
         """
         Shows the Models Overview page.
 
@@ -2669,7 +3297,6 @@ class ModelDeepenerApp(ctk.CTk):
 
         header = ctk.CTkFrame(self.content, fg_color="transparent")
         header.grid(row=0, column=0, sticky="ew", pady=(0, 16))
-        header.grid_columnconfigure(0, weight=1)
         ctk.CTkLabel(header, text="Models Overview", anchor="w", font=ctk.CTkFont(size=22, weight="bold")).grid(
             row=0, column=0, sticky="w"
         )
@@ -2680,40 +3307,27 @@ class ModelDeepenerApp(ctk.CTk):
             text_color="#64748b",
             font=ctk.CTkFont(size=12),
         ).grid(row=1, column=0, sticky="w", pady=(2, 0))
-        total_card = ctk.CTkFrame(
-            header,
-            width=214,
-            height=82,
-            fg_color=self.colors["primary"],
-            corner_radius=8,
-        )
-        total_card.grid(row=0, column=1, rowspan=2, sticky="e")
-        total_card.grid_propagate(False)
-        total_card.grid_columnconfigure(0, weight=1)
-        ctk.CTkLabel(
-            total_card,
-            text="Total Models",
-            text_color="#FFFFFF",
-            anchor="w",
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-        ).grid(row=0, column=0, sticky="sw", padx=24, pady=(14, 0))
+        # The total lies centered in the free space between the title and the two buttons.
+        header.grid_columnconfigure(1, weight=1)
         self.total_models_label = ctk.CTkLabel(
-            total_card,
-            text=str(len(self.loaded_models)),
-            text_color="#FFFFFF",
-            anchor="w",
-            font=ctk.CTkFont(family="Segoe UI", size=24, weight="bold"),
+            header, text=f"Total Models: {len(self.loaded_models)}", text_color="#2563EB",
+            font=ctk.CTkFont(family="Segoe UI", size=18, weight="bold"),
         )
-        self.total_models_label.grid(row=1, column=0, sticky="nw", padx=24, pady=(0, 14))
+        self.total_models_label.grid(row=0, column=1, rowspan=2)
+        for column, (label, command) in enumerate((("Export All", self._export_all_models),
+                                                    ("Inspect All", self._inspect_all_models)), start=2):
+            ctk.CTkButton(header, text=label, width=130, height=40, corner_radius=7,
+                          fg_color=self.colors["primary"], hover_color=self.colors["primary_hover"],
+                          text_color="#FFFFFF", font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
+                          command=command).grid(row=0, column=column, rowspan=2, padx=16 if column == 2 else 0)
 
         body = ctk.CTkFrame(self.content, fg_color="transparent")
         body.grid(row=1, column=0, sticky="nsew")
         body.grid_columnconfigure(0, weight=1)
-        body.grid_rowconfigure(0, weight=3)
-        body.grid_rowconfigure(1, weight=2)
+        body.grid_rowconfigure(0, weight=1)
 
         list_card = self._card(body)
-        list_card.grid(row=0, column=0, sticky="nsew", pady=(0, 14))
+        list_card.grid(row=0, column=0, sticky="nsew")
         list_card.grid_columnconfigure(0, weight=1)
         list_card.grid_rowconfigure(2, weight=1)
         self._card_title(list_card, "Your Models").grid(row=0, column=0, sticky="w", padx=16, pady=(14, 8))
@@ -2743,7 +3357,7 @@ class ModelDeepenerApp(ctk.CTk):
         ctk.CTkComboBox(
             filters,
             variable=self.models_type_filter_var,
-            values=["All"] + [importer_class.FORMAT_NAME.upper() for importer_class in supported_importers()],
+            values=["All", "FMMLx", "CSV", "PlantUML", "XMI", "Ecore"],
             width=190,
             height=44,
             corner_radius=7,
@@ -2796,23 +3410,14 @@ class ModelDeepenerApp(ctk.CTk):
         )
         self.models_scrollbar.grid(row=0, column=1, sticky="ns", padx=(4, 0))
         self.models_canvas.configure(
-            yscrollcommand=self.models_scrollbar.set,
+            yscrollcommand=self._on_models_canvas_scroll,
         )
+        self.models_canvas.bind("<Destroy>", self._cancel_models_canvas_redraw, add="+")
         self.models_canvas.bind("<Enter>", self._bind_models_scroll_events)
         self.models_canvas.bind("<Leave>", self._unbind_models_scroll_events)
         self.models_canvas.bind("<Configure>", lambda _event: self._populate_models_table())
 
-        details_card = self._card(body)
-        details_card.grid(row=1, column=0, sticky="nsew")
-        details_card.grid_columnconfigure(0, weight=1)
-        self._card_title(details_card, "Selected Model").grid(row=0, column=0, sticky="w", padx=16, pady=(14, 8))
-        self.overview_details = ctk.CTkFrame(details_card, fg_color="#ffffff")
-        self.overview_details.grid(row=1, column=0, sticky="nsew", padx=16, pady=(0, 16))
-        self.overview_details.grid_columnconfigure(0, weight=0, minsize=380)
-        self.overview_details.grid_columnconfigure(1, weight=1)
-
         self._populate_models_table()
-        self._render_overview_details(None)
 
     def _select_example_file(self):
         """
@@ -2890,8 +3495,10 @@ class ModelDeepenerApp(ctk.CTk):
                 return
             self.file_path_var.set(selected_path)
             self.current_file_path = selected_path
+            self._file_selection_mode = "example"
             dialog.destroy()
             self._validate_current_file()
+            self._set_file_input_mode("example")
 
         def toggle_folder(event) -> None:
             item = tree.identify_row(event.y)
@@ -2927,6 +3534,7 @@ class ModelDeepenerApp(ctk.CTk):
             command=choose_selected,
         ).grid(row=0, column=2)
         self._overlay.cover(dialog)
+        self.wait_window(dialog)
 
     @staticmethod
     def _collect_example_files(examples_root: str) -> list[tuple[str, list[str]]]:
@@ -2951,6 +3559,791 @@ class ModelDeepenerApp(ctk.CTk):
                 rows.append((folder_path, supported_files))
         return rows
 
+    def _build_batch_folder_panel(self, parent) -> None:
+        """Build the fixed-height scrollable folder selection."""
+        self.batch_folder_panel = ctk.CTkFrame(parent, fg_color="transparent", height=100)
+        self.batch_folder_panel.grid(row=0, column=0, sticky="ew", padx=(0, 8))
+        self.batch_folder_panel.grid_propagate(False)
+        self.batch_folder_panel.grid_columnconfigure(0, weight=1)
+        self.batch_folder_panel.grid_rowconfigure(0, weight=1)
+        self.batch_folder_panel.grid_remove()
+        self.batch_folder_list = ctk.CTkScrollableFrame(self.batch_folder_panel, height=70, fg_color="#F8FAFC")
+        self.batch_folder_list.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+
+    def _activate_file_input(self, mode: str, callback: Callable[[], None]) -> None:
+        """Open the chooser of an input mode; the mode changes only when the chooser selects something."""
+        callback()
+        self._reset_file_input_hover()
+
+    def _reset_file_input_hover(self) -> None:
+        """Remove the hover look that a closed chooser left on the clicked input button.
+
+        CustomTkinter restores the hover color 100 ms after a click. A native file dialog keeps the
+        pointer away from the button, so no leave event follows and a cancelled chooser would leave
+        the button looking selected.
+        """
+        x, y = self.winfo_pointerxy()
+        under = self.winfo_containing(x, y)
+        for button in self._file_input_buttons.values():
+            if not button.winfo_exists():
+                continue
+            button._click_animation_running = False
+            inside = under is not None and (str(under) + ".").startswith(str(button) + ".")
+            if inside:
+                button._on_enter()
+            else:
+                button._on_leave()
+
+    def _set_file_input_mode(self, mode: str) -> None:
+        """Update the selected input button and the adjacent browse action."""
+        self._file_input_mode = mode
+        for name, button in self._file_input_buttons.items():
+            selected = name == mode
+            button.configure(fg_color=self.colors["primary"] if selected else self.colors["surface_alt"],
+                             hover_color=self.colors["primary_hover"] if selected else "#EEF2F7",
+                             text_color="#FFFFFF" if selected else self.colors["text"],
+                             border_width=0 if selected else 1,
+                             border_color=self.colors["border"],
+                             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold" if selected else "normal"))
+        selected = bool(getattr(self, "current_file_path", None)) and getattr(self, "_file_selection_mode", None) == mode
+        text = "Add Folder" if mode == "batch" else "Change File" if selected else "Select" if mode == "example" else "Browse..."
+        self.file_browse_button.configure(text=text,
+                                          command=(self._add_batch_folder if mode == "batch" else
+                                                   self._select_example_file if mode == "example" else self._browse_file))
+
+    def _ask_batch_source(self) -> str | None:
+        """Ask whether a batch is selected as files or as a folder."""
+        dialog = _styled_dialog(self, "Batch Import")
+        _dialog_heading(dialog, "Choose What to Import", self.colors)
+        row = ctk.CTkFrame(dialog, fg_color="transparent")
+        row.pack(fill="x", padx=18, pady=18)
+        result = [None]
+        def choose(value):
+            result[0] = value
+            dialog.destroy()
+        _dialog_primary_button(row, "Select Files", lambda: choose("files"), self.colors).pack(side="left", padx=(0, 8))
+        _dialog_primary_button(row, "Select Folder", lambda: choose("folder"), self.colors).pack(side="left", padx=(0, 8))
+        _dialog_plain_button(row, "Cancel", lambda: choose(None), self.colors).pack(side="right")
+        dialog.bind("<Escape>", lambda _event: choose(None))
+        self._overlay.cover(dialog)
+        dialog.grab_set()
+        self.wait_window(dialog)
+        return result[0]
+
+    @staticmethod
+    def _collect_batch_folder(folder: str) -> list[str]:
+        """Return supported files in a folder and its subfolders."""
+        extensions = {ext.lower() for ext in supported_extensions()}
+        paths = []
+        for root, directories, files in os.walk(folder):
+            directories.sort()
+            paths.extend(os.path.join(root, name) for name in sorted(files)
+                         if os.path.splitext(name)[1].lower() in extensions)
+        return paths
+
+    def _choose_batch_folders(self, title: str) -> list[str]:
+        """Choose folders with native multiple selection on Windows."""
+        if sys.platform == "win32":
+            self.update_idletasks()
+            get_parent = ctypes.windll.user32.GetParent
+            get_parent.argtypes = [ctypes.c_void_p]
+            get_parent.restype = ctypes.c_void_p
+            owner = get_parent(self.winfo_id()) or self.winfo_id()
+            return choose_windows_folders(owner)
+        folder = filedialog.askdirectory(parent=self, title=title)
+        return [folder] if folder else []
+
+    def _browse_batch(self) -> None:
+        """Select batch files or folders for the import page."""
+        choice = self._ask_batch_source()
+        if choice is None:
+            return
+        self._overlay.show()
+        try:
+            if choice == "folder":
+                folders = self._choose_batch_folders("Select Folder")
+                paths = None
+            else:
+                paths = filedialog.askopenfilenames(parent=self, filetypes=self._import_file_types())
+                folders = []
+        except OSError as error:
+            self._show_error("Batch Import", str(error))
+            return
+        finally:
+            self._overlay.hide()
+        if folders:
+            self._set_file_input_mode("batch")
+            self._scan_batch_folders(folders, replace=True)
+        elif paths:
+            self._set_file_input_mode("batch")
+            if len(paths) == 1:
+                self.file_path_var.set(paths[0])
+                self._validate_current_file()
+            else:
+                self._select_batch_files(paths)
+
+    def _add_batch_folder(self) -> None:
+        """Add folders selected in the native picker."""
+        self._overlay.show()
+        try:
+            folders = self._choose_batch_folders("Add Folder")
+        except OSError as error:
+            self._show_error("Batch Import", str(error))
+            return
+        finally:
+            self._overlay.hide()
+        if folders:
+            self._scan_batch_folders(folders)
+
+    def _scan_batch_folders(self, folders: list[str], replace: bool = False) -> None:
+        """Find supported files in selected folders before updating the selection."""
+        def scan(progress):
+            results = []
+            for index, folder in enumerate(folders, 1):
+                results.append((folder, self._collect_batch_folder(folder)))
+                progress(index, len(folders))
+            return results
+        def selected(results):
+            if replace:
+                self.current_batch_folders = {}
+            for folder, files in results:
+                key = os.path.normcase(os.path.abspath(folder))
+                self.current_batch_folders[key] = (folder, files)
+            self._show_batch_folders()
+            if not any(files for _folder, files in results):
+                self._show_information("Batch Import", "No supported files were found in the selected folders.")
+        self._run_model_task(len(folders), "Finding files...", scan, selected,
+                             lambda error: self._show_error("Batch Import", str(error)))
+
+    def _remove_batch_folder(self, key: str) -> None:
+        """Remove one folder and update the batch selection."""
+        self.current_batch_folders.pop(key, None)
+        self._show_batch_folders()
+
+    def _show_batch_folders(self) -> None:
+        """Show selected folders and retain each supported file at most once."""
+        paths = []
+        seen = set()
+        for _folder, files in self.current_batch_folders.values():
+            for path in files:
+                key = os.path.normcase(os.path.abspath(path))
+                if key not in seen:
+                    seen.add(key)
+                    paths.append(path)
+        self._select_batch_files(paths, folders=True)
+        for child in self.batch_folder_list.winfo_children():
+            child.destroy()
+        for key, (folder, files) in self.current_batch_folders.items():
+            row = ctk.CTkFrame(self.batch_folder_list, fg_color="transparent")
+            row.pack(fill="x", pady=2)
+            ctk.CTkButton(row, text="x", width=28, height=28, corner_radius=7,
+                          fg_color=self.colors["primary_soft"], hover_color=self.colors["primary_soft"],
+                          text_color=self.colors["primary"], border_width=1, border_color="#AFCBFF",
+                          command=lambda value=key: self._remove_batch_folder(value)).pack(side="right")
+            ctk.CTkLabel(row, text=f"{folder}  ({len(files)} files)", anchor="w", justify="left", wraplength=360).pack(
+                side="left", fill="x", expand=True, padx=(4, 8))
+
+    def _select_batch_files(self, paths, folder=None, folders=False) -> None:
+        self.current_batch_paths = list(paths)
+        self.current_file_path = None
+        self.csv_preview = None
+        self.xml_preview = None
+        self.selected_csv_columns.clear()
+        self.file_entry.grid_remove()
+        if folders:
+            self.batch_file_list.grid_remove()
+            self.batch_folder_panel.grid()
+        else:
+            self.current_batch_folders = {}
+            self.batch_folder_panel.grid_remove()
+            self.batch_file_list.configure(state="normal")
+            self.batch_file_list.delete("1.0", "end")
+            display = f"{folder}\n{len(paths)} files found" if folder else "\n".join(paths)
+            self.batch_file_list.insert("1.0", display)
+            self.batch_file_list.configure(state="disabled")
+            self.batch_file_list.grid()
+        self._set_column_selection_enabled(False)
+        self._render_empty_preview("Column selection is only available when importing a single file.")
+        self._set_validation_badge_visible(False)
+        unsupported = [] if folder or folders else [path for path in paths if self._importer_for_file(path) is None]
+        self._set_validation_rows([("Files", str(len(paths))),
+                                   ("Status", "Unsupported file type" if unsupported else "Ready to import" if paths else "Select files or folders")])
+        self._set_create_button_enabled(bool(paths) and not unsupported)
+
+    def _run_model_task(self, total, message, work, on_success, on_error, dialog=None, handoff=False):
+        """Run model work outside Tk and deliver progress and results on the UI thread."""
+        if getattr(self, "_model_task_active", False):
+            return
+        self._model_task_active = True
+        blocker = None
+        buttons = []
+        if dialog is None:
+            blocker = tk.Frame(self, width=1, height=1, takefocus=True)
+            blocker.place(x=0, y=0)
+            blocker.grab_set()
+            self._overlay.show()
+        else:
+            original_close = dialog.protocol("WM_DELETE_WINDOW")
+            original_keys = {key: dialog.bind(key) for key in ("<Return>", "<Escape>")}
+            dialog.protocol("WM_DELETE_WINDOW", lambda: None)
+            for key in original_keys:
+                dialog.bind(key, lambda _event: "break")
+            def disable_buttons(widget):
+                for child in widget.winfo_children():
+                    if isinstance(child, ctk.CTkButton):
+                        buttons.append((child, child.cget("state")))
+                        child.configure(state="disabled")
+                    disable_buttons(child)
+            disable_buttons(dialog)
+        events = queue.Queue()
+        state = {"dialog": None, "count": 0, "done": False, "opening": False, "message": message, "fraction": None}
+
+        def run():
+            try:
+                result = work(lambda count, size, phase=None, fraction=None: events.put(("progress", count, size, phase, fraction)))
+                events.put(("result", result))
+            except Exception as error:
+                events.put(("error", error))
+
+        def show_progress():
+            if not state["done"]:
+                state["opening"] = True
+                if dialog is None:
+                    progress_window = getattr(self, "_model_progress_dialog", None)
+                    if progress_window is None or not progress_window.winfo_exists():
+                        progress_window = ModelProgressDialog(self, total, state["message"])
+                        self._model_progress_dialog = progress_window
+                    else:
+                        progress_window.prepare(total, state["message"])
+                    progress_window.show()
+                    state["dialog"] = progress_window
+                else:
+                    state["dialog"] = InlineModelProgress(dialog, total, state["message"], self.colors)
+                state["opening"] = False
+                state["dialog"].update_progress(state["count"], total, state["fraction"])
+
+        def poll():
+            if state["opening"]:
+                self.after(30, poll)
+                return
+            latest = None
+            terminal = None
+            try:
+                while True:
+                    event = events.get_nowait()
+                    if event[0] == "progress":
+                        latest = event
+                    else:
+                        terminal = event
+                        break
+            except queue.Empty:
+                pass
+            if latest is not None:
+                state["count"] = latest[1]
+                if latest[3] is not None:
+                    state["message"] = latest[3]
+                state["fraction"] = latest[4]
+                if state["dialog"]:
+                    state["dialog"].set_message(state["message"])
+                    state["dialog"].update_progress(latest[1], latest[2], latest[4])
+            if terminal is None:
+                self.after(30, poll)
+                return
+            state["done"] = True
+            self.after_cancel(timer)
+            released = [False]
+            def release():
+                if released[0]:
+                    return
+                released[0] = True
+                if state["dialog"]:
+                    if state["dialog"]._indeterminate:
+                        state["dialog"].bar.stop()
+                    if dialog is None:
+                        state["dialog"].hide()
+                    else:
+                        _cancel_widget_timers(state["dialog"])
+                        state["dialog"].destroy()
+                if blocker is not None:
+                    blocker.grab_release()
+                    blocker.destroy()
+                    self._overlay.hide()
+                else:
+                    dialog.protocol("WM_DELETE_WINDOW", original_close)
+                    for key, binding in original_keys.items():
+                        dialog.tk.call("bind", dialog._w, key, binding)
+                    for button, previous in buttons:
+                        if button.winfo_exists():
+                            button.configure(state=previous)
+                self._model_task_active = False
+            if handoff and terminal[0] == "result":
+                def finish_handoff():
+                    if state["dialog"]:
+                        state["dialog"].update_progress(total, total, 1.0)
+                    release()
+                try:
+                    on_success(terminal[1], finish_handoff)
+                finally:
+                    release()
+            else:
+                release()
+                (on_success if terminal[0] == "result" else on_error)(terminal[1])
+
+        timer = self.after(500, show_progress)
+        threading.Thread(target=run, daemon=True).start()
+        self.after(30, poll)
+
+    def _start_batch_import(self) -> None:
+        self._create_batch(list(self.current_batch_paths))
+
+    def _create_batch(self, paths) -> None:
+        """Read all candidates, ask once about their reports, then save them together."""
+        self._overlay.show()
+        def read(progress):
+            candidates = []
+            failures = []
+            reports = []
+            total = len(paths)
+            work_units = max(1, 2 * total + 1)
+            for index, path in enumerate(paths, 1):
+                try:
+                    importer = self._importer_for_file(path)
+                    if importer is None:
+                        raise ValueError(f"Unsupported file: {path}")
+                    model, report = importer.import_file(path)
+                    if isinstance(importer, XmiImporter) and not model.get_objects():
+                        raise ValueError("No objects found")
+                    candidates.append((path, importer, model, report))
+                except Exception as error:
+                    failures.append((path, str(error) or type(error).__name__))
+                progress(index, total, "Importing models...", index / work_units)
+            for index, (path, _importer, _model, report) in enumerate(candidates, 1):
+                visible = visible_import_report(report)
+                if visible.has_problems():
+                    reports.append((os.path.basename(path), visible))
+                progress(index, total, "Preparing report...", (total + index) / work_units)
+            summary = batch_problem_summary(reports, failures)
+            rows = batch_report_rows(reports)
+            failure_text = "\n".join(f"{name}: {reason}" for name, reason in failures)
+            progress(total, total, "Preparing report...", (2 * total) / work_units)
+            return candidates, failures, reports, summary, rows, failure_text
+
+        def failed(error):
+            try:
+                self._show_error("Batch import failed", str(error))
+            finally:
+                self._overlay.hide()
+
+        def read_done(result, release):
+            candidates, failures, reports, summary, rows, failure_text = result
+            if reports or failures:
+                accepted = self._ask_batch_problems(reports, failures, prepared_summary=summary,
+                                                    prepared_rows=rows, prepared_failure_text=failure_text,
+                                                    on_visible=release)
+            else:
+                release()
+                accepted = True
+            if not accepted or not candidates:
+                self._overlay.hide()
+                return
+
+            def saved(_result):
+                self.batch_tab.grid()
+                self._show_batch_page()
+                self._overlay.hide()
+
+            self._run_model_task(len(candidates), "Saving models...",
+                                 lambda progress: self._store_batch(candidates, progress), saved, failed)
+
+        self._run_model_task(len(paths), "Importing models...", read, read_done, failed, handoff=True)
+
+    def _ask_batch_problems(self, reports, failures=(), prepared_summary=None, prepared_rows=None,
+                            prepared_failure_text=None, on_visible=None) -> bool:
+        if prepared_summary is None:
+            reports = [(name, visible_import_report(report)) for name, report in reports]
+            reports = [(name, report) for name, report in reports if report.has_problems()]
+            prepared_summary = batch_problem_summary(reports, failures)
+        if prepared_rows is None:
+            prepared_rows = batch_report_rows(reports)
+        if prepared_failure_text is None:
+            prepared_failure_text = "\n".join(f"{name}: {reason}" for name, reason in failures)
+        if not reports and not failures:
+            return True
+        dialog = _styled_dialog(self, "Import Problems", resizable=True)
+        dialog.withdraw()
+        scaling = ctk.ScalingTracker.get_window_scaling(dialog)
+        screen_width = max(1, int((dialog.winfo_screenwidth() - 40) / scaling))
+        screen_height = max(1, int((dialog.winfo_screenheight() - 80) / scaling))
+        width = min(800, screen_width)
+        collapsed_height = min(460 if failures else 360, screen_height)
+        dialog.minsize(min(760, screen_width), min(440 if failures else 340, screen_height))
+        dialog.maxsize(screen_width, screen_height)
+        dialog.geometry(f"{width}x{collapsed_height}")
+        _dialog_heading(dialog, "Import Problems", self.colors)
+        ctk.CTkLabel(dialog, text="Summary", anchor="w",
+                     text_color=self.colors["muted"], font=ctk.CTkFont(family="Segoe UI", size=13)).pack(
+                         fill="x", padx=18, pady=(0, 10))
+        summary = ctk.CTkTextbox(dialog, width=680, height=90 if failures else 160, wrap="word", text_color=self.colors["text"],
+                                 font=ctk.CTkFont(family="Segoe UI", size=13))
+        summary.pack(fill="both", padx=18)
+        summary.insert("1.0", "\n".join(prepared_summary))
+        summary.configure(state="disabled")
+        if failures:
+            ctk.CTkLabel(dialog, text="Could Not Be Imported", anchor="w", text_color=self.colors["text"],
+                         font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold")).pack(fill="x", padx=18, pady=(8, 2))
+            failed_list = ctk.CTkTextbox(dialog, width=680, height=85, wrap="word", text_color=self.colors["text"],
+                                          font=ctk.CTkFont(family="Segoe UI", size=12))
+            failed_list.pack(fill="x", padx=18)
+            failed_list.insert("1.0", prepared_failure_text)
+            failed_list.configure(state="disabled")
+        status = ctk.CTkLabel(dialog, text="", anchor="w", text_color=self.colors["muted"],
+                              font=ctk.CTkFont(family="Segoe UI", size=12))
+        status.pack(side="bottom", fill="x", padx=18, pady=(0, 4))
+        row = ctk.CTkFrame(dialog, fg_color="transparent")
+        row.pack(side="bottom", fill="x", padx=18, pady=(8, 18))
+        details_panel = ctk.CTkFrame(dialog, fg_color="transparent")
+        ctk.CTkLabel(details_panel, text="Details per Model", anchor="w", text_color=self.colors["text"],
+                     font=ctk.CTkFont(family="Segoe UI", size=14, weight="bold")).pack(fill="x", pady=(8, 4))
+        details = BatchProblemDetails(details_panel, reports, self.colors, prepared=True, initial_rows=prepared_rows)
+        details.pack(fill="x")
+        result = [False]
+        def finish(accepted):
+            result[0] = accepted
+            _cancel_widget_timers(dialog)
+            dialog.destroy()
+        def toggle_details():
+            if details_panel.winfo_manager():
+                details_panel.pack_forget()
+                details_button.configure(text="Show Details")
+                dialog.geometry(f"{width}x{collapsed_height}")
+                dialog.update_idletasks()
+                center_popup(dialog, self)
+            else:
+                details_panel.pack(fill="x", padx=18, pady=(0, 4))
+                details_button.configure(text="Hide Details")
+                dialog.geometry(f"{min(screen_width, max(width, dialog.winfo_width()))}x{min(screen_height, 620 if failures else 520)}")
+                dialog.update_idletasks()
+                center_popup(dialog, self)
+        def export_list():
+            path = filedialog.asksaveasfilename(parent=self, title="Export Problem List (CSV)",
+                                                 initialfile="import_problems.csv", defaultextension=".csv",
+                                                 filetypes=[("CSV files", "*.csv"), ("All files", "*.*")])
+            if not path:
+                return
+            try:
+                write_batch_problem_list(path, reports, failures)
+            except (OSError, csv.Error) as error:
+                status.configure(text=f"The list could not be saved: {error}")
+            else:
+                status.configure(text=f"List saved: {path}")
+        details_button = _dialog_plain_button(row, "Show Details", toggle_details, self.colors)
+        details_button.pack(side="left")
+        _dialog_plain_button(row, "Export Problem List (CSV)", export_list, self.colors).pack(side="left", padx=(8, 0))
+        _dialog_primary_button(row, "Continue Import", lambda: finish(True), self.colors).pack(side="right")
+        _dialog_plain_button(row, "Cancel Import", lambda: finish(False), self.colors).pack(side="right", padx=(0, 8))
+        dialog.bind("<Return>", lambda _event: finish(True))
+        dialog.bind("<Escape>", lambda _event: finish(False))
+        dialog.protocol("WM_DELETE_WINDOW", lambda: finish(False))
+        if on_visible is not None:
+            on_visible()
+        self._overlay.cover(dialog)
+        def show_dialog():
+            dialog.update_idletasks()
+            dialog.deiconify()
+            dialog.update_idletasks()
+            center_popup(dialog, self)
+            dialog.lift()
+            dialog.focus_force()
+            dialog.grab_set()
+        dialog.after(50, show_dialog)
+        dialog.wait_visibility()
+        self.wait_window(dialog)
+        return result[0]
+
+    def _store_batch(self, candidates, progress=None) -> None:
+        """Commit the complete batch once, removing staged objects if saving fails."""
+        staged = []
+        used = {item.name for item in self.loaded_models}
+        next_numbers = {}
+        try:
+            for index, (path, importer, model, _report) in enumerate(candidates, 1):
+                source_file = os.path.basename(path)
+                base_name = model.path_name.split("::")[-1] if model.path_name else os.path.splitext(source_file)[0]
+                name, number = base_name, next_numbers.get(base_name, 2)
+                while name in used:
+                    name = f"{base_name} ({number})"
+                    number += 1
+                next_numbers[base_name] = number
+                used.add(name)
+                loaded = LoadedModel(name=name, source_file=source_file, file_type=importer.FORMAT_NAME.upper(),
+                                     model=model, source_path=path,
+                                     selected_columns=CsvReader(path).get_header() if isinstance(importer, CsvImporter) else [],
+                                     uploaded=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                     last_worked_on=self._current_timestamp_text(), last_action=self.ACTION_TITLES[2])
+                self._database.store(loaded)
+                staged.append(loaded)
+                if progress:
+                    progress(index, len(candidates), "Preparing models...", 0.5 * index / len(candidates))
+            if progress:
+                progress(len(candidates), len(candidates), "Writing database...", 0.5)
+            self._database.commit()
+            if progress:
+                progress(len(candidates), len(candidates), "Writing database...", 1.0)
+        except Exception:
+            for loaded in staged:
+                self._database.delete(loaded.get_oid())
+            raise
+        self.loaded_models.extend(staged)
+        self.batch_models = staged
+
+    @staticmethod
+    def _batch_format(loaded: LoadedModel) -> str:
+        """Use the stored import format, falling back to the source name for older models."""
+        file_type = (getattr(loaded, "file_type", "") or "").upper()
+        aliases = {"XML": "FMMLx", "FMMLX": "FMMLx", "CSV": "CSV", "PLANTUML": "PlantUML",
+                   "XMI": "XMI", "UML-XMI": "XMI", "ECORE": "Ecore"}
+        if file_type in aliases:
+            return aliases[file_type]
+        source = getattr(loaded, "source_file", "") or getattr(loaded, "source_path", "")
+        extension = os.path.splitext(source)[1].lower()
+        return {".xml": "FMMLx", ".csv": "CSV", ".puml": "PlantUML", ".plantuml": "PlantUML",
+                ".txt": "PlantUML", ".xmi": "XMI", ".ecore": "Ecore"}.get(extension, "")
+
+    def _prepare_batch_page(self, models, progress):
+        """Prepare batch counts, means, visible columns and row values."""
+        metrics = []
+        for index, loaded in enumerate(models, 1):
+            metrics.append(self._model_metrics(loaded.model))
+            progress(index, len(models))
+        counts = [("Number of Models", len(models))]
+        counts.extend(("Number of " + name, sum(self._batch_format(item) == name for item in models))
+                      for name in ("FMMLx", "CSV", "PlantUML", "XMI", "Ecore"))
+        means = ([(label, (2 * sum(row[index][1] for row in metrics) + len(models)) // (2 * len(models)))
+                  for index, (label, _) in enumerate(metrics[0])] if metrics else [])
+        active = [index for index in range(len(metrics[0]))
+                  if any(row[index][1] > 0 for row in metrics)] if metrics else []
+        headers = ("Model Name", "Format") + tuple(metrics[0][index][0] for index in active) if metrics else ("Model Name", "Format")
+        rows = [(loaded.name, self._batch_format(loaded) or self._display_file_type(loaded.file_type))
+                + tuple(values[index][1] for index in active)
+                for loaded, values in zip(models, metrics)]
+        return counts, means, headers, rows
+
+    def _show_batch_page(self) -> None:
+        models = list(self.batch_models)
+        self._run_model_task(len(models), "Preparing models...",
+                             lambda progress: self._prepare_batch_page(models, progress),
+                             lambda result: self._render_batch_page(*result),
+                             lambda error: self._show_error("Inspect Models", str(error)))
+
+    @atomic_page
+    def _render_batch_page(self, counts, means, headers, rows) -> None:
+        self._batch_view = "inspect"
+        self._tell_menu_open[True] = False
+        self._show_batch_sidebar(analysis=False)
+        self._set_top_tab("batch")
+        self._clear_content()
+        self._page_header("Inspect Models", "Review the selected models.")
+        body = ctk.CTkFrame(self.content, fg_color="transparent")
+        body.grid(row=1, column=0, sticky="nsew")
+        body.grid_columnconfigure(0, weight=1)
+        body.grid_rowconfigure(2, weight=1)
+        colors = {"Higher Level Classes": "#315D9B", "Classes": "#2563EB", "Attributes": "#7C3AED",
+                  "Enumeration Types": "#F59E0B", "Generalizations": "#E11D48", "Associations": "#64748B",
+                  "Objects": "#16A34A", "Slots": "#EA580C", "Links": "#0891B2"}
+        formats = ctk.CTkFrame(body, fg_color="transparent")
+        formats.grid(row=0, column=0, sticky="ew", pady=(0, 14))
+        format_colors = {"Number of Models": "#315D9B", "Number of FMMLx": "#2563EB",
+                         "Number of CSV": "#16A34A", "Number of PlantUML": "#7C3AED",
+                         "Number of XMI": "#EA580C", "Number of Ecore": "#0891B2"}
+        for index, (label, value) in enumerate(counts):
+            formats.grid_columnconfigure(index, weight=1, uniform="formats")
+            self._metric_card_no_icon(formats, label, value, format_colors[label]).grid(
+                row=0, column=index, sticky="ew", padx=(0 if index == 0 else 5, 0 if index == len(counts)-1 else 5))
+        metrics = ctk.CTkFrame(body, fg_color="transparent")
+        metrics.grid(row=1, column=0, sticky="ew", pady=(0, 28))
+        for index, (label, value) in enumerate(means):
+            metrics.grid_columnconfigure(index, weight=1, uniform="means")
+            self._metric_card_no_icon(metrics, label, value, colors.get(label, self.colors["primary"])).grid(
+                row=0, column=index, sticky="ew", padx=(0 if index == 0 else 5, 0 if index == len(means)-1 else 5))
+        self._batch_filter_models = list(self.batch_models)
+        self._batch_filter_rows = list(rows)
+        self._batch_filter_headers = headers
+        self._batch_filter_mean_labels = [label for label, _ in means]
+        self._batch_filter_colors = colors
+        self._batch_filter_format_colors = format_colors
+        self._batch_format_tiles = formats
+        self._batch_metric_tiles = metrics
+        card = self._card(body)
+        card.grid(row=2, column=0, sticky="nsew")
+        card.grid_columnconfigure(0, weight=1)
+        card.grid_rowconfigure(2, weight=1)
+        self._card_title(card, "Selected Models").grid(row=0, column=0, sticky="w", padx=16, pady=(14, 8))
+        self._batch_table_host = card
+        self._batch_table_card = self._build_batch_models_table(card, headers, rows, self._batch_filter_models, embedded=True)
+        self._batch_table_card.grid(row=2, column=0, sticky="nsew")
+        self._build_batch_filters(card)
+
+
+    def _build_batch_filters(self, parent) -> None:
+        """Create overview-style filters without changing the batch selection."""
+        filters = ctk.CTkFrame(parent, fg_color="transparent")
+        filters.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 18))
+        filters.grid_columnconfigure(1, weight=1)
+        self.batch_search_var = tk.StringVar(master=self)
+        self.batch_type_filter_var = tk.StringVar(master=self, value="All")
+        self.batch_min_objects_var = tk.StringVar(master=self)
+        self.batch_min_attributes_var = tk.StringVar(master=self)
+        ctk.CTkLabel(filters, text="Search", text_color=self.colors["text"], font=ctk.CTkFont(size=12)).grid(row=0, column=0, sticky="w", padx=(0, 14), pady=10)
+        ctk.CTkEntry(filters, textvariable=self.batch_search_var, placeholder_text="Search Model or File ...",
+                     placeholder_text_color="#94A3B8", height=44, corner_radius=7, border_color="#CBD8EA",
+                     fg_color="#FFFFFF", font=ctk.CTkFont(size=13)).grid(row=0, column=1, sticky="ew", padx=(0, 44), pady=10)
+        ctk.CTkLabel(filters, text="Type", text_color=self.colors["text"], font=ctk.CTkFont(size=12)).grid(row=0, column=2, sticky="w", padx=(0, 14), pady=10)
+        ctk.CTkComboBox(filters, variable=self.batch_type_filter_var,
+                        values=["All", "FMMLx", "CSV", "PlantUML", "XMI", "Ecore"], width=190, height=44,
+                        corner_radius=7, fg_color="#FFFFFF", button_color="#FFFFFF",
+                        button_hover_color=self.colors["primary_soft"], border_color="#CBD8EA", border_width=1,
+                        text_color=self.colors["text"], dropdown_fg_color="#FFFFFF", dropdown_hover_color=self.colors["primary_soft"],
+                        dropdown_text_color=self.colors["text"], state="readonly").grid(row=0, column=3, sticky="w", padx=(0, 44), pady=10)
+        for column, (label, variable, placeholder) in enumerate((("Min objects", self.batch_min_objects_var, "e.g. 100"),
+                                                                 ("Min attributes", self.batch_min_attributes_var, "e.g. 10"))):
+            ctk.CTkLabel(filters, text=label, text_color=self.colors["text"], font=ctk.CTkFont(size=12)).grid(row=0, column=4 + 2 * column, sticky="w", padx=(0, 14), pady=10)
+            ctk.CTkEntry(filters, textvariable=variable, placeholder_text=placeholder, width=116, height=44,
+                         corner_radius=7, border_color="#CBD8EA", fg_color="#FFFFFF").grid(row=0, column=5 + 2 * column, sticky="w", padx=(0, 44 if column == 0 else 0), pady=10)
+        for variable in (self.batch_search_var, self.batch_type_filter_var, self.batch_min_objects_var, self.batch_min_attributes_var):
+            variable.trace_add("write", lambda *_: self._refresh_batch_filter())
+
+    def _refresh_batch_filter(self) -> None:
+        """Update tiles and visible columns from cached data for the filtered batch."""
+        headers = self._batch_filter_headers
+        query = self.batch_search_var.get().strip().lower()
+        kind = self.batch_type_filter_var.get()
+        min_objects = self._optional_int_filter(self.batch_min_objects_var.get())
+        min_attributes = self._optional_int_filter(self.batch_min_attributes_var.get())
+        def value(row, label):
+            return row[headers.index(label)] if label in headers else 0
+        selected = [(model, row) for model, row in zip(self._batch_filter_models, self._batch_filter_rows)
+                    if (not query or query in model.name.lower() or query in model.source_file.lower())
+                    and (kind == "All" or row[1] == kind)
+                    and (min_objects is None or value(row, "Objects") >= min_objects)
+                    and (min_attributes is None or value(row, "Attributes") >= min_attributes)]
+        models = [model for model, _ in selected]
+        original_rows = [row for _, row in selected]
+        active = [index for index in range(2, len(headers)) if any(row[index] > 0 for row in original_rows)]
+        display_headers = headers[:2] + tuple(headers[index] for index in active)
+        display_rows = [row[:2] + tuple(row[index] for index in active) for row in original_rows]
+        counts = [("Number of Models", len(models))] + [("Number of " + name, sum(row[1] == name for row in original_rows))
+                   for name in ("FMMLx", "CSV", "PlantUML", "XMI", "Ecore")]
+        means = [(label, (2 * sum(value(row, label) for row in original_rows) + len(models)) // (2 * len(models)) if models else 0)
+                 for label in self._batch_filter_mean_labels]
+        for frame, entries, palette in ((self._batch_format_tiles, counts, self._batch_filter_format_colors),
+                                        (self._batch_metric_tiles, means, self._batch_filter_colors)):
+            for card, (label, number) in zip(frame.grid_slaves(row=0)[::-1], entries):
+                labels = [child for child in card.winfo_children() if isinstance(child, ctk.CTkLabel)]
+                title, value_label = labels
+                value_text = str(number)
+                size = 17 if len(value_text) >= 7 else 18 if len(value_text) >= 6 else 20 if len(value_text) >= 5 else 22
+                title.configure(text_color="#A8B2C1" if number == 0 else self.colors["text"])
+                value_label.configure(text=value_text, text_color="#A8B2C1" if number == 0 else palette.get(label, self.colors["primary"]))
+                value_label.cget("font").configure(size=size)
+        _cancel_widget_timers(self._batch_table_card)
+        self._batch_table_card.destroy()
+        self._batch_table_card = self._build_batch_models_table(self._batch_table_host, display_headers, display_rows, models, embedded=True)
+        self._batch_table_card.grid(row=2, column=0, sticky="nsew")
+
+    def _build_batch_models_table(self, parent, headers, rows, models=None, embedded=False):
+        models = list(self.batch_models if models is None else models)
+        card = ctk.CTkFrame(parent, fg_color="transparent") if embedded else self._card(parent)
+        card.grid_columnconfigure(0, weight=1)
+        card.grid_rowconfigure(1, weight=1)
+        area = ctk.CTkFrame(card, fg_color="#FFFFFF", corner_radius=0)
+        area.grid(row=1, column=0, sticky="nsew", padx=22, pady=(0, 22))
+        area.grid_columnconfigure(0, weight=1)
+        area.grid_rowconfigure(0, weight=1)
+        canvas = tk.Canvas(area, background="#FFFFFF", highlightthickness=0, bd=0)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar = ctk.CTkScrollbar(area, orientation="vertical", command=canvas.yview,
+                                     width=14, button_color="#AFCBFF", button_hover_color=self.colors["primary"])
+        scrollbar.grid(row=0, column=1, sticky="ns", padx=(4, 0))
+        horizontal = ctk.CTkScrollbar(area, orientation="horizontal", command=canvas.xview,
+                                      height=14, button_color="#AFCBFF", button_hover_color=self.colors["primary"])
+        horizontal.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        canvas.configure(xscrollcommand=ModelDeepenerApp._autohide_scroll(horizontal))
+        vertical_scroll = ModelDeepenerApp._autohide_scroll(scrollbar)
+        def draw(_event=None):
+            canvas.delete("all")
+            minimum_widths = [220, 120] + [130] * (len(headers) - 2)
+            width = max(canvas.winfo_width(), sum(minimum_widths))
+            extra = width - sum(minimum_widths)
+            widths = [value + extra // len(headers) for value in minimum_widths]
+            widths[-1] += width - sum(widths)
+            def cell(x, y, w, height, text, background, foreground, font):
+                rect = canvas.create_rectangle(x, y, x+w, y+height, fill=background, outline="#AFC1D9", width=1)
+                label = canvas.create_text(x+w/2, y+height/2, text=str(text), fill=foreground,
+                                           font=font, anchor="center", justify="center", width=max(20, w-18))
+                return rect, label
+            x = 0
+            for header, column_width in zip(headers, widths):
+                cell(x, 0, column_width, 58, header, "#DFE9FD", "#04173D", ("Segoe UI", 12, "bold"))
+                x += column_width
+            first = max(0, int((canvas.canvasy(0) - 58) // 64) - 1)
+            last = min(len(models), int((canvas.canvasy(canvas.winfo_height()) - 58) // 64) + 2)
+            for index in range(first, last):
+                loaded = models[index]
+                y = 58 + index * 64
+                background = "#FFFFFF" if index % 2 == 0 else "#F3F7FD"
+                x = 0
+                for value, column_width in zip(rows[index], widths):
+                    for item in cell(x, y, column_width, 64, value, background, self.colors["text"], ("Segoe UI", 12)):
+                        canvas.tag_bind(item, "<Button-1>", lambda _event, target=loaded: self._open_loaded_model(target))
+                        canvas.tag_bind(item, "<Enter>", lambda _event: canvas.configure(cursor="hand2"))
+                        canvas.tag_bind(item, "<Leave>", lambda _event: canvas.configure(cursor=""))
+                    x += column_width
+            canvas.create_rectangle(0, 0, max(1, width - 1), 58 + max(1, len(models)) * 64 - 1, outline="#AFC1D9", width=1)
+            region = (0, 0, width, 58 + max(1, len(models)) * 64)
+            if getattr(canvas, "_last_scrollregion", None) != region:
+                canvas._last_scrollregion = region
+                canvas.configure(scrollregion=region)
+        def on_scroll(first, last):
+            vertical_scroll(first, last)
+            position = (first, last)
+            if position == getattr(canvas, "_last_scroll_position", None):
+                return
+            canvas._last_scroll_position = position
+            if not getattr(canvas, "_redraw_pending", False):
+                canvas._redraw_pending = True
+                def redraw():
+                    canvas._redraw_pending = False
+                    if canvas.winfo_exists():
+                        draw()
+                canvas._redraw_after = canvas.after_idle(redraw)
+        def cancel_redraw(event):
+            if event.widget is canvas and getattr(canvas, "_redraw_pending", False):
+                canvas.after_cancel(canvas._redraw_after)
+                canvas._redraw_pending = False
+        canvas.bind("<Destroy>", cancel_redraw, add="+")
+        canvas.configure(yscrollcommand=on_scroll)
+        canvas.bind("<Configure>", draw)
+        canvas.bind("<MouseWheel>", lambda event: canvas.yview_scroll(int(-event.delta / 120), "units"))
+        return card
+
+    def _show_batch_analysis(self) -> None:
+        """Prepare the batch analysis before displaying it."""
+        selection = self._tell_selection[True]
+        models = [(loaded.name, loaded.model) for loaded in self.batch_models]
+        self._run_model_task(len(models), "Preparing analysis...", lambda progress: analyze_tells(selection, models, progress),
+                             lambda rows: self._build_view_hidden(lambda: self._render_batch_analysis(selection, rows)),
+                             lambda error: self._show_error("Analysis", str(error)))
+
+    @atomic_page
+    def _render_batch_analysis(self, selection, rows) -> None:
+        self._batch_view = "analysis"
+        self._tell_menu_open[True] = True
+        self._show_batch_sidebar(analysis=True)
+        self._set_top_tab("batch")
+        self._clear_content()
+        self._page_header(*tell_description(selection))
+        self._build_tell_results(self.content, batch=True, row_provider=lambda _selection: rows).grid(row=1, column=0, sticky="nsew")
+
     def _browse_file(self) -> None:
         """Ask for a supported model file and validate its selection.
 
@@ -2962,7 +4355,14 @@ class ModelDeepenerApp(ctk.CTk):
         if file_path:
             self.file_path_var.set(file_path)
             self.current_file_path = file_path
+            self._file_selection_mode = "upload"
             self._validate_current_file()
+            self._set_file_input_mode("upload")
+
+    @staticmethod
+    def _display_file_type(file_type: str) -> str:
+        return {"XML": "FMMLx", "FMMLX": "FMMLx", "CSV": "CSV", "PLANTUML": "PlantUML",
+                "XMI": "XMI", "UML-XMI": "XMI", "ECORE": "Ecore"}.get(file_type.upper(), file_type)
 
     @staticmethod
     def _import_file_types() -> list[tuple[str, str]]:
@@ -2975,7 +4375,7 @@ class ModelDeepenerApp(ctk.CTk):
             patterns = []
             for extension in importer_class.EXTENSIONS:
                 patterns.append(f"*{extension}")
-            file_types.append((f"{importer_class.FORMAT_NAME} files", " ".join(patterns)))
+            file_types.append((f"{ModelDeepenerApp._display_file_type(importer_class.FORMAT_NAME)} files", " ".join(patterns)))
         file_types.append(("All files", "*.*"))
         return file_types
 
@@ -2989,6 +4389,11 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _validate_current_file(self) -> None:
         """Validate the chosen format and enable creation only when its selection is usable."""
+        self.current_batch_paths = []
+        self.current_batch_folders = {}
+        self.batch_file_list.grid_remove()
+        self.batch_folder_panel.grid_remove()
+        self.file_entry.grid()
         file_path = self.file_path_var.get().strip()
         self.current_file_path = file_path or None
         self.csv_preview = None
@@ -2996,6 +4401,7 @@ class ModelDeepenerApp(ctk.CTk):
         self.selected_csv_columns.clear()
 
         if not file_path:
+            self._set_column_selection_enabled(False)
             self._set_validation_badge_visible(True)
             self.validation_status_badge.configure(
                 text="Not validated",
@@ -3003,42 +4409,60 @@ class ModelDeepenerApp(ctk.CTk):
                 text_color=self.colors["muted"],
             )
             self._set_validation_rows([("File", "No file selected")])
-            self._render_empty_preview(f"Select a {supported_formats_text(' or ')} file to start.")
+            self._render_empty_preview("Select a file to start.")
             self._set_create_button_enabled(False)
             return
 
         self._set_validation_badge_visible(False)
         extension = os.path.splitext(file_path)[1].lower()
         importer = self._importer_for_file(file_path)
-        if isinstance(importer, CsvImporter):
-            csv_preview = self._build_csv_preview(file_path)
-            self.csv_preview = csv_preview
-            self._render_csv_validation(csv_preview)
-            self._render_csv_mapping(csv_preview)
-            can_create = not csv_preview.errors and csv_preview.header_detected
-        elif isinstance(importer, XmlImporter):
-            xml_preview = self._build_xml_preview(file_path)
-            self.xml_preview = xml_preview
-            self._render_xml_validation(xml_preview)
-            self._render_xml_preview(xml_preview)
-            can_create = not xml_preview.errors
+        self._set_column_selection_enabled(isinstance(importer, CsvImporter))
+        if isinstance(importer, (CsvImporter, XmlImporter)):
+            self._set_create_button_enabled(False)
+            is_csv = isinstance(importer, CsvImporter)
+            def prepared(preview):
+                if is_csv:
+                    self.csv_preview = preview
+                    self._render_csv_validation(preview)
+                    self._render_csv_mapping(preview)
+                    can_create = not preview.errors and preview.header_detected
+                else:
+                    self.xml_preview = preview
+                    self._render_xml_validation(preview)
+                    self._render_empty_preview("Column selection is only available for CSV files.")
+                    can_create = not preview.errors
+                self._set_create_button_enabled(can_create and self._can_create_current_file())
+            self._run_model_task(1, "Validating file...",
+                                 lambda _progress: self._build_csv_preview(file_path) if is_csv else self._build_xml_preview(file_path),
+                                 prepared, lambda error: self._show_error("Validation", str(error)))
+            return
         elif isinstance(importer, (PlantUmlImporter, EcoreImporter, XmiImporter)):
             self._set_validation_rows([
                 ("File type", importer.FORMAT_NAME),
                 ("Status", "Not Validated"),
                 ("Errors", "None"),
             ])
-            self._render_empty_preview(f"{importer.FORMAT_NAME} files have no preview. Create the model to import it.")
+            self._render_empty_preview("Column selection is only available for CSV files.")
             can_create = True
         else:
             self._set_validation_rows([
                 ("File type", extension or "unknown"),
                 ("Errors", "Unsupported file type"),
             ])
-            self._render_empty_preview(f"Only {supported_formats_text(' and ')} files are supported.")
+            self._render_empty_preview("Column selection is only available for CSV files.")
             can_create = False
 
         self._set_create_button_enabled(can_create and self._can_create_current_file())
+
+    def _set_column_selection_enabled(self, enabled: bool) -> None:
+        """Only a single CSV offers the column controls and expand action."""
+        if not enabled and self.column_selection_expanded:
+            self._toggle_column_selection_size()
+        for widget in (self.column_selection_description, self.expand_columns_button):
+            if enabled:
+                widget.grid()
+            else:
+                widget.grid_remove()
 
     def _set_create_button_enabled(self, enabled: bool):
         """
@@ -3171,7 +4595,7 @@ class ModelDeepenerApp(ctk.CTk):
             warnings = []
             if ModelDeepenerApp._count_attributes(model) == 0:
                 warnings.append(
-                    "No attributes were attached to model classes. The XML may not contain addAttribute entries, "
+                    "No attributes were attached to model classes. The FMMLx file may not contain addAttribute entries, "
                     "or its attribute class names may not match the class names in the model."
                 )
             return XmlImportPreview(file_path=file_path, errors=[], warnings=warnings, model=model, report=report)
@@ -3204,7 +4628,7 @@ class ModelDeepenerApp(ctk.CTk):
     def _render_xml_validation(self, preview: XmlImportPreview):
         is_ready = not preview.errors
         rows = [
-            ("File type", "XML"),
+            ("File type", "FMMLx"),
             ("Status", "Not Validated" if is_ready else "Blocked"),
             ("Errors", "; ".join(preview.errors) if preview.errors else "None"),
         ]
@@ -3493,7 +4917,9 @@ class ModelDeepenerApp(ctk.CTk):
             self.column_table,
             height=height,
             background=background,
-            highlightthickness=0,
+            highlightthickness=1,
+            highlightbackground="#AFC1D9",
+            highlightcolor="#AFC1D9",
             bd=0,
         )
         cell.grid(row=row, column=column, sticky="nsew")
@@ -3503,7 +4929,7 @@ class ModelDeepenerApp(ctk.CTk):
             separator = tk.Frame(
                 cell,
                 width=1,
-                background="#DCE6F2",
+                background="#AFC1D9",
                 bd=0,
                 highlightthickness=0,
             )
@@ -3840,105 +5266,88 @@ class ModelDeepenerApp(ctk.CTk):
             return False
         return any(var.get() for var in self.selected_csv_columns.values())
 
-    def _render_xml_preview(self, preview: XmlImportPreview):
-        """
-        Shows the XML state in the Column Selection area.
-
-        XML files do not use CSV Column Selection, so this block shows the
-        message for XML files and the empty state before a file is selected.
-        """
-        total_height = 118
-        self._reset_column_table(total_height)
-
-        for child in self.column_table.winfo_children():
-            child.destroy()
-
-        self.column_table.grid_columnconfigure(0, weight=1)
-        self.column_table.grid_rowconfigure(0, weight=1, minsize=118)
-        ctk.CTkLabel(
-            self.column_table,
-            text="Columns cannot be selected for XML files.",
-            anchor="w",
-            justify="left",
-            text_color=self.colors["muted"],
-            font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-        ).grid(row=0, column=0, sticky="new", padx=0, pady=18)
-
     def _render_empty_preview(self, text: str):
+        """Show a single message without a column table header."""
         if not hasattr(self, "column_canvas"):
             return
-
-        total_height = self.TABLE_HEADER_HEIGHT + 76
-        self._reset_column_table(total_height)
-        self._build_column_table_header()
-
-        self.column_table.grid_rowconfigure(
-            1,
-            weight=0,
-            minsize=76,
-        )
-
-        empty_cell = tk.Frame(
-            self.column_table,
-            height=76,
-            background="#FFFFFF",
-            bd=0,
-            highlightthickness=0,
-        )
-        empty_cell.grid(
-            row=1,
-            column=0,
-            columnspan=4,
-            sticky="nsew",
-        )
-        empty_cell.grid_propagate(False)
-
-        ctk.CTkLabel(
-            empty_cell,
-            text=text,
-            anchor="center",
-            justify="center",
-            text_color=self.colors["muted"],
-            font=ctk.CTkFont(
-                family="Segoe UI",
-                size=12,
-            ),
-        ).place(relx=0.5, rely=0.5, anchor="center")
+        self._reset_column_table(118)
+        self.column_table.grid_columnconfigure(0, weight=1)
+        self.column_table.grid_rowconfigure(0, minsize=118)
+        ctk.CTkLabel(self.column_table, text=text, anchor="w", justify="left",
+                     text_color=self.colors["muted"], font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold")).grid(
+                         row=0, column=0, sticky="new", padx=0, pady=18)
 
     def _create_model(self) -> None:
         """Import a model and display the candidate only after it is saved.
 
         Cancellation and database failures leave the previous model and workflow state in place.
         """
+        if getattr(self, "current_batch_paths", []):
+            self._start_batch_import()
+            return
         if not self.current_file_path:
             self._show_error("Import blocked", "Select a file first.")
             return
-        try:
-            importer = self._importer_for_file(self.current_file_path)
-            if importer is None:
-                raise ValueError(f"Only {supported_formats_text(' and ')} files are supported.")
-            model, import_report, selected_columns = self._read_import_candidate(importer)
-            if import_report.has_problems():
-                if not ask_import_problems(self, import_report, self._overlay):
-                    return
+        source_path = self.current_file_path
+        importer = self._importer_for_file(source_path)
+        if importer is None:
+            self._show_error("Import failed", f"Only {supported_formats_text(' and ').replace('XML', 'FMMLx')} files are supported.")
+            return
+        selected_columns = []
+        if isinstance(importer, CsvImporter):
+            selected_columns = [column for column, selected in self.selected_csv_columns.items() if selected.get()]
+            if not selected_columns:
+                self._show_error("Import failed", "Select at least one CSV column.")
+                return
+            importer.select_columns(selected_columns)
+        preview = self.xml_preview if isinstance(importer, XmlImporter) else None
+        file_type = importer.FORMAT_NAME.upper()
+
+        def read(_progress):
+            if preview and preview.model:
+                return preview.model, preview.report
+            return importer.import_file(source_path)
+
+        def failed(error):
+            self._show_error("Import failed", f"The model could not be imported or saved. {save_error_message(error)}")
+
+        def imported(result):
+            model, report = result
+            if report.has_problems() and not ask_import_problems(self, report, self._overlay):
+                return
             if isinstance(importer, XmiImporter) and not model.get_objects():
                 return
-            source_path = self.current_file_path
-            file_type = importer.FORMAT_NAME.upper()
-            if not self._store_loaded_model(file_type, model, source_path, selected_columns):
-                return
-        except Exception as error:
-            self._show_error("Import failed", f"The model could not be imported or saved. {error}")
-            return
+            source_file = os.path.basename(source_path)
+            name = model.path_name.split("::")[-1] if model.path_name else os.path.splitext(source_file)[0]
+            loaded = LoadedModel(name=self._unique_model_name(name), source_file=source_file,
+                                 file_type=file_type, model=model, source_path=source_path,
+                                 selected_columns=list(selected_columns),
+                                 uploaded=datetime.now().strftime("%Y-%m-%d %H:%M"),
+                                 last_worked_on=self._current_timestamp_text(), last_action=self.ACTION_TITLES[2])
 
-        self.current_model = model
-        self.current_selected_columns = selected_columns
-        self.current_file_path = source_path
-        self.current_file_type = file_type
-        self.file_path_var.set(source_path)
-        self.action_completed[1] = True
-        self.action_unlocked[2] = True
-        self._show_model_page()
+            def save(_progress):
+                self._database.store(loaded)
+                try:
+                    self._database.commit()
+                except Exception:
+                    self._database.delete(loaded.get_oid())
+                    raise
+                return loaded
+
+            def saved(record):
+                self.loaded_models.append(record)
+                self.current_model = model
+                self.current_selected_columns = selected_columns
+                self.current_file_path = source_path
+                self.current_file_type = file_type
+                self.file_path_var.set(source_path)
+                self.action_completed[1] = True
+                self.action_unlocked[2] = True
+                self._show_model_page()
+
+            self._run_model_task(1, "Saving model...", save, saved, failed)
+
+        self._run_model_task(1, "Importing model...", read, imported, failed)
 
     def _read_import_candidate(self, importer: ModelImporter) -> tuple[BaseMlmModel, ImportReport, List[str]]:
         """Build a candidate without replacing the active model, reusing an available XML preview."""
@@ -3955,42 +5364,6 @@ class ModelDeepenerApp(ctk.CTk):
                 return self.xml_preview.model, self.xml_preview.report, selected_columns
         model, report = importer.import_file(self.current_file_path)
         return model, report, selected_columns
-
-    def _store_loaded_model(self, file_type: str, model: BaseMlmModel,
-                            source_path: str, selected_columns: List[str]) -> bool:
-        """Save a candidate with a new OID before exposing it in the overview or active view.
-
-        A failed commit removes the candidate from the in-memory database. The caller keeps
-        the previous active model and receives False when the save error was already shown.
-        """
-        source_file = os.path.basename(source_path)
-        if model.path_name:
-            name = model.path_name.split("::")[-1]
-        else:
-            name = os.path.splitext(source_file)[0]
-        name = self._unique_model_name(name)
-        loaded = LoadedModel(
-            name=name,
-            source_file=source_file,
-            file_type=file_type,
-            model=model,
-            source_path=source_path,
-            selected_columns=list(selected_columns),
-            uploaded=datetime.now().strftime("%Y-%m-%d %H:%M"),
-            last_worked_on=self._current_timestamp_text(),
-            last_action=self.ACTION_TITLES[2],
-        )
-        self._database.store(loaded)
-        try:
-            self._database.commit()
-        except Exception as error:
-            self._database.delete(loaded.get_oid())
-            if isinstance(error, SAVE_ERRORS):
-                self._show_error("Save failed", save_error_message(error))
-                return False
-            raise
-        self.loaded_models.append(loaded)
-        return True
 
     def forget_deleted_database(self, name: str) -> bool:
         """Stop using a database that was deleted. Return True if it was the active database."""
@@ -4017,6 +5390,16 @@ class ModelDeepenerApp(ctk.CTk):
             number = number + 1
         return f"{name} ({number})"
 
+    def _switch_database(self) -> None:
+        """Save the current database in the background before opening the chooser."""
+        database = getattr(self, "_database", None)
+        if database is None:
+            self._choose_database(is_startup=False)
+            return
+        self._run_model_task(1, "Saving database...", lambda _progress: database.commit(),
+                             lambda _result: self._choose_database(is_startup=False),
+                             lambda error: self._show_error("Save failed", "Cannot switch databases before saving:\n" + save_error_message(error)))
+
     def _choose_database(self, is_startup: bool) -> bool:
         """Ask the user which database to open, open it and return True.
 
@@ -4029,13 +5412,6 @@ class ModelDeepenerApp(ctk.CTk):
         instances that open the same database overwrite each
         other's commits; there is no lock file against this.
         """
-        if getattr(self, "_database", None) is not None:
-            try:
-                self._database.commit()
-            except SAVE_ERRORS as error:
-                self._show_error("Save failed", "Cannot switch databases before saving:\n"
-                                 + save_error_message(error))
-                return False
         overlay = None if is_startup else self._overlay
         result = ask_for_database(self, self._database_folder, overlay)
         while result is None and getattr(self, "_active_database_deleted", False):
@@ -4076,6 +5452,20 @@ class ModelDeepenerApp(ctk.CTk):
         self._active_database_deleted = False
         self._database_name = name
         self.loaded_models = database.get_all()
+        self.batch_models = []
+        if self.batch_tab is not None:
+            self.batch_tab.grid_remove()
+        for state in getattr(self, "_model_tabs", {}).values():
+            state["button"].destroy()
+        self._model_tabs = {}
+        self._active_model_tab = None
+        if hasattr(self, "model_tabs_more"):
+            self.model_tabs_more.grid_remove()
+        if hasattr(self, "model_tabs_container"):
+            self.model_tabs_container.grid_remove()
+        self._model_tabs_layout = None
+        self.model_tab = None
+        self._model_tab_state = None
         self._reset_current_import_state()
         self._show_database_name()
 
@@ -4135,7 +5525,7 @@ class ModelDeepenerApp(ctk.CTk):
             border_color=self.colors["border"],
             text_color=self.colors["text"],
             font=ctk.CTkFont(size=13),
-            command=lambda: self._choose_database(is_startup=False),
+            command=self._switch_database,
         ).grid(row=0, column=1, padx=(8, 0))
 
         # A plain tk.Frame, because CustomTkinter does not draw a CTkFrame that is 1 pixel wide.
@@ -4162,29 +5552,41 @@ class ModelDeepenerApp(ctk.CTk):
         return True
 
     def _autosave_models(self) -> None:
-        """Save changed models every two seconds, including invalid intermediate states.
-
-        Constraint checks belong to export, never to saving. Keep the last successful
-        snapshot to avoid rewriting unchanged models. Retry and show failures visibly.
-        """
-        try:
-            if getattr(self, "_database", None) is not None:
-                snapshot = pickle.dumps(self._database.get_all())
-                if snapshot != getattr(self, "_autosave_snapshot", None):
-                    self._database.commit()
-                    self._autosave_snapshot = snapshot
-                self._autosave_error = None
-        except SAVE_ERRORS as error:
-            message = save_error_message(error)
-            if message != getattr(self, "_autosave_error", None):
-                self._autosave_error = message
-                self._show_error("Automatic save failed", message)
-        finally:
-            if not self._is_closing:
-                self.after(2000, self._autosave_models)
+        """Compare and save a database snapshot in a background worker."""
+        database = getattr(self, "_database", None)
+        if (database is not None and not getattr(self, "_model_task_active", False)
+                and not getattr(self, "_autosave_in_progress", False)):
+            self._autosave_in_progress = True
+            results = queue.Queue()
+            def save():
+                try:
+                    database.save_if_changed()
+                    results.put(None)
+                except Exception as error:
+                    results.put(error)
+            def finish():
+                try:
+                    error = results.get_nowait()
+                except queue.Empty:
+                    self.after(50, finish)
+                    return
+                self._autosave_in_progress = False
+                if database is not getattr(self, "_database", None):
+                    return
+                if error is None:
+                    self._autosave_error = None
+                else:
+                    message = save_error_message(error)
+                    if message != getattr(self, "_autosave_error", None):
+                        self._autosave_error = message
+                        self._show_error("Automatic save failed", message)
+            threading.Thread(target=save, daemon=True).start()
+            self.after(50, finish)
+        if not self._is_closing:
+            self.after(2000, self._autosave_models)
 
     def _touch_loaded_model(self, model: Optional[BaseMlmModel]) -> None:
-        """Set "Last worked on" of the stored model to the current time and commit.
+        """Set "Last worked on" of the stored model to the current time.
 
         Nothing happens if the model is None or does not belong to a stored model.
         """
@@ -4192,13 +5594,13 @@ class ModelDeepenerApp(ctk.CTk):
             return
         for loaded in self.loaded_models:
             if loaded.model is model:
-                loaded.last_worked_on = self._current_timestamp_text()
-                # The loaded model is the object in the database, so commit() saves the change.
-                self._commit_database()
+                timestamp = self._current_timestamp_text()
+                if loaded.last_worked_on != timestamp:
+                    loaded.last_worked_on = timestamp
                 break
 
     def _set_last_action(self, action: int) -> None:
-        """Set the title of the given workflow step as the last action and commit it.
+        """Set the title of the given workflow step as the last action.
 
         The title is stored in last_action_label and, if a stored model is open, in its
         last_action.
@@ -4208,9 +5610,8 @@ class ModelDeepenerApp(ctk.CTk):
             return
         for loaded in self.loaded_models:
             if loaded.model is self.current_model:
-                loaded.last_action = self.last_action_label
-                # The loaded model is the object in the database, so commit() saves the change.
-                self._commit_database()
+                if loaded.last_action != self.last_action_label:
+                    loaded.last_action = self.last_action_label
                 break
 
     def _populate_model_tree(
@@ -4227,6 +5628,7 @@ class ModelDeepenerApp(ctk.CTk):
         """
         self.tree_item_payload.clear()
         self.tree_item_view.clear()
+        self._lazy_tree_groups = {}
         self._clear_tree(self.model_tree)
 
         normalized_query = query.strip().lower()
@@ -4254,23 +5656,17 @@ class ModelDeepenerApp(ctk.CTk):
             root_id,
             "end",
             text=f"Enumeration Types ({len(enumerations)})",
-            open=True,
+            open=bool(normalized_query),
             tags=("enum_group",),
         )
         self.tree_item_payload[enum_id] = None
         self.tree_item_view[enum_id] = "group"
 
-        for enum in sorted(enumerations, key=lambda item: self._natural_sort_key(item.name)):
-            item_id = self.model_tree.insert(
-                enum_id,
-                "end",
-                text=enum.name,
-                open=False,
-                tags=(self._import_note_tag(enum) or "enum_item",),
-            )
-            self.tree_item_payload[item_id] = enum
-            self.tree_item_view[item_id] = "enumeration"
-            self._insert_enum_search_hits(item_id, enum, normalized_query)
+        sorted_enums = sorted(enumerations, key=lambda item: self._natural_sort_key(item.name))
+        if normalized_query:
+            self._populate_lazy_tree_group(enum_id, ("enums", model, sorted_enums, normalized_query))
+        elif sorted_enums:
+            self._defer_tree_group(enum_id, ("enums", model, sorted_enums, ""))
 
         levels = sorted({obj.level for obj in model.mlm_objects}, reverse=True)
         for level in levels:
@@ -4283,7 +5679,7 @@ class ModelDeepenerApp(ctk.CTk):
                 root_id,
                 "end",
                 text=f"Level {level} ({len(level_objects)})",
-                open=True,
+                open=bool(normalized_query),
                 tags=("level_object" if level == 0 else "level_class",),
             )
             self.tree_item_payload[level_id] = None
@@ -4293,28 +5689,45 @@ class ModelDeepenerApp(ctk.CTk):
                 level_objects,
                 key=lambda item: self._natural_sort_key(item.name),
             )
-            visible_objects = sorted_objects
-            if level == 0 and not normalized_query:
-                visible_objects = sorted_objects[:100]
-            for obj in visible_objects:
-                self._insert_model_tree_object(
-                    parent_id=level_id,
-                    model=model,
-                    obj=obj,
-                    query=normalized_query,
-                )
-            if len(visible_objects) < len(sorted_objects):
-                self._insert_model_tree_load_more(
-                    parent_id=level_id,
-                    model=model,
-                    objects=sorted_objects,
-                    next_index=len(visible_objects),
-                )
+            group = ("objects", model, sorted_objects, normalized_query)
+            if normalized_query:
+                self._populate_lazy_tree_group(level_id, group)
+            elif sorted_objects:
+                self._defer_tree_group(level_id, group)
 
         self.model_tree.selection_remove(
             self.model_tree.selection()
         )
         self.model_tree.yview_moveto(0)
+
+    def _defer_tree_group(self, item_id: str, data: tuple) -> None:
+        """Add an expansion marker for a group whose children are not yet displayed."""
+        self._lazy_tree_groups[item_id] = data
+        self.model_tree.insert(item_id, "end", text="")
+
+    def _open_model_tree_group(self, _event) -> None:
+        """Create a group's children when it is first expanded."""
+        item_id = self.model_tree.focus()
+        group = self._lazy_tree_groups.pop(item_id, None)
+        if group is not None:
+            self.model_tree.delete(*self.model_tree.get_children(item_id))
+            self._populate_lazy_tree_group(item_id, group)
+
+    def _populate_lazy_tree_group(self, parent_id: str, group: tuple) -> None:
+        kind, model, items, query = group
+        if kind == "enums":
+            for enum in items:
+                item_id = self.model_tree.insert(parent_id, "end", text=enum.name, open=False,
+                                                 tags=(self._import_note_tag(enum) or "enum_item",))
+                self.tree_item_payload[item_id] = enum
+                self.tree_item_view[item_id] = "enumeration"
+                self._insert_enum_search_hits(item_id, enum, query)
+            return
+        visible = items[:100] if items and items[0].level == 0 and not query else items
+        for obj in visible:
+            self._insert_model_tree_object(parent_id, model, obj, query)
+        if len(visible) < len(items):
+            self._insert_model_tree_load_more(parent_id, model, items, len(visible))
 
     def _insert_model_tree_object(self, parent_id: str, model: BaseMlmModel,
                                   obj: BaseMlmObject, query: str):
@@ -4458,6 +5871,8 @@ class ModelDeepenerApp(ctk.CTk):
             ]),
         ]
         for group_label, view_name, hits in hit_groups:
+            if obj.level == 0 and view_name == "operation":
+                continue
             if not hits:
                 continue
             group_id = self.model_tree.insert(parent_id, "end", text=f"{group_label} ({len(hits)})", open=True)
@@ -4908,11 +6323,7 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _model_structure_content_text(self, model: BaseMlmModel, obj: BaseMlmObject) -> str:
         """Summarize the properties and relationships available on one model object."""
-        operation_count = len(self._operations_for_object(obj)) if obj.level == 0 else len(obj.operations_list)
-        parts = [
-            f"{len(obj.get_regular_attributes())} attributes",
-            f"{operation_count} operations",
-        ]
+        parts = [f"{len(obj.get_regular_attributes())} attributes"]
         associations = self._associations_for_class(model, obj)
         if associations:
             parts.append(f"{len(associations)} associations")
@@ -5025,7 +6436,7 @@ class ModelDeepenerApp(ctk.CTk):
         self._detail_progress_phase = "preparing"
 
         self._detail_progress_after_id = self.after(
-            1000,
+            500,
             lambda: self._show_model_loading_progress(
                 token=token,
                 total=self._detail_progress_work_total,
@@ -5095,7 +6506,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         ctk.CTkLabel(
             loading_panel,
-            text="Loading data...",
+            text="Loading Data...",
             text_color=self.colors["text"],
             font=ctk.CTkFont(
                 family="Segoe UI",
@@ -5768,7 +7179,6 @@ class ModelDeepenerApp(ctk.CTk):
         options = [
             ("Attributes", self._has_attribute_rows(obj), partial(self._render_class_attribute_table, obj)),
             ("Associations", self._has_association_rows(obj), partial(self._render_class_association_table, obj)),
-            ("Operations", bool(obj.operations_list), partial(self._render_class_operation_table, obj)),
             ("Generalization", bool(self._generalization_rows(obj)), partial(self._render_class_generalization_table, obj)),
         ]
         self._render_detail_option_buttons(options)
@@ -5779,7 +7189,7 @@ class ModelDeepenerApp(ctk.CTk):
         self._render_detail_table(("Name", "Type", "Slot"), [])
 
     def _render_object_details(self, obj: BaseMlmObject) -> None:
-        """Show the slot, link and operation views available for one instance."""
+        """Show the slot and link views available for one instance."""
         self.detail_title.configure(
             text=f"Object: {obj.name}",
             text_color="#16A34A",
@@ -5789,7 +7199,6 @@ class ModelDeepenerApp(ctk.CTk):
         )
         options = [
             ("Slots", bool(obj.get_regular_slots()), partial(self._render_object_value_table, obj)),
-            ("Operations", bool(self._operations_for_object(obj)), partial(self._render_object_operation_table, obj)),
             ("Links", bool(self._links_for_object(self.current_model, obj)), partial(self._render_object_link_table, obj)),
         ]
         self._render_detail_option_buttons(options)
@@ -5823,22 +7232,31 @@ class ModelDeepenerApp(ctk.CTk):
 
         bar = ctk.CTkFrame(self.detail_card, fg_color="transparent")
         bar.grid(row=1, column=0, sticky="e", padx=16, pady=(0, 8))
+        buttons = []
+        def activate(selected, callback):
+            for button in buttons:
+                active = button is selected
+                enabled = button.cget("state") == "normal"
+                button.configure(fg_color=self.colors["primary"] if active else "#FFFFFF" if enabled else self.colors["disabled_bg"],
+                                 text_color="#FFFFFF" if active else self.colors["primary"] if enabled else "#94A3B8")
+            callback()
         for index, (label, enabled, callback) in enumerate(options):
-            ctk.CTkButton(
-                bar,
-                text=label,
-                width=118 if label == "Generalization" else 102,
-                height=30,
-                corner_radius=7,
-                border_width=1,
+            button = ctk.CTkButton(
+                bar, text=label, width=118 if label == "Generalization" else 102,
+                height=30, corner_radius=7, border_width=1,
                 fg_color="#FFFFFF" if enabled else self.colors["disabled_bg"],
                 hover_color=self.colors["primary_soft"] if enabled else self.colors["disabled_bg"],
                 border_color="#BBD0F4" if enabled else self.colors["border"],
                 text_color=self.colors["primary"] if enabled else "#94A3B8",
                 font=ctk.CTkFont(family="Segoe UI", size=11, weight="bold"),
                 state="normal" if enabled else "disabled",
-                command=callback,
-            ).grid(row=0, column=index, padx=(0 if index == 0 else 8, 0))
+            )
+            button.configure(command=lambda target=button, action=callback: activate(target, action))
+            button.grid(row=0, column=index, padx=(0 if index == 0 else 8, 0))
+            buttons.append(button)
+        first = next((button for button in buttons if button.cget("state") == "normal"), None)
+        if first is not None:
+            first.configure(fg_color=self.colors["primary"], text_color="#FFFFFF")
         self._detail_option_bar = bar
 
     def _clear_detail_option_bar(self):
@@ -6164,7 +7582,9 @@ class ModelDeepenerApp(ctk.CTk):
                 height=42,
                 background=header_bg,
                 bd=0,
-                highlightthickness=0,
+                highlightthickness=1,
+                highlightbackground="#AFC1D9",
+                highlightcolor="#AFC1D9",
             )
             cell.grid(
                 row=0,
@@ -6177,7 +7597,7 @@ class ModelDeepenerApp(ctk.CTk):
                 tk.Frame(
                     cell,
                     width=1,
-                    background="#DCE6F2",
+                    background="#AFC1D9",
                     bd=0,
                     highlightthickness=0,
                 ).place(x=0, y=0, width=1, height=42)
@@ -6207,7 +7627,9 @@ class ModelDeepenerApp(ctk.CTk):
                 height=80,
                 background="#FFFFFF",
                 bd=0,
-                highlightthickness=0,
+                highlightthickness=1,
+                highlightbackground="#AFC1D9",
+                highlightcolor="#AFC1D9",
             )
             empty.grid(
                 row=1,
@@ -6237,7 +7659,9 @@ class ModelDeepenerApp(ctk.CTk):
                         height=46,
                         background=row_bg,
                         bd=0,
-                        highlightthickness=0,
+                        highlightthickness=1,
+                        highlightbackground="#AFC1D9",
+                        highlightcolor="#AFC1D9",
                     )
                     cell.grid(
                         row=row_index,
@@ -6250,7 +7674,7 @@ class ModelDeepenerApp(ctk.CTk):
                         tk.Frame(
                             cell,
                             width=1,
-                            background="#E4EBF4",
+                            background="#AFC1D9",
                             bd=0,
                             highlightthickness=0,
                         ).place(
@@ -6268,6 +7692,7 @@ class ModelDeepenerApp(ctk.CTk):
                         notes = getattr(target, "get_import_notes_for", lambda _field: [])(field)
                     else:
                         notes = getattr(element, "get_import_notes", lambda: [])()
+                    notes = visible_import_notes(notes)
                     marked = bool(notes)
                     highlight = column == highlight_column and bool(cell_value) and not marked
                     color = ("#B45309" if any(serious for _text, serious in notes) else "#647A94") if marked else (
@@ -6301,73 +7726,91 @@ class ModelDeepenerApp(ctk.CTk):
         self.detail_canvas.xview_moveto(0)
         self.detail_canvas.yview_moveto(0)
 
+    def _overview_counts_for(self, loaded: LoadedModel) -> tuple[int, int, int, int]:
+        """Return the prepared counts for an overview row."""
+        cached = getattr(self, "_overview_model_counts", {}).get(id(loaded))
+        if cached is not None:
+            return cached
+        model = loaded.model
+        return (self._count_higher_level_classes(model), len(model.get_all_flat_classes()),
+                self._count_attributes(model), len(model.get_all_pure_objects()))
+
     def _populate_models_table(self):
-        """
-        Draws the table on the Models Overview page.
-
-        This block applies the filters and draws one row per stored model.
-        The first column shows "Delete" in every row. A click on it deletes the model after a
-        question, and a click anywhere else in the row opens the model.
-        """
-        if not hasattr(self, "models_canvas"):
+        """Apply filters and draw the currently visible overview rows."""
+        if not hasattr(self, "models_canvas") or not self.models_canvas.winfo_exists():
             return
-        self.models_canvas.delete("all")
-        self._models_canvas_rows = {}
+        filtered = [(index, loaded) for index, loaded in enumerate(self.loaded_models)
+                    if self._model_matches_overview_filters(loaded)]
+        ordered = models_newest_first([loaded for _, loaded in filtered])
+        indices = {id(loaded): index for index, loaded in filtered}
+        self._models_filtered = [(indices[id(loaded)], loaded) for loaded in ordered]
+        self.models_canvas.yview_moveto(0)
+        self.models_canvas.xview_moveto(0)
+        self._draw_visible_models_rows()
 
-        canvas_width = max(self.models_canvas.winfo_width(), 900)
+    def _on_models_canvas_scroll(self, first: str, last: str) -> None:
+        """Update the scrollbar and schedule a redraw after vertical scrolling."""
+        ModelDeepenerApp._autohide_scroll(self.models_scrollbar)(first, last)
+        position = (first, last)
+        if position == getattr(self, "_models_last_scroll_position", None):
+            return
+        self._models_last_scroll_position = position
+        if getattr(self, "_models_redraw_after", None) is None:
+            self._models_redraw_after = self.models_canvas.after_idle(self._draw_visible_models_rows)
+
+    def _cancel_models_canvas_redraw(self, event) -> None:
+        """Cancel the pending row redraw when its canvas is destroyed."""
+        if event.widget is self.models_canvas:
+            after_id = getattr(self, "_models_redraw_after", None)
+            if after_id is not None:
+                self.models_canvas.after_cancel(after_id)
+                self._models_redraw_after = None
+
+    def _draw_visible_models_rows(self) -> None:
+        """Draw the overview header and rows intersecting the canvas viewport."""
+        self._models_redraw_after = None
+        canvas = self.models_canvas
+        if not canvas.winfo_exists():
+            return
+        canvas.delete("all")
+        self._models_canvas_rows = {}
+        canvas_width = max(canvas.winfo_width(), 900)
         column_specs = [
-            ("delete", " ", 0.06),
-            ("name", "Model Name", 0.13),
-            ("source", "Source File", 0.16),
-            ("type", "Type", 0.06),
-            ("level_classes", "Higher Level Classes", 0.09),
-            ("classes", "Classes", 0.07),
-            ("attributes", "Attributes", 0.09),
-            ("objects", "Objects", 0.08),
-            ("status", "Last Action", 0.09),
-            ("worked", "Last worked on", 0.09),
-            ("open", "Open Model", 0.08),
+            ("delete", " ", 0.06), ("name", "Model Name", 0.13), ("source", "Source File", 0.16),
+            ("type", "Type", 0.06), ("level_classes", "Higher Level Classes", 0.09),
+            ("classes", "Classes", 0.07), ("attributes", "Attributes", 0.09),
+            ("objects", "Objects", 0.08), ("status", "Last Action", 0.09),
+            ("worked", "Last worked on", 0.09), ("open", "Open Model", 0.08),
         ]
-        columns = [
-            (key, label, max(78, int(canvas_width * fraction)))
-            for key, label, fraction in column_specs
-        ]
-        row_height = 64
-        header_height = 58
+        columns = [(key, label, max(78, int(canvas_width * fraction))) for key, label, fraction in column_specs]
+        row_height, header_height = 64, 58
         table_width = max(sum(width for _key, _label, width in columns), canvas_width)
+        filtered = getattr(self, "_models_filtered", [])
+        total_height = header_height + max(1, len(filtered)) * row_height
+        region = (0, 0, table_width, total_height)
+        if getattr(canvas, "_models_scrollregion", None) != region:
+            canvas._models_scrollregion = region
+            canvas.configure(scrollregion=region)
         x = 0
         for _key, label, width in columns:
-            self._draw_models_table_cell(
-                x=x,
-                y=0,
-                width=width,
-                height=header_height,
-                text=label,
-                background="#DFE9FD",
-                foreground="#04173D",
-                font=("Segoe UI", 12, "bold"),
-            )
+            self._draw_models_table_cell(x=x, y=0, width=width, height=header_height, text=label,
+                                         background="#DFE9FD", foreground="#04173D", font=("Segoe UI", 12, "bold"))
             x += width
-
-        filtered = []
-        for index, loaded in enumerate(self.loaded_models):
-            if not self._model_matches_overview_filters(loaded):
-                continue
-            filtered.append((index, loaded))
-
-        for row_index, (model_index, loaded) in enumerate(filtered, start=1):
+        first = max(0, int((canvas.canvasy(0) - header_height) // row_height) - 1)
+        last = min(len(filtered), int((canvas.canvasy(canvas.winfo_height()) - header_height) // row_height) + 2)
+        for position in range(first, last):
+            model_index, loaded = filtered[position]
+            row_index = position + 1
             model = loaded.model
             y = header_height + ((row_index - 1) * row_height)
             row_bg = "#FFFFFF" if row_index % 2 else "#F3F7FD"
+            counts = self._overview_counts_for(loaded)
             values = [
                 "Delete",
                 loaded.name,
                 loaded.source_file,
-                loaded.file_type,
-                self._count_higher_level_classes(model),
-                len(model.get_all_flat_classes()),
-                self._count_attributes(model),
-                len(model.get_all_pure_objects()),
+                ModelDeepenerApp._display_file_type(loaded.file_type),
+                *counts,
                 self._model_last_action_label(loaded),
                 loaded.last_worked_on or loaded.uploaded or "Unknown",
                 "Open Model",
@@ -6402,7 +7845,7 @@ class ModelDeepenerApp(ctk.CTk):
                 if key == "name" and model.get_is_adapted():
                     self.models_canvas.move(items[1], 0, -10)
                     badge = self.models_canvas.create_text(
-                        x + width / 2, y + height / 2 + 13, text="adapted",
+                        x + width / 2, y + row_height / 2 + 13, text="adapted",
                         fill="#A34D00", font=("Segoe UI", 9, "bold"))
                     self.models_canvas.tag_bind(badge, "<Button-1>",
                         lambda _event, target=loaded: self._open_loaded_model(target))
@@ -6424,11 +7867,8 @@ class ModelDeepenerApp(ctk.CTk):
                 self.models_canvas.tag_bind(item, "<Enter>", lambda _event: self.models_canvas.configure(cursor="hand2"))
                 self.models_canvas.tag_bind(item, "<Leave>", lambda _event: self.models_canvas.configure(cursor=""))
             self._models_canvas_rows[model_index] = row_items
+        canvas.create_rectangle(0, 0, max(1, table_width - 1), max(1, total_height - 1), outline="#AFC1D9", width=1)
 
-        total_height = header_height + max(1, len(filtered)) * row_height
-        self.models_canvas.configure(scrollregion=(0, 0, table_width, total_height))
-        self.models_canvas.xview_moveto(0)
-        self.models_canvas.yview_moveto(0)
 
     def _model_matches_overview_filters(self, loaded: LoadedModel) -> bool:
         query_var = getattr(self, "models_search_var", None)
@@ -6438,22 +7878,22 @@ class ModelDeepenerApp(ctk.CTk):
 
         type_var = getattr(self, "models_type_filter_var", None)
         type_filter = type_var.get() if type_var is not None else "All"
-        if type_filter != "All" and loaded.file_type != type_filter:
+        if type_filter != "All" and ModelDeepenerApp._display_file_type(loaded.file_type).casefold() != ModelDeepenerApp._display_file_type(type_filter).casefold():
             return False
 
-        model = loaded.model
+        counts = self._overview_counts_for(loaded)
         min_objects_var = getattr(self, "models_min_objects_var", None)
         min_objects = self._optional_int_filter(
             min_objects_var.get() if min_objects_var is not None else ""
         )
-        if min_objects is not None and len(model.get_all_pure_objects()) < min_objects:
+        if min_objects is not None and counts[3] < min_objects:
             return False
 
         min_attributes_var = getattr(self, "models_min_attributes_var", None)
         min_attributes = self._optional_int_filter(
             min_attributes_var.get() if min_attributes_var is not None else ""
         )
-        if min_attributes is not None and self._count_attributes(model) < min_attributes:
+        if min_attributes is not None and counts[2] < min_attributes:
             return False
 
         return True
@@ -6472,33 +7912,6 @@ class ModelDeepenerApp(ctk.CTk):
     def _model_last_action_label(loaded: LoadedModel) -> str:
         return loaded.last_action or "Imported"
 
-    def _select_model_from_overview_index(self, index: int):
-        self._highlight_models_canvas_row(index)
-        loaded = self.loaded_models[index]
-        self.current_model = loaded.model
-        self.current_file_path = loaded.source_path
-        self.current_file_type = loaded.file_type
-        self.current_selected_columns = list(loaded.selected_columns)
-        self.last_action_label = loaded.last_action or "Imported"
-        self._touch_loaded_model(loaded.model)
-        self._populate_models_table()
-        self._highlight_models_canvas_row(index)
-        self._render_overview_details(loaded)
-
-    def _highlight_models_canvas_row(self, index: int):
-        for row_items in getattr(self, "_models_canvas_rows", {}).values():
-            for item in row_items:
-                try:
-                    self.models_canvas.itemconfigure(item, width=1)
-                except tk.TclError:
-                    pass
-        for item in getattr(self, "_models_canvas_rows", {}).get(index, []):
-            try:
-                if self.models_canvas.type(item) == "rectangle":
-                    self.models_canvas.itemconfigure(item, outline="#AFCBFF", width=2)
-            except tk.TclError:
-                pass
-
     def _bind_models_scroll_events(self, _event=None):
         self.bind_all("<MouseWheel>", self._on_models_mousewheel)
 
@@ -6510,100 +7923,11 @@ class ModelDeepenerApp(ctk.CTk):
         if delta:
             self.models_canvas.yview_scroll(delta, "units")
 
-    def _render_overview_details(self, loaded: Optional[LoadedModel] = None):
-        for child in self.overview_details.winfo_children():
-            child.destroy()
-        self.overview_details.grid_columnconfigure(0, weight=0, minsize=430)
-        self.overview_details.grid_columnconfigure(1, weight=1)
-        if loaded is None:
-            message = "No model selected." if self.loaded_models else "No models created yet."
-            ctk.CTkLabel(
-                self.overview_details,
-                text=message,
-                text_color=self.colors["muted"],
-                anchor="center",
-                font=ctk.CTkFont(family="Segoe UI", size=13, weight="bold"),
-            ).grid(row=0, column=0, sticky="nsew", padx=18, pady=32)
-            return
-        self.current_model = loaded.model
-        model = loaded.model
-
-        meta = ctk.CTkFrame(self.overview_details, fg_color="#F8FAFC", corner_radius=7, border_width=1, border_color=self.colors["border"])
-        meta.grid(row=0, column=0, rowspan=2, sticky="nsew", padx=(0, 14), pady=(0, 12))
-        meta.grid_columnconfigure(1, weight=1)
-        rows = [
-            ("Model Name", loaded.name),
-            ("Source File", loaded.source_file),
-            ("Type", loaded.file_type),
-            ("Imported", loaded.uploaded or "Unknown"),
-            ("Last worked on", loaded.last_worked_on or loaded.uploaded or "Unknown"),
-        ]
-        for row, (label, value) in enumerate(rows):
-            ctk.CTkLabel(meta, text=label, text_color=self.colors["muted"], anchor="w", font=ctk.CTkFont(size=12, weight="bold")).grid(
-                row=row, column=0, sticky="w", padx=(14, 18), pady=(12 if row == 0 else 6, 12 if row == len(rows) - 1 else 6)
-            )
-            ctk.CTkLabel(meta, text=str(value), anchor="w", text_color=self.colors["text"], font=ctk.CTkFont(size=12, weight="bold")).grid(
-                row=row, column=1, sticky="ew", padx=(0, 14), pady=(12 if row == 0 else 6, 12 if row == len(rows) - 1 else 6)
-            )
-
-        actions = ctk.CTkFrame(self.overview_details, fg_color="transparent")
-        actions.grid(row=0, column=1, sticky="ew", pady=(0, 12))
-        actions.grid_columnconfigure(0, weight=1)
-        actions.grid_columnconfigure(3, weight=1)
-        ctk.CTkButton(
-            actions,
-            text="Open Model",
-            width=150,
-            height=40,
-            corner_radius=7,
-            fg_color=self.colors["primary"],
-            hover_color=self.colors["primary_hover"],
-            text_color="#FFFFFF",
-            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
-            command=lambda target=loaded: self._open_loaded_model(target),
-        ).grid(row=0, column=1, padx=(0, 10))
-        ctk.CTkButton(
-            actions,
-            text="Delete Model",
-            width=150,
-            height=40,
-            corner_radius=7,
-            fg_color=self.colors["danger"],
-            hover_color="#b91c1c",
-            text_color="#FFFFFF",
-            font=ctk.CTkFont(family="Segoe UI", size=15, weight="bold"),
-            command=lambda target=loaded: self._delete_loaded_model(target),
-        ).grid(row=0, column=2, padx=(10, 0))
-
-        metrics = ctk.CTkFrame(self.overview_details, fg_color="transparent")
-        metrics.grid(row=1, column=1, sticky="nsew", pady=(0, 12))
-        metric_colors = {
-            "Higher Level Classes": "#315D9B",
-            "Classes": "#2563EB",
-            "Attributes": "#7C3AED",
-            "Enumeration Types": "#F59E0B",
-            "Associations": "#64748B",
-            "Objects": "#16A34A",
-            "Slots": "#EA580C",
-            "Links": "#0891B2",
-            "Operations": "#0D9488",
-            "Generalizations": "#E11D48",
-        }
-        for index, (label, value) in enumerate(self._model_metrics(model)):
-            metrics.grid_columnconfigure(index, weight=1)
-            self._metric_card_no_icon(
-                metrics,
-                label,
-                value,
-                metric_colors.get(label, self.colors["primary"]),
-            ).grid(row=0, column=index, sticky="ew", padx=4)
-
     def _open_loaded_model(self, loaded: LoadedModel):
         self.current_model = loaded.model
         self.current_file_path = loaded.source_path
         self.current_file_type = loaded.file_type
         self.current_selected_columns = list(loaded.selected_columns)
-        self._touch_loaded_model(loaded.model)
         self._show_model_page()
 
     def _ask_delete_confirmation(self, model_name: str) -> bool:
@@ -6676,23 +8000,24 @@ class ModelDeepenerApp(ctk.CTk):
         return answer["delete"]
 
     def _delete_loaded_model(self, loaded: LoadedModel) -> None:
-        """Ask the user and delete the model from the overview and from the object database.
-
-        The question is asked by _ask_delete_confirmation(). On "Yes" the deletion is saved at
-        once with commit(). On "No" nothing is changed.
-        """
-        if not self._ask_delete_confirmation(loaded.name):
+        """Confirm deletion and save it without blocking the interface."""
+        if not self._ask_delete_confirmation(loaded.name) or loaded not in self.loaded_models:
             return
-        if loaded in self.loaded_models:
-            self._database.delete(loaded.get_oid())
-            if not self._commit_database():
-                self._database.store(loaded)
-                return
+        database = self._database
+        def delete(_progress):
+            database.delete(loaded.get_oid())
+            try:
+                database.commit()
+            except Exception:
+                database.store(loaded)
+                raise
+        def done(_result):
             self.loaded_models.remove(loaded)
-        if self.current_model is loaded.model:
-            self.current_model = self.loaded_models[-1].model if self.loaded_models else None
-        self._populate_models_table()
-        self._render_overview_details(None)
+            if self.current_model is loaded.model:
+                self.current_model = self.loaded_models[-1].model if self.loaded_models else None
+            self._populate_models_table()
+        self._run_model_task(1, "Deleting model...", delete, done,
+                             lambda error: self._show_error("Delete Model", save_error_message(error)))
 
     def _model_metrics(self, model: BaseMlmModel):
         return [
@@ -6700,7 +8025,6 @@ class ModelDeepenerApp(ctk.CTk):
             ("Classes", len(model.get_all_flat_classes())),
             ("Attributes", self._count_attributes(model)),
             ("Enumeration Types", len(model.enums)),
-            ("Operations", self._count_operations(model)),
             ("Generalizations", self._count_generalizations(model)),
             ("Associations", len(model.associations)),
             ("Objects", len(model.get_all_pure_objects())),
@@ -6874,7 +8198,7 @@ class ModelDeepenerApp(ctk.CTk):
     @staticmethod
     def _import_note_tag(element) -> str:
         """Return the display tag for an element's import notes."""
-        notes = getattr(element, "get_import_notes", lambda: [])()
+        notes = visible_import_notes(getattr(element, "get_import_notes", lambda: [])())
         if not notes:
             return ""
         return "serious_adaptation" if any(serious for _text, serious in notes) else "automatic_adaptation"
@@ -6888,6 +8212,35 @@ class ModelDeepenerApp(ctk.CTk):
         tk.Label(window, text="\n".join(text for text, _serious in notes), justify="left", wraplength=700,
                  background="#FFF8EC", foreground="#29384D", relief="solid",
                  borderwidth=1, padx=6, pady=4).pack()
+        self._adapted_tooltip = window
+
+    ADAPTATION_LEGEND = (
+        ("#B45309", "Orange", "Changed during import in a way that may affect the meaning "
+                              "(e.g. unknown type replaced by String)."),
+        ("#647A94", "Grey-blue", "Adjusted automatically (e.g. renamed elements, generated role names)."),
+    )
+
+    def _show_adaptation_legend(self, event) -> None:
+        """Show a small card that explains the colors of marked elements."""
+        self._hide_adapted_tooltip()
+        window = tk.Toplevel(self)
+        window.overrideredirect(True)
+        window.configure(background=self.colors["border"])
+        card = tk.Frame(window, background=WHITE, padx=14, pady=12)
+        card.pack(padx=1, pady=1)
+        tk.Label(card, text="Import Markers", background=WHITE, foreground=self.colors["text"],
+                 font=(FONT_FAMILY, 11, "bold"), anchor="w").grid(row=0, column=0, columnspan=2, sticky="w",
+                                                                   pady=(0, 8))
+        for row, (color, name, text) in enumerate(self.ADAPTATION_LEGEND, 1):
+            tk.Frame(card, background=color, width=14, height=14).grid(row=row, column=0, sticky="nw",
+                                                                         padx=(0, 10), pady=(3, 6))
+            tk.Label(card, text=f"{name}: {text}", background=WHITE, foreground=self.colors["text"],
+                     font=(FONT_FAMILY, 10), justify="left", anchor="w", wraplength=340).grid(
+                         row=row, column=1, sticky="w", pady=(0, 6))
+        tk.Label(card, text="Hover over a marked cell for details.", background=WHITE,
+                 foreground=self.colors["muted"], font=(FONT_FAMILY, 10, "italic"), anchor="w").grid(
+                     row=len(self.ADAPTATION_LEGEND) + 1, column=0, columnspan=2, sticky="w", pady=(4, 0))
+        window.geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
         self._adapted_tooltip = window
 
     def _show_tree_import_notes(self, event) -> None:
@@ -6904,6 +8257,7 @@ class ModelDeepenerApp(ctk.CTk):
             if isinstance(element, tuple) and len(element) == 3:
                 element = element[2]
             notes = getattr(element, "get_import_notes", lambda: [])()
+        notes = visible_import_notes(notes)
         if not notes:
             return
         window = tk.Toplevel(self)
@@ -7017,7 +8371,7 @@ class ModelDeepenerApp(ctk.CTk):
             x + width,
             y + height,
             fill=background,
-            outline="#E4EBF4",
+            outline="#AFC1D9",
             width=1,
         )
         label = self.models_canvas.create_text(
@@ -7050,6 +8404,7 @@ class Overlay:
         """Create the hidden overlay for the given main window."""
         self._master = master
         self._open_count = 0
+        self._hide_after_id = None
         self._window = tk.Toplevel(master)
         self._window.withdraw()
         self._window.overrideredirect(True)
@@ -7060,6 +8415,9 @@ class Overlay:
         """Lay the overlay over the main window. Only under Windows."""
         if sys.platform != "win32":
             return
+        if self._hide_after_id is not None:
+            self._master.after_cancel(self._hide_after_id)
+            self._hide_after_id = None
         self._open_count = self._open_count + 1
         if self._open_count > 1:
             return
@@ -7084,7 +8442,11 @@ class Overlay:
             return
         self._open_count = self._open_count - 1
         if self._open_count == 0:
-            self._window.withdraw()
+            def withdraw():
+                self._hide_after_id = None
+                if self._open_count == 0:
+                    self._window.withdraw()
+            self._hide_after_id = self._master.after(80, withdraw)
 
     def cover(self, dialog: ctk.CTkToplevel) -> None:
         """Center the dialog over the main window and show the overlay while it is open.
@@ -7093,11 +8455,16 @@ class Overlay:
         """
         self.show()
         center_popup(dialog, self._master)
-        dialog.after(RECENTER_DELAY_MILLISECONDS, center_popup, dialog, self._master)
+        recenter = dialog.after(RECENTER_DELAY_MILLISECONDS, center_popup, dialog, self._master)
         dialog.lift()
 
         def hide_after_close(event: tk.Event) -> None:
             """Hand the event of a closed window to the overlay, together with the dialog it covers."""
+            if event.widget is dialog:
+                try:
+                    dialog.after_cancel(recenter)
+                except tk.TclError:
+                    pass
             self._hide_after_close(event, dialog)
 
         dialog.bind("<Destroy>", hide_after_close, add="+")
@@ -7127,6 +8494,7 @@ class DatabaseDialog(ctk.CTkToplevel):
         self._folder = folder
         self._colors = master.colors
         self._result: tuple[Database, str] | None = None
+        self._loading = False
         # These widgets are created in _build_layout().
         self._name_list: tk.Listbox
         self._empty_hint: ctk.CTkLabel
@@ -7245,7 +8613,7 @@ class DatabaseDialog(ctk.CTkToplevel):
         )
         self._name_entry.grid(row=0, column=0, sticky="ew", padx=(0, 8))
         self._name_entry.bind("<Return>", lambda _event: self._create_new())
-        ctk.CTkButton(
+        self._create_button = ctk.CTkButton(
             create_row,
             text="Create",
             width=100,
@@ -7254,7 +8622,8 @@ class DatabaseDialog(ctk.CTkToplevel):
             hover_color=self._colors["primary_hover"],
             text_color="#FFFFFF",
             command=self._create_new,
-        ).grid(row=0, column=1)
+        )
+        self._create_button.grid(row=0, column=1)
 
         self._error_label = ctk.CTkLabel(
             self,
@@ -7320,21 +8689,51 @@ class DatabaseDialog(ctk.CTkToplevel):
         The message "Please select a database first." is only a safeguard: "Open" cannot be
         clicked when the list is empty, and otherwise one entry is always selected.
         """
+        if self._loading:
+            return
         selection = self._name_list.curselection()
         if len(selection) == 0:
             self._show_dialog_error("Please select a database first.")
             return
         name = self._name_list.get(selection[0])
-        try:
-            database = self._folder.open_database(name)
-        except IncompatibleDatabaseError:
-            self._handle_incompatible_database(name)
-            return
-        except (KeyError, ValueError) as error:
-            self._show_dialog_error(error.args[0])
-            self._fill_list()
-            return
-        self._close_with(database, name)
+        self._loading = True
+        self._open_button.configure(state="disabled")
+        self._delete_button.configure(state="disabled")
+        self._create_button.configure(state="disabled")
+        self._name_entry.configure(state="disabled")
+        self._name_list.configure(state="disabled")
+        results = queue.Queue()
+        def load():
+            try:
+                results.put((self._folder.open_database(name), None))
+            except Exception as error:
+                results.put((None, error))
+        def show_loading():
+            if self._loading:
+                self._error_label.configure(text="Loading database...")
+        def finish():
+            try:
+                database, error = results.get_nowait()
+            except queue.Empty:
+                self.after(30, finish)
+                return
+            self.after_cancel(timer)
+            self._loading = False
+            self._name_entry.configure(state="normal")
+            self._name_list.configure(state="normal")
+            self._create_button.configure(state="normal")
+            self._error_label.configure(text="")
+            if isinstance(error, IncompatibleDatabaseError):
+                self._fill_list()
+                self._handle_incompatible_database(name)
+            elif error is not None:
+                self._show_dialog_error(str(error))
+                self._fill_list()
+            else:
+                self._close_with(database, name)
+        timer = self.after(500, show_loading)
+        threading.Thread(target=load, daemon=True).start()
+        self.after(30, finish)
 
     def _handle_incompatible_database(self, name: str) -> None:
         """Update only after the user chooses conversion; keep a recovery backup."""
@@ -7375,6 +8774,8 @@ class DatabaseDialog(ctk.CTkToplevel):
 
     def _create_new(self) -> None:
         """Create a database with the entered name and close the dialog, or show the error."""
+        if self._loading:
+            return
         name = self._name_entry.get().strip()
         try:
             database = self._folder.create_database(name)
@@ -7389,7 +8790,8 @@ class DatabaseDialog(ctk.CTkToplevel):
 
     def _cancel(self) -> None:
         """Close the dialog without a database."""
-        self._close()
+        if not self._loading:
+            self._close()
 
     def _close_with(self, database: Database, name: str) -> None:
         """Remember the database and its name as result and close the dialog."""
@@ -7425,11 +8827,344 @@ class DatabaseDialog(ctk.CTkToplevel):
             self._name_list.focus_set()
 
 
+def _cancel_widget_timers(widget: tk.Misc) -> None:
+    """Cancel callbacks registered by a widget and its children before destroying them."""
+    commands = set()
+    def collect(item):
+        commands.update(getattr(item, "_tclCommands", None) or ())
+        for child in item.winfo_children():
+            collect(child)
+    collect(widget)
+    for after_id in widget.tk.call("after", "info"):
+        script = widget.tk.call("after", "info", after_id)[0]
+        if str(script).split(" ", 1)[0] in commands:
+            widget.tk.call("after", "cancel", after_id)
+
+
+def _styled_dialog(master, title, resizable=False):
+    """Create a dialog with the same base styling as the import problem dialog."""
+    dialog = ctk.CTkToplevel(master)
+    dialog.title(title)
+    dialog.transient(master)
+    if not resizable:
+        dialog.resizable(False, False)
+    dialog.configure(fg_color=master.colors["app_bg"])
+    return dialog
+
+
+def _dialog_heading(parent, text, colors):
+    ctk.CTkLabel(parent, text=text, anchor="w", text_color=colors["text"],
+                 font=ctk.CTkFont(family="Segoe UI", size=16, weight="bold")).pack(
+                     fill="x", padx=18, pady=(18, 4))
+
+
+def _dialog_primary_button(parent, text, command, colors):
+    return ctk.CTkButton(parent, text=text, height=36, fg_color=colors["primary"],
+                         hover_color=colors["primary_hover"], text_color="#FFFFFF", command=command)
+
+
+def _dialog_plain_button(parent, text, command, colors):
+    return ctk.CTkButton(parent, text=text, height=36, fg_color="#FFFFFF", hover_color="#EEF2F7",
+                         border_width=1, border_color=colors["border"], text_color=colors["text"], command=command)
+
+
+def _dialog_checkbox(parent, text, variable, colors):
+    return ctk.CTkCheckBox(parent, text=text, variable=variable, text_color=colors["text"],
+                           fg_color=colors["primary"], hover_color=colors["primary_hover"],
+                           border_color=colors["border"], font=ctk.CTkFont(family="Segoe UI", size=13))
+
+
+class BatchProblemDetails(ctk.CTkFrame):
+    """Display only the visible rows of expandable batch import reports."""
+    ROW_HEIGHT = 28
+
+    def __init__(self, master, reports, colors, prepared=False, initial_rows=None):
+        super().__init__(master, fg_color=colors["surface"])
+        self.reports = list(reports) if prepared else [(name, visible_import_report(report)) for name, report in reports]
+        self.expanded = set()
+        self.rows = []
+        self.configure(height=self.ROW_HEIGHT * 5)
+        self.pack_propagate(False)
+        self.canvas = tk.Canvas(self, bg="#FFFFFF", highlightthickness=0, bd=0)
+        self.scrollbar = ctk.CTkScrollbar(self, orientation="vertical", command=self.canvas.yview)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar.pack(side="right", fill="y")
+        self.canvas.configure(yscrollcommand=self._on_scroll)
+        self.canvas.bind("<Configure>", self._draw_rows)
+        self.canvas.bind("<MouseWheel>", self._wheel)
+        self.canvas.bind("<Button-1>", self._click)
+        self.headers = list(initial_rows) if initial_rows is not None else batch_report_rows(self.reports)
+        self.rows = list(self.headers)
+        self._update_scrollregion()
+
+    def _rebuild(self):
+        self.rows = []
+        for index, (_name, report) in enumerate(self.reports):
+            self.rows.append(self.headers[index])
+            if index in self.expanded:
+                lines = (report.get_conversion_summary_lines() + report.get_structure_summary_lines()
+                         + report.get_adaptation_summary_lines())
+                for line in lines:
+                    for part in textwrap.wrap("- " + line, width=92, subsequent_indent="  ") or [""]:
+                        self.rows.append((index, False, part))
+        self._update_scrollregion()
+
+    def _update_scrollregion(self):
+        self.canvas.configure(scrollregion=(0, 0, 1, max(1, len(self.rows)) * self.ROW_HEIGHT))
+        self._draw_rows()
+
+    def _on_scroll(self, first, last):
+        self.scrollbar.set(first, last)
+        self._draw_rows()
+
+    def _wheel(self, event):
+        self.canvas.yview_scroll(int(-event.delta / 120), "units")
+        return "break"
+
+    def _click(self, event):
+        index = int(self.canvas.canvasy(event.y) // self.ROW_HEIGHT)
+        if 0 <= index < len(self.rows):
+            model_index, header, _text = self.rows[index]
+            if header:
+                if model_index in self.expanded:
+                    self.expanded.remove(model_index)
+                else:
+                    self.expanded.add(model_index)
+                self._rebuild()
+
+    def _draw_rows(self, _event=None):
+        self.canvas.delete("all")
+        top = max(0, int(self.canvas.canvasy(0) // self.ROW_HEIGHT))
+        bottom = min(len(self.rows), int(self.canvas.canvasy(self.canvas.winfo_height()) // self.ROW_HEIGHT) + 2)
+        width = self.canvas.winfo_width()
+        for row in range(top, bottom):
+            index, header, text = self.rows[row]
+            y = row * self.ROW_HEIGHT
+            if header:
+                self.canvas.create_rectangle(0, y, width, y + self.ROW_HEIGHT,
+                                             fill="#F3F7FD" if row % 2 else "#FFFFFF", outline="")
+                text = ("\u2212  " if index in self.expanded else "+  ") + text
+            self.canvas.create_text(10 if header else 30, y + self.ROW_HEIGHT // 2, text=text,
+                                    anchor="w", fill="#0F172A", font=("Segoe UI", 11, "bold") if header else ("Segoe UI", 11))
+
+
+class VirtualModelSelector(ctk.CTkFrame):
+    """Display and select models while drawing only rows in the viewport."""
+    ROW_HEIGHT = 34
+    BOX_SIZE = 22
+
+    def __init__(self, master, models, colors):
+        super().__init__(master, fg_color=colors["surface"], corner_radius=6, width=680, height=260)
+        self.models = list(models)
+        self.selected = [True] * len(self.models)
+        self.colors = colors
+        self._focus_index = 0
+        self.canvas = tk.Canvas(self, width=660, height=260, background=colors["surface"],
+                                highlightthickness=0, takefocus=True)
+        self.canvas.pack(side="left", fill="both", expand=True)
+        self.scrollbar = ctk.CTkScrollbar(self, orientation="vertical", command=self.canvas.yview)
+        self.scrollbar.pack(side="right", fill="y")
+        self.canvas.configure(scrollregion=(0, 0, 1, max(1, len(self.models)) * self.ROW_HEIGHT),
+                              yscrollcommand=self._scroll)
+        self.canvas.bind("<Configure>", self._draw_rows)
+        self.canvas.bind("<Button-1>", self._click)
+        self.canvas.bind("<MouseWheel>", self._wheel)
+        self.canvas.bind("<space>", self._toggle_focused)
+        self.canvas.bind("<Up>", lambda _event: self._move_focus(-1))
+        self.canvas.bind("<Down>", lambda _event: self._move_focus(1))
+        self._draw_rows()
+
+    def selected_models(self):
+        """Return the checked models in their original order."""
+        return [model for model, checked in zip(self.models, self.selected) if checked]
+
+    def _scroll(self, first, last):
+        self.scrollbar.set(first, last)
+        self._draw_rows()
+
+    def _draw_rows(self, _event=None):
+        self.canvas.delete("all")
+        top = max(0, int(self.canvas.canvasy(0) // self.ROW_HEIGHT))
+        bottom = min(len(self.models), int(self.canvas.canvasy(self.canvas.winfo_height()) // self.ROW_HEIGHT) + 2)
+        for index in range(top, bottom):
+            y = index * self.ROW_HEIGHT
+            self._draw_checkbox(12, y + 6, self.selected[index])
+            self.canvas.create_text(43, y + 17, text=self.models[index].name, anchor="w",
+                                    fill=self.colors["text"], font=("Segoe UI", 12))
+
+    def _draw_checkbox(self, x, y, checked):
+        """Draw a box like a CTkCheckBox: blue with a white check mark when checked, otherwise empty."""
+        size, radius = self.BOX_SIZE, 6
+        right, bottom = x + size, y + size
+        points = [x + radius, y, right - radius, y, right, y, right, y + radius, right, bottom - radius,
+                  right, bottom, right - radius, bottom, x + radius, bottom, x, bottom, x, bottom - radius,
+                  x, y + radius, x, y]
+        fill = self.colors["primary"] if checked else self.colors["surface"]
+        outline = self.colors["primary"] if checked else self.colors["border"]
+        self.canvas.create_polygon(points, smooth=True, fill=fill, outline=outline, width=1 if checked else 3,
+                                   tags=("checkbox",))
+        if checked:
+            self.canvas.create_line(x + size * 0.25, y + size * 0.52, x + size * 0.43, y + size * 0.7,
+                                    x + size * 0.76, y + size * 0.32, fill="#FFFFFF", width=2.5,
+                                    capstyle="round", joinstyle="round", tags=("checkmark",))
+
+    def _click(self, event):
+        index = int(self.canvas.canvasy(event.y) // self.ROW_HEIGHT)
+        if 0 <= index < len(self.models):
+            self._focus_index = index
+            self.canvas.focus_set()
+            self.selected[index] = not self.selected[index]
+            self._draw_rows()
+
+    def _wheel(self, event):
+        self.canvas.yview_scroll(int(-event.delta / 120), "units")
+        return "break"
+
+    def _toggle_focused(self, _event):
+        if self.models:
+            self.selected[self._focus_index] = not self.selected[self._focus_index]
+            self._draw_rows()
+        return "break"
+
+    def _move_focus(self, delta):
+        if self.models:
+            self._focus_index = max(0, min(len(self.models) - 1, self._focus_index + delta))
+            self.canvas.yview_moveto(self._focus_index / len(self.models))
+        return "break"
+
+
+class InlineModelProgress(ctk.CTkFrame):
+    """Show model progress within an existing dialog."""
+    def __init__(self, master: ctk.CTkToplevel, total: int, message: str, colors: dict[str, str]) -> None:
+        super().__init__(master, fg_color="transparent")
+        anchor = getattr(master, "_progress_anchor", None)
+        self.pack(fill="x", padx=18, pady=(4, 12), **({"before": anchor} if anchor else {}))
+        self.label = ctk.CTkLabel(self, text=message, text_color=colors["muted"])
+        self.label.pack(anchor="w")
+        self._indeterminate = total <= 1
+        self.bar = ctk.CTkProgressBar(self, progress_color=colors["primary"],
+                                      mode="indeterminate" if self._indeterminate else "determinate")
+        self.bar.pack(fill="x", pady=4)
+        self.count = ctk.CTkLabel(self, text=f"0 / {total} models", text_color=colors["muted"])
+        if not self._indeterminate:
+            self.count.pack(anchor="e")
+        self.bar.set(0)
+        if self._indeterminate:
+            self.bar.start()
+        master.update_idletasks()
+        scale = ctk.ScalingTracker.get_window_scaling(master)
+        width = round(master.winfo_width() / scale)
+        height = round(master.winfo_height() / scale)
+        requested = round(master.winfo_reqheight() / scale)
+        max_height = max(1, int((master.winfo_screenheight() - 80) / scale))
+        master.geometry(f"{width}x{min(max_height, max(height, requested))}")
+        master.update_idletasks()
+        center_popup(master, master.master)
+
+    def set_message(self, message: str) -> None:
+        """Update the displayed progress message."""
+        self.label.configure(text=message)
+        if message == "Writing database..." and not self._indeterminate:
+            self._indeterminate = True
+            self.count.pack_forget()
+            self.bar.configure(mode="indeterminate")
+            self.bar.start()
+
+    def update_progress(self, count: int, total: int, fraction: float | None = None) -> None:
+        """Update the bar and model count for determinate progress."""
+        if not self._indeterminate:
+            self.bar.set(fraction if fraction is not None else count / total if total else 0)
+            self.count.configure(text=f"{count} / {total} models")
+
+
+class ModelProgressDialog(ctk.CTkToplevel):
+    """Reusable centered modal window for model progress."""
+    def __init__(self, master: ModelDeepenerApp, total: int, message: str) -> None:
+        super().__init__(master)
+        self.withdraw()
+        self.title("Loading Data...")
+        self.transient(master)
+        self.resizable(False, False)
+        self.protocol("WM_DELETE_WINDOW", lambda: None)
+        self.configure(fg_color="#FFFFFF")
+        colors = master.colors
+        panel = ctk.CTkFrame(self, fg_color="#FFFFFF", corner_radius=12,
+                             border_width=1, border_color=colors["border"], width=500)
+        panel.pack(fill="both", expand=True, padx=8, pady=8)
+        panel.grid_columnconfigure(0, weight=1)
+        ctk.CTkLabel(panel, text="Loading Data...", text_color=colors["text"],
+                     font=ctk.CTkFont(family="Segoe UI", size=17, weight="bold")).grid(row=0, column=0, pady=(26, 6))
+        self.message = ctk.CTkLabel(panel, text=message, text_color=colors["muted"],
+                                    font=ctk.CTkFont(family="Segoe UI", size=12))
+        self.message.grid(row=1, column=0, pady=(0, 18))
+        self.bar = ctk.CTkProgressBar(panel, width=420, height=13, corner_radius=7, progress_color=colors["primary"])
+        self.bar.grid(row=2, column=0, sticky="ew", padx=34)
+        self.count = ctk.CTkLabel(panel, text="", text_color=colors["muted"],
+                                  font=ctk.CTkFont(family="Segoe UI", size=12))
+        self._show_after = None
+        self.prepare(total, message)
+
+    def prepare(self, total: int, message: str) -> None:
+        """Reset the message and bar for a new operation."""
+        self.bar.stop()
+        self.message.configure(text=message)
+        self._indeterminate = total <= 1
+        self.bar.configure(mode="indeterminate" if self._indeterminate else "determinate")
+        self.bar.set(0)
+        self.count.configure(text=f"0 / {total} models")
+        if self._indeterminate:
+            self.count.grid_remove()
+        else:
+            self.count.grid(row=3, column=0, pady=(12, 26))
+
+    def show(self) -> None:
+        """Display the progress window and keep it modal until hidden."""
+        self.update_idletasks()
+        self.deiconify()
+        self.update_idletasks()
+        center_popup(self, self.master)
+        self.lift()
+        self.grab_set()
+        if self._indeterminate:
+            self.bar.start()
+        self._show_after = self.after(50, self._ensure_visible)
+
+    def _ensure_visible(self) -> None:
+        self._show_after = None
+        self.deiconify()
+        self.lift()
+
+    def hide(self) -> None:
+        """Hide the window until the next operation."""
+        if self._show_after is not None:
+            self.after_cancel(self._show_after)
+            self._show_after = None
+        self.bar.stop()
+        self.grab_release()
+        self.withdraw()
+
+    def set_message(self, message: str) -> None:
+        """Update the displayed progress message."""
+        self.message.configure(text=message)
+        if message == "Writing database..." and not self._indeterminate:
+            self._indeterminate = True
+            self.count.grid_remove()
+            self.bar.configure(mode="indeterminate")
+            self.bar.start()
+
+    def update_progress(self, count: int, total: int, fraction: float | None = None) -> None:
+        """Update the bar and model count for determinate progress."""
+        if not getattr(self, "_indeterminate", False):
+            self.bar.set(fraction if fraction is not None else count / total if total else 0)
+            self.count.configure(text=f"{count} / {total} models")
+        self.update_idletasks()
+
+
 class ImportProblemDialog(ctk.CTkToplevel):
     """Shows the problems of an import in one section per kind and lets the user continue or cancel the import.
 
     The height of a list follows its content up to a maximum, then the list scrolls.
-    "Continue import" is the default button. Closing the window cancels the import. The dialog
+    "Continue Import" is the default button. Closing the window cancels the import. The dialog
     only shows the texts of the ImportReport and uses Tk widgets, so it works on every system.
     """
 
@@ -7438,7 +9173,7 @@ class ImportProblemDialog(ctk.CTkToplevel):
     STRUCTURE_EXPLANATION = "These problems already exist in the file and were not caused by the import."
     ADAPTED_TITLE = "Some elements were adapted during the import"
     ADAPTED_EXPLANATION = "These elements have no direct counterpart in the model, so they were changed or left out."
-    SEVERAL_TITLE = "Import problems"
+    SEVERAL_TITLE = "Import Problems"
     LIST_WIDTH = 680
     LIST_TEXT_WIDTH = 640
     LIST_PADDING = 20
@@ -7447,7 +9182,7 @@ class ImportProblemDialog(ctk.CTkToplevel):
     def __init__(self, master: ModelDeepenerApp, report: ImportReport) -> None:
         """Build the dialog for the given report."""
         super().__init__(master)
-        self._report = report
+        self._report = visible_import_report(report)
         self._colors = master.colors
         self._continue_import = False
         self.title(self._window_title())
@@ -7481,12 +9216,12 @@ class ImportProblemDialog(ctk.CTkToplevel):
 
         row = ctk.CTkFrame(self, fg_color="transparent")
         row.pack(fill="x", padx=18, pady=(8, 18))
-        continue_button = ctk.CTkButton(row, text="Continue import", height=36, fg_color=self._colors["primary"],
+        continue_button = ctk.CTkButton(row, text="Continue Import", height=36, fg_color=self._colors["primary"],
                                         hover_color=self._colors["primary_hover"], text_color="#FFFFFF",
                                         command=self._continue)
         continue_button.pack(side="right")
-        self._make_plain_button(row, "Cancel import", self._cancel).pack(side="right", padx=(0, 8))
-        self._make_plain_button(row, "Export problem list (CSV)", self._save_list).pack(side="left")
+        self._make_plain_button(row, "Cancel Import", self._cancel).pack(side="right", padx=(0, 8))
+        self._make_plain_button(row, "Export Problem List (CSV)", self._save_list).pack(side="left")
         continue_button.focus_set()
         return status_label
 
@@ -7540,7 +9275,7 @@ class ImportProblemDialog(ctk.CTkToplevel):
     def _save_list(self) -> None:
         """Ask for a file and write all problems to it. The dialog stays open."""
         file_path = filedialog.asksaveasfilename(
-            parent=self, title="Export problem list (CSV)", initialfile="import_problems.csv",
+            parent=self.master, title="Export Problem List (CSV)", initialfile="import_problems.csv",
             defaultextension=".csv", filetypes=[("CSV files", "*.csv"), ("All files", "*.*")],
         )
         if not file_path:
@@ -7573,6 +9308,9 @@ class ImportProblemDialog(ctk.CTkToplevel):
 
 def ask_import_problems(master: ModelDeepenerApp, report: ImportReport, overlay: Overlay) -> bool:
     """Show the problems of an import and return True if the user continues the import."""
+    report = visible_import_report(report)
+    if not report.has_problems():
+        return True
     dialog = ImportProblemDialog(master, report)
     overlay.cover(dialog)
     dialog.grab_set()
