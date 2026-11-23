@@ -1,7 +1,7 @@
 import re
 from abc import ABCMeta, abstractmethod
 
-from basemlm.basemlm_type_spec import TypeSpec
+from basemlm.basemlm_type_spec import TypeSpec, TypeSpecEnum
 from basemlm.predefined_type_enum import BaseMlmPredefinedTypesEnum
 
 
@@ -16,6 +16,9 @@ class BaseMlmPredefinedType(TypeSpec, metaclass=ABCMeta):
 
     def get_type_as_enum_value(self) -> BaseMlmPredefinedTypesEnum:
         return self.type_name
+
+    def get_type_category(self) -> TypeSpecEnum:
+        return TypeSpecEnum.PREDEFINED
 
     @abstractmethod
     def slot_conforms_to_type(self, slot) -> bool:

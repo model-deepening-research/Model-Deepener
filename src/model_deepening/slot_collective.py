@@ -15,7 +15,7 @@ class SlotCollective(BaseMlmProperty):
         else:
             print_value: str = value[:10]  # as a precaution only first 10 characters for printing,
         # too long names cause unreadable graphs
-        super().__init__(f"{print_value}")
+        super().__init__(f"{print_value}", f"{print_value}")
         self.value: str = value
         self.attribute: BaseMlmAttribute = attribute
         self.slots: [BaseMlmSlot] = []

@@ -32,6 +32,12 @@ class BaseMlmAssociation(BaseMlmConnection):
     def set_target_association_end(self, association_end):
         self.target_association_end = association_end
 
+    def get_source_multiplicity(self) -> Multiplicity:
+        return self.source_multiplicity
+
+    def get_target_multiplicity(self) -> Multiplicity:
+        return self.target_multiplicity
+
     def get_target_association_end(self):
         return self.target_association_end
 
@@ -65,14 +71,19 @@ class BaseMlmAssociation(BaseMlmConnection):
         else:
             self.target_multiplicity = Multiplicity(min_card, max_card)
 
-    def is_classification_indicator(self):
-        if self.source_multiplicity.is_exactly_one() and self.target_multiplicity.unbound:
+    def is_classification_indicator(self) -> bool:
+        """checks whether source class serves as a type for target class"""
+        if self.source_multiplicity.is_exactly_one() and self.target_multiplicity.is_unbounded():
             return True
         else:
-            if self.target_multiplicity.is_exactly_one() and self.source_multiplicity.unbound:
-                return True
-            else:
-                return False
+            return False
+
+    def is_instantiation_indicator(self) -> bool:
+        """counterpart to is_classification_indicator; checks whether target class serves as type for source class"""
+        if self.target_multiplicity.is_exactly_one() and self.source_multiplicity.is_unbounded():
+            return True
+        else:
+            return False
 
     def __repr__(self):
         return (f"[ASSOCIATION {self.name}] {self.source_multiplicity} From {self.source_object.name}"

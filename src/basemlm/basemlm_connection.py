@@ -1,10 +1,10 @@
 from abc import ABCMeta
 
-from basemlm.model_member import ModelMember
+from basemlm.model_member import ModelElement
 from src.basemlm.model_element import ModelElement
 
 
-class BaseMlmConnection(ModelMember, metaclass=ABCMeta):
+class BaseMlmConnection(ModelElement, metaclass=ABCMeta):
     """
     Superclass for model relationships, currently BaseMlmAssociation and BaseMlmLink.
     Each model relationship has exactly one source and one target object.
