@@ -4,6 +4,7 @@ from basemlm.basemlm_model import BaseMlmModel
 from basemlm.basemlm_type_spec import TypeSpecEnum
 from basemlm.model_part import ModelPart
 from basemlm.predefined_type_enum import BaseMlmPredefinedTypesEnum
+from model_deepening.model_deepening import ModelDeepening
 
 
 class TellChecker:
@@ -137,7 +138,9 @@ class TellChecker:
     def check_duplicate_instance_properties(self) -> [ModelPart]:
         """Tell OC5: TBD property-precedence analysis required"""
         affected_parts: [ModelPart] = []
-        return affected_parts
+        md_instance: ModelDeepening = ModelDeepening(self.model)
+        md_instance.perform_property_precedence_analysis()
+        return md_instance.return_affected_classes_as_parts()
 
     def check_generalizations(self) -> [ModelPart]:
         """Tell TH1: checks for generalization relationships, part consists of child, parent"""

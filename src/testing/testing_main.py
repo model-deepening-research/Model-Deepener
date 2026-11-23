@@ -4,22 +4,15 @@ from basemlm.model_part import ModelPart
 from src.basemlm.basemlm_model import BaseMlmModel
 from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
 
-#pa_tester = PrecedenceAnalysisTester(variant=2,
-#                                     print_input_model=False,
- #                                    track_progress=True,
-  #                                   export_precedence_graphs_as_png=False,
-   #                                  print_precedence_graph=True)
+pa_tester = PrecedenceAnalysisTester(variant=2,
+                                     print_input_model=False,
+                                     track_progress=True,
+                                     export_precedence_graphs_as_png=True,
+                                     print_precedence_graph=True)
 
-model_name = str(Path(__file__).resolve().parents[2] / "models" / "fmmlx" / "Portaview_with_Objects.xml")
+#model_name = str(Path(__file__).resolve().parents[2] / "models" / "fmmlx" / "Portaview_with_Objects.xml")
 
 
-my_model: BaseMlmModel = BaseMlmModel(model_name)
+#my_model: BaseMlmModel = BaseMlmModel(model_name)
 
-print(my_model.get_mlm_object_by_shortname("user3").get_descendants())
-
-print(my_model.get_mlm_object_by_shortname("AbstractVideo").get_descendants())
-
-my_part: ModelPart = ModelPart()
-my_part.add_model_member(my_model.get_mlm_object_by_shortname("user3"))
-my_part.add_model_member(my_model.get_mlm_object_by_shortname("AbstractVideo"))
-print(my_part)
+#print(Path.cwd().parent)
