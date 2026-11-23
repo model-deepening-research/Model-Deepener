@@ -77,7 +77,7 @@ def analyze_tells(selection: str, models: Sequence[tuple[str, "BaseMlmModel"]],
                 if spec not in parts[key][1]:
                     parts[key][1].append(spec)
         for part, matches in parts.values():
-            rows.append(TellResultRow(part.get_name(), ", ".join(item.identifier for item in matches), model_name,
+            rows.append(TellResultRow(part, ", ".join(item.identifier for item in matches), model_name,
                                       "\n".join(item.heading for item in matches)))
         if progress:
             progress(index, len(models))

@@ -1171,13 +1171,6 @@ class BaseMlmModel:
                 self.mlm_objects.append(new_instance)
             max_inst_level -= max_inst_level
 
-    def get_assoc_classification_indicators(self) -> List[BaseMlmAssociation]:
-        indicating_associations: List[BaseMlmAssociation] = []
-        for mlm_assoc in self.associations:
-            if mlm_assoc.is_classification_indicator():
-                indicating_associations.append(mlm_assoc)
-        return indicating_associations
-
     def __repr__(self):
         print(f"Multilevel Model <{self.model_name}>")
         print(*self.enums, sep="\n")

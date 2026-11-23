@@ -2,8 +2,8 @@ import xml.etree.ElementTree as ElementTree
 from typing import List
 
 from basemlm.basemlm_property import BaseMlmProperty
-from basemlm.basemlm_type_spec import TypeSpec
-from src.basemlm.model_member import ModelMember
+from basemlm.basemlm_type_spec import TypeSpec, TypeSpecEnum
+from src.basemlm.model_member import ModelElement
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
 from src.basemlm.basemlm_attribute import BaseMlmAttribute
 from src.basemlm.basemlm_constraint import BaseMlmConstraint
@@ -13,7 +13,7 @@ from src.model_deepening.slot_collective import SlotCollective
 from src.model_deepening.slot_precedence_graph import SlotPrecedenceGraph
 
 
-class BaseMlmObject(ModelMember, TypeSpec):
+class BaseMlmObject(ModelElement, TypeSpec):
 
     def __init__(self, full_name: str, object_name: str, level: str, class_of_object, is_abstract: str, model=None):
         super().__init__(name=object_name, print_name=object_name)
@@ -67,6 +67,9 @@ class BaseMlmObject(ModelMember, TypeSpec):
     @classmethod
     def get_shell_class(cls, base_class):
         return cls(base_class.full_name, base_class.name, "0", cls.meta_class(), "false")
+
+    def get_type_category(self) -> TypeSpecEnum:
+        return TypeSpecEnum.DOMAIN_SPECIFIC
 
     def get_level(self) -> int:
         return self.level
