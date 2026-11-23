@@ -194,10 +194,12 @@ class XmiImporterTests(unittest.TestCase):
         self.assertEqual(report.get_adaptations()[0].get_problem_type(), 'No classes')
         ui = SimpleNamespace(current_file_path='example.xmi', _importer_for_file=Mock(return_value=XmiImporter()),
                              _read_import_candidate=Mock(return_value=(model, report, [])), _overlay=Mock(),
-                             _persist_imported_source_file=Mock(), _store_loaded_model=Mock(), _show_error=Mock())
+                             _persist_imported_source_file=Mock(), _database=Mock(), _show_error=Mock())
+        ui._importer_for_file.return_value.import_file = Mock(return_value=(model, report))
+        ui._run_model_task = lambda _total, _message, work, success, _failure: success(work(None))
         with patch('src.gui.app.ask_import_problems', return_value=True):
             ModelDeepenerApp._create_model(ui)
-        ui._store_loaded_model.assert_not_called()
+        ui._database.store.assert_not_called()
         ui._persist_imported_source_file.assert_not_called()
 
     def test_duplicate_package_classes_and_unresolved_references(self) -> None:

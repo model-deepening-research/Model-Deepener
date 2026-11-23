@@ -140,6 +140,14 @@ class MigrationTests(unittest.TestCase):
         model.validate_basemlm_integrity.side_effect = AttributeError("Incomplete type")
         ui = types.SimpleNamespace(current_model=model, _show_warning=Mock(),
                                    _export_current_xml_model=Mock())
+        def run(_total, _message, work, success, failure):
+            try:
+                result = work(None)
+            except Exception as error:
+                failure(error)
+            else:
+                success(result)
+        ui._run_model_task = run
         ModelDeepenerApp._export_current_model_placeholder(ui)
         ui._show_warning.assert_called_once()
         ui._export_current_xml_model.assert_not_called()

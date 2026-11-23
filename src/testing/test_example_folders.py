@@ -34,7 +34,7 @@ class ExampleFolderTests(unittest.TestCase):
                     _tree=lambda *args, **kwargs: tree,
                     _overlay=MagicMock(), file_path_var=MagicMock(), current_file_path='',
                     colors={'text': '#000000', 'border': '#000000', 'primary': '#000000', 'primary_hover': '#000000'},
-                    _show_information=MagicMock(),
+                    _show_information=MagicMock(), _set_file_input_mode=MagicMock(), wait_window=MagicMock(),
                 )
                 def validate() -> None:
                     results.append(importer_for(ui.current_file_path).import_file(ui.current_file_path))

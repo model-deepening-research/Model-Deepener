@@ -1,4 +1,4 @@
-import os.path
+from pathlib import Path
 
 from basemlm.model_part import ModelPart
 from src.basemlm.basemlm_model import BaseMlmModel
@@ -10,7 +10,7 @@ from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
   #                                   export_precedence_graphs_as_png=False,
    #                                  print_precedence_graph=True)
 
-model_name = os.path.join(os.getcwd()[:-4], "models", "fmmlx", "Portaview_with_Objects.xml")
+model_name = str(Path(__file__).resolve().parents[2] / "models" / "fmmlx" / "Portaview_with_Objects.xml")
 
 
 my_model: BaseMlmModel = BaseMlmModel(model_name)
