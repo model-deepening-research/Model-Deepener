@@ -995,12 +995,14 @@ class BaseMlmModel:
                                                                  assoc.get_target_object().full_name,
                                                                  assoc.get_source_inst_level(),
                                                                  assoc.get_target_object(),
-                                                                 assoc, True)
+                                                                 assoc, True,
+                                                                 multiplicity=assoc.get_target_multiplicity())
                 tgt_assoc_end: BaseMlmAssocEnd = BaseMlmAssocEnd(assoc.get_target_access_name(),
                                                                  assoc.get_source_object().full_name,
                                                                  assoc.get_target_inst_level(),
                                                                  assoc.get_source_object(),
-                                                                 assoc, False)
+                                                                 assoc, False,
+                                                                 multiplicity=assoc.get_source_multiplicity())
                 assoc.get_source_object().add_attr(src_assoc_end)
                 assoc.set_source_association_end(src_assoc_end)
                 assoc.get_target_object().add_attr(tgt_assoc_end)
@@ -1013,8 +1015,8 @@ class BaseMlmModel:
                                                              link.get_target_object().full_name, link, True)
             tgt_slot_link: BaseMlmSlotLink = BaseMlmSlotLink(link.get_association().get_target_access_name(),
                                                              link.get_source_object().full_name, link, False)
-            link.get_source_object().add_slot(src_slot_link)
-            link.get_target_object().add_slot(tgt_slot_link)
+            link.get_source_object().add_slot(src_slot_link, link=link)
+            link.get_target_object().add_slot(tgt_slot_link, link=link)
 
     def parse_attribute_type(self, type_str: str) -> TypeSpec:
         """receives the type as String from the FMMLX XML file and parses it to produce TypeSpec. The type string always
@@ -1107,18 +1109,24 @@ class BaseMlmModel:
             src_slot_links = src_object.get_slot_links()
             tgt_slot_links = tgt_object.get_slot_links()
 
-            if not any(
-                    slot_link.get_link() == link
-                    and slot_link.get_attr_type() == tgt_object.get_name()
-                    for slot_link in src_slot_links
-            ):
-                return False
+            src_valid: bool = False
+            tgt_valid: bool = False
 
-            if not any(
-                    slot_link.get_link() == link
-                    and slot_link.get_attr_type() == src_object.get_name()
-                    for slot_link in tgt_slot_links
-            ):
+            for slot_link in src_slot_links:
+                for sl_link in slot_link.get_links():
+                    if sl_link == link:
+                        for value in slot_link.get_values_as_list():
+                            if value == tgt_object.get_name():
+                                src_valid = True
+
+            for slot_link in tgt_slot_links:
+                for sl_link in slot_link.get_links():
+                    if sl_link == link:
+                        for value in slot_link.get_values_as_list():
+                            if value == src_object.get_name():
+                                tgt_valid = True
+
+            if not src_valid or not tgt_valid:
                 return False
 
         return True

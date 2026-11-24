@@ -37,6 +37,9 @@ class BaseMlmAttribute(BaseMlmProperty):
         """Return True if the model does not contain the type of this attribute."""
         return self._type_missing
 
+    def get_multiplicity(self):
+        return self.multiplicity
+
     def is_assoc_end(self) -> bool:
         return False if self.attr_category == "ATTR" else True
 

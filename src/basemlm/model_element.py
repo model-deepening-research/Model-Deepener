@@ -1,8 +1,5 @@
 from abc import ABCMeta
 
-from basemlm.model_part import ModelPart
-
-
 class ModelElement(metaclass=ABCMeta):
     """The abstract class ModelElement serves as a superclass to any element (property or entity) contained in a model.
     This generalization is required for change suggestions in model deepening"""

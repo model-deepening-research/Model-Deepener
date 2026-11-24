@@ -1,10 +1,10 @@
 import xml.etree.ElementTree as ElementTree
 
 from basemlm.basemlm_type_spec import TypeSpec, TypeSpecEnum
-from src.basemlm.model_member import ModelElement
+from src.basemlm.model_member import ModelMember
 
 
-class BaseMlmEnumType(ModelElement, TypeSpec):
+class BaseMlmEnumType(ModelMember, TypeSpec):
 
     def __init__(self, enum_name: str):
         super().__init__(name=enum_name, print_name=enum_name)

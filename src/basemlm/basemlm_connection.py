@@ -1,6 +1,6 @@
 from abc import ABCMeta
 
-from basemlm.model_member import ModelElement
+from basemlm.model_member import ModelMember
 from src.basemlm.model_element import ModelElement
 
 

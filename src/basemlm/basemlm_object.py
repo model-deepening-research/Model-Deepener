@@ -3,7 +3,7 @@ from typing import List
 
 from basemlm.basemlm_property import BaseMlmProperty
 from basemlm.basemlm_type_spec import TypeSpec, TypeSpecEnum
-from src.basemlm.model_member import ModelElement
+from src.basemlm.model_member import ModelMember
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
 from src.basemlm.basemlm_attribute import BaseMlmAttribute
 from src.basemlm.basemlm_constraint import BaseMlmConstraint
@@ -13,7 +13,7 @@ from src.model_deepening.slot_collective import SlotCollective
 from src.model_deepening.slot_precedence_graph import SlotPrecedenceGraph
 
 
-class BaseMlmObject(ModelElement, TypeSpec):
+class BaseMlmObject(ModelMember, TypeSpec):
 
     def __init__(self, full_name: str, object_name: str, level: str, class_of_object, is_abstract: str, model=None):
         super().__init__(name=object_name, print_name=object_name)
@@ -245,7 +245,7 @@ class BaseMlmObject(ModelElement, TypeSpec):
     def add_attr(self, attr: BaseMlmAttribute):
         self.attr_list.append(attr)
 
-    def add_slot(self, new_slot: BaseMlmSlot):
+    def add_slot(self, new_slot: BaseMlmSlot, link=None):
         """support fot multiplicity (for now only for slot links): This operation checks whether a slot with the
         same name is already in the object and then adds the value to the slot"""
         slot_found: bool = False
@@ -253,6 +253,8 @@ class BaseMlmObject(ModelElement, TypeSpec):
             if slot.name == new_slot.name:
                 slot.add_value_of(new_slot)
                 slot_found = True
+                if slot.is_slot_link() and link is not None:
+                    slot.add_link(link)
         if not slot_found:
             self.slot_list.append(new_slot)
 

@@ -2642,15 +2642,22 @@ class ModelDeepenerApp(ctk.CTk):
             return
 
         model = self.current_model
+
         def checked(violations):
             if not violations:
                 self._show_information("Check Constraints", "The model is valid according to the constraints.")
             else:
                 details = "\n".join(f"- {violation}" for violation in violations)
-                self._show_warning("Check Constraints", "The model is not valid. The following constraints are violated:\n\n" + details)
+                self._show_warning("Check Constraints",
+                                   "The model is not valid. The following constraints are violated:\n\n" + details)
+
         def failed(error):
-            self._show_warning("Check Constraints", "The model could not be checked. It remains saved, but export is blocked until the constraint check succeeds.\n\n" + str(error))
-        self._run_model_task(1, "Checking constraints...", lambda _progress: model.validate_basemlm_integrity(), checked, failed)
+            self._show_warning("Check Constraints",
+                               "The model could not be checked. "
+                               "It remains saved, but export is blocked until the constraint check succeeds.\n\n"
+                               + str(error))
+        self._run_model_task(1, "Checking constraints...",
+                             lambda _progress: model.validate_basemlm_integrity(), checked, failed)
 
     def _export_current_model_placeholder(self):
         """Export the current model only when all constraints are satisfied."""
@@ -2659,6 +2666,7 @@ class ModelDeepenerApp(ctk.CTk):
             return
 
         model = self.current_model
+
         def checked(violations):
             if violations:
                 details = "\n".join(f"- {violation}" for violation in violations)
@@ -2672,7 +2680,9 @@ class ModelDeepenerApp(ctk.CTk):
             else:
                 self._show_error("Export Model", "Only CSV and FMMLx models can be exported.")
         def failed(error):
-            self._show_warning("Check Constraints", "The model could not be checked. It remains saved, but export is blocked until the constraint check succeeds.\n\n" + str(error))
+            self._show_warning("Check Constraints", "The model could not be checked. It remains saved, "
+                                                    "but export is blocked until the constraint check succeeds.\n\n"
+                               + str(error))
         self._run_model_task(1, "Checking constraints...", lambda _progress: model.validate_basemlm_integrity(), checked, failed)
 
     def _export_current_xml_model(self):
