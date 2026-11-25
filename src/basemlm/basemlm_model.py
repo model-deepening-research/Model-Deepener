@@ -1131,6 +1131,9 @@ class BaseMlmModel:
 
         return True
 
+    def has_instances(self) -> bool:
+        return len(self.get_all_pure_objects()) > 0
+
 
     def get_mlm_object_by_fullname(self, full_name: str) -> BaseMlmObject:
         for mlm_object in self.mlm_objects:
