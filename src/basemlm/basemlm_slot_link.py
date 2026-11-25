@@ -10,17 +10,18 @@ class BaseMlmSlotLink(BaseMlmSlot):
         super().__init__(slot_name, value.split("::")[2])
         # value only returns short name of object, may lead to problems if name is reused in other slots
         self.slot_category = "SLOT-LINK"
-        self.link = link
+        self.links: [BaseMlmLink] = []
+        self.add_link(link)
         self.is_source_end = is_source_end
 
-    def get_link(self) -> BaseMlmLink:
-        return self.link
+    def get_links(self) -> [BaseMlmLink]:
+        return self.links
 
-    def set_link(self, link: BaseMlmLink):
-        self.link = link
+    def add_link(self, link: BaseMlmLink):
+        self.links.append(link)
 
     def get_attribute(self):
         if self.is_source_end:
-            return self.link.get_association().get_source_association_end()
+            return self.links[0].get_association().get_source_association_end()
         else:
-            return self.link.get_association().get_target_association_end()
+            return self.links[0].get_association().get_target_association_end()

@@ -1,6 +1,6 @@
 import xml.etree.ElementTree as ElementTree
 
-from basemlm.basemlm_type_spec import TypeSpec
+from basemlm.basemlm_type_spec import TypeSpec, TypeSpecEnum
 from src.basemlm.model_member import ModelMember
 
 
@@ -29,6 +29,9 @@ class BaseMlmEnumType(ModelMember, TypeSpec):
 
     def get_type_name(self) -> str:
         return self.name
+
+    def get_type_category(self) -> TypeSpecEnum:
+        return TypeSpecEnum.ENUM_TYPE
 
     def has_enum_value(self, enum_value: str) -> bool:
         """Return True if the enum has this literal."""

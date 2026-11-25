@@ -10,12 +10,77 @@ Model Deepener is the core application of a research project aimed to support au
 
 Maier and Kadziolka (2026)[^4] investigate the potential for using LLMs to support model deepening. Maier (2026)[^5] motivates and describes one analysis approach of model deepening called _Property-Precedence Analysis_ that analyzes populations of instance data to infer possible higher-level conceptual distinctions.
 [^4]: Maier P, Kadziolka V (2026) Model Deepening with Large Language Models: Insights from Exploratory Studies with ChatGPT. Advances in Conceptual Modeling: - ER 2025 Workshops, CMLS, FCM, LLM4Modeling, OntoCom, and QUAMES, Poitiers, France, October 20–23, 2025, Proceedings, pp 119–136<br>
-[^5]:  Maier P (2026) Property-Precedence Analysis for Model Deepening. Proceedings of the ACM/IEEE 29th International Conference on Model Driven Engineering Languages and Systems. _Accepted for Publication_
+[^5]:  Maier P (2026) Property-Precedence Analysis for Model Deepening. Proceedings of the ACM/IEEE 29th International Conference on Model Driven Engineering Languages and Systems, pp. 1024-1033
 
 > [!IMPORTANT]
 > The tool is targeted for a research audience and only supports experimentation with sample models at the current stage.
 
+## Installation Guide
+
+### Preconditions
+
+| Requirement | Details |
+|---|---|
+| **Python 3.12** | Implemented and tested only with Python 3.12 |
+| **Tkinter** | The GUI is built on Tkinter/CustomTkinter. It's included with the python.org installers for Windows and macOS. On Linux, install it separately (e.g. `sudo apt install python3.12-tk`). |
+| **Git** | Needed to clone the repository. You can also download the ZIP from GitHub instead. |
+| **Operating system** | Windows is the main development and test platform. Some window-handling features use Windows APIs and are skipped on other systems. |
+| *Optional:* **Graphviz** | Only needed to export precedence graphs as PNG/SVG images. Install it from [graphviz.org](https://graphviz.org/download/) and make sure `dot` is on your `PATH`. |
+| *Optional:* **XModelerML** | Needed to open, execute and instantiate the FMMLx/UML++ models the tool produces. Download here: [XModelerML](https://www.wi-inf.uni-due.de/LE4MM/xmodelerml/#download). |
+
+You can check your Python version with:
+
+```bash
+python --version      # should print Python 3.12.x
+```
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/model-deepening-research/Model-Deepener.git
+cd Model-Deepener
+```
+
+### 2. Create and activate a virtual environment
+
+**Windows (PowerShell)**
+```powershell
+py -3.12 -m venv .venv
+.venv\Scripts\Activate.ps1
+```
+
+**macOS / Linux**
+```bash
+python3.12 -m venv .venv
+source .venv/bin/activate
+```
+
+### 3. Install the dependencies
+
+```bash
+python -m pip install --upgrade pip
+pip install -r requirements.txt
+```
+
+### 4. Start Model Deepener
+
+Run this from the repository root (the folder that contains `src/`):
+
+```bash
+python -m src
+```
+
+The Model Deepener GUI should open. Sample input models (CSV, FMMLx, Ecore, PlantUML, XMI) are in the `models/` folder.
+
+### Troubleshooting
+
+- **`ModuleNotFoundError: No module named 'src'`**: Start the tool from the repository root with `python -m src`. Don't run `python src/__main__.py` or start it from inside `src/`.
+- **`ModuleNotFoundError: No module named 'tkinter'`**: Tkinter is missing from your Python installation. See the preconditions above.
+- **pip fails to build `numpy` or `pandas`**: You're probably on Python 3.13 or newer. Recreate the virtual environment with Python 3.12.
+- **Graph image export fails (`"dot" not found in path`)**: Install Graphviz and restart your terminal.
 
 ## Authors
 
 Created and maintained by Pierre Maier ([@map-research](https://github.com/map-research)), University of Duisburg-Essen
+
+Installation guide created with Claude.ai

@@ -6,20 +6,21 @@ from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
 
 #pa_tester = PrecedenceAnalysisTester(variant=2,
 #                                     print_input_model=False,
- #                                    track_progress=True,
-  #                                   export_precedence_graphs_as_png=False,
-   #                                  print_precedence_graph=True)
+#                                     track_progress=True,
+#                                     export_precedence_graphs_as_png=True,
+#                                     print_precedence_graph=True)
 
 model_name = str(Path(__file__).resolve().parents[2] / "models" / "fmmlx" / "Portaview_with_Objects.xml")
 
 
 my_model: BaseMlmModel = BaseMlmModel(model_name)
 
-print(my_model.get_mlm_object_by_shortname("user3").get_descendants())
+for fc in my_model.get_objects():
+    for slot_link in fc.get_slot_links():
+        print("SLOT-LINK")
+        print(slot_link)
+        print(slot_link.get_links())
+        print("----------------")
 
-print(my_model.get_mlm_object_by_shortname("AbstractVideo").get_descendants())
 
-my_part: ModelPart = ModelPart()
-my_part.add_model_member(my_model.get_mlm_object_by_shortname("user3"))
-my_part.add_model_member(my_model.get_mlm_object_by_shortname("AbstractVideo"))
-print(my_part)
+#print(Path.cwd().parent)

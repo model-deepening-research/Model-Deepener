@@ -1,3 +1,4 @@
+from basemlm.model_part import ModelPart
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
 from src.basemlm.basemlm_model import *
 from src.model_deepening.image_file_format_enum import ImageFileFormat
@@ -56,32 +57,42 @@ class ModelDeepening:
         """
         print_any: bool = print_slot_collectives | print_attribute_relations | print_slot_comparisons
         for flat_class in self.get_flat_classes():
-            if print_any:
-                print("PROPERTY PRECEDENCE ANALYSIS FOR " + flat_class.name + "\n")
-            flat_class.create_slot_collectives(ignore_case=True, print_progress=print_slot_collectives)
-            flat_class.create_property_precedence_graphs(print_attr_relations=print_attribute_relations,
-                                                         print_slots=print_slot_comparisons)
-            attr_precedence_graph: AttributePrecedenceGraph = flat_class.get_attribute_precedence_graph()
-            spg = flat_class.get_slot_precedence_graph()
-            if export_graphs_as_png:
-                attr_precedence_graph.export_graph_as_image(flat_class.name, ImageFileFormat.SVG)
-                spg.export_graph_as_image(flat_class.name, ImageFileFormat.SVG)
+            if len(flat_class.get_instances()) > 0:
+                if print_any:
+                    print("PROPERTY PRECEDENCE ANALYSIS FOR " + flat_class.name + "\n")
+                flat_class.create_slot_collectives(ignore_case=True, print_progress=print_slot_collectives)
+                flat_class.create_property_precedence_graphs(print_attr_relations=print_attribute_relations,
+                                                             print_slots=print_slot_comparisons)
+                attr_precedence_graph: AttributePrecedenceGraph = flat_class.get_attribute_precedence_graph()
+                spg = flat_class.get_slot_precedence_graph()
+                if export_graphs_as_png:
+                    attr_precedence_graph.export_graph_as_image(flat_class.name, ImageFileFormat.PNG)
+                    spg.export_graph_as_image(flat_class.name, ImageFileFormat.PNG)
 
-            if print_precedence_graph:
-                print(attr_precedence_graph)
-                print(attr_precedence_graph.return_edges_for_print())
-                print(spg)
-                print(spg.return_edges_for_print())
+                if print_precedence_graph:
+                    print(attr_precedence_graph)
+                    print(attr_precedence_graph.return_edges_for_print())
+                    print(spg)
+                    print(spg.return_edges_for_print())
 
-            #  attr_precedence_graph.set_inst_levels_for_attributes()
-            if attr_precedence_graph.has_deepening_potential():
-                #self.output_model.perform_change_operations_for_precedence_analysis(flat_class)
-                print("\n---------------------OUTPUT MODEL------------------------")
-                #print(self.output_model)
-            if print_any:
-                print("\n-------------------------------------------------------------------\n")
+                #  attr_precedence_graph.set_inst_levels_for_attributes()
+                if attr_precedence_graph.has_deepening_potential():
+                    #self.output_model.perform_change_operations_for_precedence_analysis(flat_class)
+                    print("\n---------------------OUTPUT MODEL------------------------")
+                    #print(self.output_model)
+                if print_any:
+                    print("\n-------------------------------------------------------------------\n")
         print("DONE")
-        return self.fmmlx_model
+        #return self.fmmlx_model
+
+    def return_affected_classes_as_parts(self) -> [ModelPart]:
+        """used in newer implementation with model parts in tell checker, requires analysis performed first"""
+        affected_parts: [ModelPart] = []
+        for flat_class in self.get_flat_classes():
+            if flat_class.get_attribute_precedence_graph().has_deepening_potential():
+                affected_parts.append(ModelPart(flat_class))
+        return affected_parts
+
 
     def perform_deepening_operations_for_class(self, flat_class: BaseMlmObject):
         """This method performs the required change operations on the output model, the original model remains

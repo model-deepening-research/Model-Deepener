@@ -1,4 +1,4 @@
-from basemlm.basemlm_type_spec import TypeSpec
+from basemlm.basemlm_type_spec import TypeSpec, TypeSpecEnum
 from src.basemlm.basemlm_enum_type import BaseMlmEnumType
 from src.basemlm.basemlm_property import BaseMlmProperty
 
@@ -37,6 +37,9 @@ class BaseMlmAttribute(BaseMlmProperty):
         """Return True if the model does not contain the type of this attribute."""
         return self._type_missing
 
+    def get_multiplicity(self):
+        return self.multiplicity
+
     def is_assoc_end(self) -> bool:
         return False if self.attr_category == "ATTR" else True
 
@@ -48,6 +51,9 @@ class BaseMlmAttribute(BaseMlmProperty):
 
     def get_type_spec(self) -> TypeSpec:
         return self.attr_type_spec
+
+    def get_type_spec_category(self) -> TypeSpecEnum:
+        return self.get_type_spec().get_type_category()
 
     def set_owner(self, owner):
         self.owner = owner

@@ -28,15 +28,17 @@ class TellResultsTests(unittest.TestCase):
         rows = analyze_tells("Check All Tells", [("First", model), ("Second", model)])
         self.assertEqual([row.model_name for row in rows], ["First", "Second"])
         self.assertTrue(all(row.affected_parts == "Class" for row in rows))
-        self.assertEqual(rows[0].indicators, ", ".join(spec.identifier for spec in TELL_SPECS))
-        self.assertIn("TO1: Name of Associated Class", rows[0].indicator_details)
+        self.assertEqual(rows[0].indicators, "OC1")
+        self.assertIn("OC1: Class Name", rows[0].indicator_details)
         self.assertEqual(analyze_tells("Check Tell OC1", [("First", model)])[0].indicators, "OC1")
 
     def test_each_tell_calls_its_own_method(self):
         """Dispatch each tell to the corresponding checker method."""
         checker = Mock()
         part = Mock()
-        part.get_name.return_value = "Part"
+        element = Mock()
+        element.get_name.return_value = "Part"
+        part.get_model_elements.return_value = [element]
         for spec in TELL_SPECS:
             getattr(checker, spec.method).return_value = [part]
         with patch("src.gui.tell_results.TellChecker", return_value=checker):

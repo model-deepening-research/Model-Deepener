@@ -1,12 +1,12 @@
 from abc import ABCMeta
 
-
 class ModelElement(metaclass=ABCMeta):
     """The abstract class ModelElement serves as a superclass to any element (property or entity) contained in a model.
     This generalization is required for change suggestions in model deepening"""
     def __init__(self, name: str, print_name: str):
         self.name = name
         self.print_name = print_name
+        self.model_parts = []
         pass
 
     def add_import_note(self, description: str, serious: bool = False, field: str = "name") -> None:
@@ -60,6 +60,12 @@ class ModelElement(metaclass=ABCMeta):
 
     def set_print_name(self, print_name: str):
         self.print_name = print_name
+
+    def add_model_part(self, model_part):
+        self.model_parts.append(model_part)
+
+    def get_model_parts(self):
+        return self.model_parts
 
     def is_name_valid(self):
         return self.name != ""

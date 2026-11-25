@@ -2,7 +2,7 @@ import xml.etree.ElementTree as ElementTree
 from typing import List
 
 from basemlm.basemlm_property import BaseMlmProperty
-from basemlm.basemlm_type_spec import TypeSpec
+from basemlm.basemlm_type_spec import TypeSpec, TypeSpecEnum
 from src.basemlm.model_member import ModelMember
 from src.model_deepening.attribute_precedence_graph import AttributePrecedenceGraph
 from src.basemlm.basemlm_attribute import BaseMlmAttribute
@@ -67,6 +67,9 @@ class BaseMlmObject(ModelMember, TypeSpec):
     @classmethod
     def get_shell_class(cls, base_class):
         return cls(base_class.full_name, base_class.name, "0", cls.meta_class(), "false")
+
+    def get_type_category(self) -> TypeSpecEnum:
+        return TypeSpecEnum.DOMAIN_SPECIFIC
 
     def get_level(self) -> int:
         return self.level
@@ -242,7 +245,7 @@ class BaseMlmObject(ModelMember, TypeSpec):
     def add_attr(self, attr: BaseMlmAttribute):
         self.attr_list.append(attr)
 
-    def add_slot(self, new_slot: BaseMlmSlot):
+    def add_slot(self, new_slot: BaseMlmSlot, link=None):
         """support fot multiplicity (for now only for slot links): This operation checks whether a slot with the
         same name is already in the object and then adds the value to the slot"""
         slot_found: bool = False
@@ -250,6 +253,8 @@ class BaseMlmObject(ModelMember, TypeSpec):
             if slot.name == new_slot.name:
                 slot.add_value_of(new_slot)
                 slot_found = True
+                if slot.is_slot_link() and link is not None:
+                    slot.add_link(link)
         if not slot_found:
             self.slot_list.append(new_slot)
 
