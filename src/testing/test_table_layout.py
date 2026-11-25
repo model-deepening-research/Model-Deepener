@@ -22,7 +22,7 @@ class TableLayoutTests(unittest.TestCase):
         cls.root.geometry("1200x700")
         cls.root.colors = COLORS
         for name in ("_card", "_autohide_scroll", "_move_column_boundary", "_balanced_tell_widths",
-                     "_prompt_deepening"):
+                     "_transform_tell_results", "_export_tell_results"):
             setattr(cls.root, name, MethodType(getattr(ModelDeepenerApp, name), cls.root)
                     if not isinstance(ModelDeepenerApp.__dict__[name], (staticmethod, classmethod))
                     else getattr(ModelDeepenerApp, name))
@@ -81,14 +81,13 @@ class TableLayoutTests(unittest.TestCase):
         for batch in (False, True):
             with self.subTest(batch=batch):
                 frame, panel = self._tell_table([TellResultRow("A", "B", "M")], batch=batch)
-                button = next(child for child in panel.winfo_children() if isinstance(child, ctk.CTkButton)
-                              and child.cget("text") == "Perform Deepening Transformation")
+                buttons = [child for child in self._descendants(panel) if isinstance(child, ctk.CTkButton)]
+                self.assertEqual({button.cget("text") for button in buttons}, {"Transform", "Export CSV"})
                 card = panel.grid_slaves(row=0, column=0)[0]
-                self.assertIs(button.master, panel)
+                actions = panel.grid_slaves(row=1, column=0)[0]
                 self.assertIs(card.master, panel)
-                self.assertEqual(button.grid_info()["row"], 1)
-                self.assertEqual(button.grid_info()["sticky"], "e")
-                self.assertGreater(button.winfo_y(), card.winfo_y() + card.winfo_height())
+                self.assertTrue(all(button.master is actions for button in buttons))
+                self.assertGreater(actions.winfo_y(), card.winfo_y() + card.winfo_height())
                 _cancel_widget_timers(frame)
                 frame.destroy()
 
@@ -97,7 +96,7 @@ class TableLayoutTests(unittest.TestCase):
         row = TellResultRow("Class", "TO1, OC1", "Model", "TO1: Name of Associated Class\nOC1: Class Name")
         frame, panel = self._tell_table([row], batch=False)
         indicator = next(label for label, _column in panel._tell_text_labels if label.cget("text") == "TO1, OC1")
-        self.assertTrue(indicator._label.bind("<Enter>"))
+        self.assertTrue(indicator.bind("<Enter>"))
         checkboxes = [widget for widget in self._descendants(panel) if isinstance(widget, ctk.CTkCheckBox)]
         yes, no = checkboxes
         self.assertEqual(panel._transform_choices[0].get(), "No")
@@ -117,6 +116,27 @@ class TableLayoutTests(unittest.TestCase):
         _cancel_widget_timers(frame)
         frame.destroy()
 
+    def test_no_hit_model_has_no_transform_checkbox(self):
+        rows = [TellResultRow("No affected parts found.", "", "Empty", model_format="XMI", is_placeholder=True),
+                TellResultRow("Class", "OC1", "Other", model_format="XMI")]
+        frame, panel = self._tell_table(rows)
+        checkboxes = [widget for widget in self._descendants(panel)
+                      if isinstance(widget, ctk.CTkCheckBox) and widget.winfo_ismapped()]
+        self.assertEqual(len(checkboxes), 2)
+        self.assertEqual(panel._tell_rows[0][1].get(), "No")
+        _cancel_widget_timers(frame)
+        frame.destroy()
+
+    def test_failed_checks_show_a_warning_above_the_table(self):
+        from src.gui.tell_results import TellRows
+        rows = TellRows()
+        rows.failures.extend([("Model", "TO1", "error"), ("Model", "OC1", "error")])
+        frame, panel = self._tell_table(rows)
+        labels = [widget.cget("text") for widget in self._descendants(panel) if isinstance(widget, ctk.CTkLabel)]
+        self.assertIn("2 checks failed.", labels)
+        _cancel_widget_timers(frame)
+        frame.destroy()
+
     def test_tell_rows_are_as_high_as_attribute_table_rows(self):
         """Check tell rows are as high as attribute table rows."""
         rows = [TellResultRow("Class A", "Tell 3 indicator", "Model 1"),
@@ -124,8 +144,8 @@ class TableLayoutTests(unittest.TestCase):
         frame, panel = self._tell_table(rows)
         table = panel._tell_text_labels[0][0].master.master
         tell_header = table.grid_slaves(row=0, column=0)[0].winfo_height()
-        tell_row = table.grid_slaves(row=1, column=3)[0].winfo_height()
-        tell_text_row = table.grid_slaves(row=1, column=0)[0].winfo_height()
+        tell_row = table.grid_slaves(row=2, column=3)[0].winfo_height()
+        tell_text_row = table.grid_slaves(row=2, column=0)[0].winfo_height()
         _cancel_widget_timers(frame)
         frame.destroy()
         self.assertEqual((tell_header, tell_row), self._detail_heights())
@@ -135,9 +155,9 @@ class TableLayoutTests(unittest.TestCase):
         """Check tell header dividers match row dividers."""
         frame, panel = self._tell_table([TellResultRow("A", "B", "Model")])
         table = panel._tell_text_labels[0][0].master.master
-        for column in range(1, 4):
+        for column in range(1, 5):
             header = table.grid_slaves(row=0, column=column)[0]
-            row = table.grid_slaves(row=1, column=column)[0]
+            row = table.grid_slaves(row=2, column=column)[0]
             for cell in (header, row):
                 self.assertEqual(cell.cget("highlightthickness"), 1)
                 self.assertEqual(cell.cget("highlightbackground"), "#AFC1D9")
@@ -145,6 +165,140 @@ class TableLayoutTests(unittest.TestCase):
                                     and child.place_info().get("x") == "0" for child in cell.winfo_children()))
         _cancel_widget_timers(frame)
         frame.destroy()
+
+    def test_virtual_tell_table_keeps_decisions_when_scrolling(self):
+        rows = [TellResultRow(f"Part {index}", "OC1", "Model") for index in range(400)]
+        frame, panel = self._tell_table(rows)
+        canvas = next(w for w in self._descendants(panel) if type(w) is tk.Canvas)
+        self.assertLess(len(panel._tell_text_labels), 100)
+        panel._transform_choices[0].set("Yes")
+        canvas.yview_moveto(1.0)
+        self.root.update()
+        self.assertGreater(panel._tell_visible[0], 350)
+        self.assertGreater(canvas.yview()[1], 0.99)
+        canvas.yview_moveto(0.0)
+        self.root.update()
+        self.assertEqual(panel._transform_choices[0].get(), "Yes")
+        self.assertEqual(len(panel._tell_rows), len(rows))
+        _cancel_widget_timers(frame)
+        frame.destroy()
+
+    def test_large_tell_table_scrolls_from_cell_and_sticky_header(self):
+        rows = [TellResultRow(f"Part {index}", "OC1", "Model") for index in range(3000)]
+        frame, panel = self._tell_table(rows)
+        canvas = panel._tell_canvas
+        label = panel._tell_text_labels[0][0]
+        target = getattr(label, "_label", label)
+        target.event_generate("<MouseWheel>", delta=-120)
+        self.root.update()
+        self.assertGreater(canvas.yview()[0], 0)
+        canvas.yview_moveto(0.75)
+        self.root.update()
+        self.assertGreater(panel._tell_visible[0], 2000)
+        self.assertTrue(any("Part 22" in label.cget("text") for label, _ in panel._tell_text_labels))
+        window = next(item for item in canvas.find_all() if canvas.type(item) == "window"
+                      and canvas.itemcget(item, "window") == str(panel._tell_sticky))
+        self.assertAlmostEqual(canvas.coords(window)[1], canvas.canvasy(0), delta=2)
+        _cancel_widget_timers(frame)
+        frame.destroy()
+
+    def test_tell_scroll_position_is_restored_per_tab_and_tell(self):
+        root = self.root
+        root._batch_tabs = {1: {}, 2: {}}
+        root._active_batch_tab = 1
+        rows = [TellResultRow(f"Part {i}", "OC1", "Model") for i in range(1000)]
+        frame, panel = self._tell_table(rows)
+        panel._tell_canvas.yview_moveto(0.7)
+        root.update()
+        saved = root._batch_tabs[1]["analysis_scroll"]["Check All Tells"][0]
+        _cancel_widget_timers(frame)
+        frame.destroy()
+        root._active_batch_tab = 2
+        other_frame, other_panel = self._tell_table(rows)
+        self.assertLess(other_panel._tell_canvas.yview()[0], 0.01)
+        _cancel_widget_timers(other_frame)
+        other_frame.destroy()
+        root._active_batch_tab = 1
+        frame, panel = self._tell_table(rows)
+        self.assertAlmostEqual(panel._tell_canvas.yview()[0], saved, delta=0.01)
+        _cancel_widget_timers(frame)
+        frame.destroy()
+        del root._batch_tabs
+        del root._active_batch_tab
+
+    def test_detail_header_remains_visible_and_follows_horizontal_scroll(self):
+        root = self.root
+        wrapper = tk.Frame(root, width=500, height=250)
+        wrapper.pack(fill="both", expand=True)
+        root.detail_table_wrapper = wrapper
+        root.detail_canvas = tk.Canvas(wrapper, width=500, height=250)
+        root.detail_canvas.pack(fill="both", expand=True)
+        root.detail_table = tk.Frame(root.detail_canvas)
+        root.detail_canvas_window = root.detail_canvas.create_window(0, 0, anchor="nw", window=root.detail_table)
+        root._reset_detail_canvas_table = lambda: None
+        root._standard_detail_column_widths = ModelDeepenerApp._standard_detail_column_widths
+        root._fit_column_widths = ModelDeepenerApp._fit_column_widths
+        root._display_table_value = ModelDeepenerApp._display_table_value
+        root._update_detail_x_scrollbar_visibility = lambda: None
+        root._start_detail_column_resize = root._resize_detail_column = root._finish_detail_column_resize = Mock()
+        root._show_import_note_tooltip = root._hide_adapted_tooltip = Mock()
+        ModelDeepenerApp._render_detail_table(root, ("Name", "Value"), [(str(i), str(i)) for i in range(100)],
+                                              column_minsizes=(800, 800))
+        root.update()
+        header = root._detail_sticky_header
+        root.detail_canvas.yview_moveto(0.6)
+        root.detail_canvas.xview_moveto(0.3)
+        root.update()
+        self.assertTrue(header.winfo_ismapped())
+        self.assertEqual(header.winfo_rooty(), root.detail_canvas.winfo_rooty())
+        self.assertAlmostEqual(header.xview()[0], root.detail_canvas.xview()[0], delta=0.01)
+        _cancel_widget_timers(wrapper)
+        wrapper.destroy()
+
+    def test_tell_selection_reuses_header_scrollbars_and_rows(self):
+        rows = [TellResultRow(f"Part {i}", "OC1", "Model") for i in range(200)]
+        frame, panel = self._tell_table(rows)
+        canvas = panel._tell_canvas
+        header = panel._tell_sticky
+        before_slots = [tuple(slot["cells"]) for slot in panel._tell_slots]
+        before_scrollbars = [widget for widget in self._descendants(panel) if isinstance(widget, ctk.CTkScrollbar)]
+        other = [TellResultRow(f"Other {i}", "OC2", "Model") for i in range(200)]
+        panel._set_rows("Check Tell OC2", other)
+        self.root.update()
+        self.assertIs(panel._tell_canvas, canvas)
+        self.assertIs(panel._tell_sticky, header)
+        self.assertEqual(before_scrollbars, [widget for widget in self._descendants(panel) if isinstance(widget, ctk.CTkScrollbar)])
+        self.assertEqual(before_slots, [tuple(slot["cells"]) for slot in panel._tell_slots])
+        self.assertTrue(any(label.cget("text") == "Other 0" for label, _ in panel._tell_text_labels))
+        _cancel_widget_timers(frame)
+        frame.destroy()
+
+    def test_cached_tell_click_updates_the_existing_panel(self):
+        root = self.root
+        rows = [TellResultRow(f"Part {i}", "OC1", "Model") for i in range(100)]
+        frame, panel = self._tell_table(rows)
+        root.active_top_tab = "batch"
+        root._active_batch_tab = 17
+        root._batch_tabs = {17: {}}
+        root.batch_models = []
+        root._tell_cache = Mock()
+        root._tell_cache.get_prepared.return_value = [TellResultRow("New", "OC2", "Model")]
+        root._show_batch_analysis = Mock()
+        panel._tell_owner = (True, 17)
+        panel._tell_header = Mock()
+        panel._tell_header.grid_slaves.return_value = [Mock()]
+        root._active_tell_panel = panel
+        original = panel._tell_canvas
+        ModelDeepenerApp._select_tell(root, "Check Tell OC2", True)
+        root.update()
+        root._show_batch_analysis.assert_not_called()
+        self.assertIs(panel._tell_canvas, original)
+        self.assertEqual(panel._tell_rows[0][0].affected_parts, "New")
+        _cancel_widget_timers(frame)
+        frame.destroy()
+        for name in ("_batch_tabs", "_active_batch_tab", "_active_tell_panel", "_tell_cache"):
+            delattr(root, name)
+        root._tell_selection[True] = "Check All Tells"
 
     def test_tell_columns_are_balanced_and_transform_is_narrow(self):
         """Check tell columns are balanced and transform is narrow."""

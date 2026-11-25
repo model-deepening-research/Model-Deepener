@@ -34,7 +34,7 @@ class BatchLayoutTests(unittest.TestCase):
                              _display_file_type=ModelDeepenerApp._display_file_type, _model_metrics=metrics)
         counts, means, headers, rows = ModelDeepenerApp._prepare_batch_page(ui, models, lambda *_: None)
         self.assertEqual(headers, ("Model Name", "Format", "Classes", "Objects"))
-        self.assertEqual(dict(means)["Objects"], 0)
+        self.assertEqual(dict(means)["Objects"], 0.3)
         self.assertEqual(rows[0], ("Model 0", "XMI", 2, 1))
         self.assertEqual(rows[1], ("Model 1", "XMI", 2, 0))
         _, _, narrower_headers, narrower_rows = ModelDeepenerApp._prepare_batch_page(ui, models[1:], lambda *_: None)

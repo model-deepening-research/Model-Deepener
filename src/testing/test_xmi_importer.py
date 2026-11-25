@@ -87,6 +87,56 @@ class XmiImporterTests(unittest.TestCase):
         self.assertIs(attribute.get_type_spec(), objects['B'])
         self.assertEqual(model.get_associations(), [])
 
+    def test_datatype_matching_unique_class_and_numeric(self) -> None:
+        """Resolve matching class types and numeric without losing attribute types."""
+        model, report = self._import('''
+        <packagedElement xsi:type="uml:Class" xmi:id="owner" name="Owner">
+          <ownedAttribute xmi:id="a" name="target" type="dt"/>
+          <ownedAttribute xmi:id="n" name="amount" type="num"/>
+          <ownedAttribute xmi:id="u" name="unknown" type="unknown"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Class" xmi:id="target" name="Target"/>
+        <packagedElement xsi:type="uml:DataType" xmi:id="dt" name="Target"/>
+        <packagedElement xsi:type="uml:DataType" xmi:id="num" name="numeric"/>
+        <packagedElement xsi:type="uml:DataType" xmi:id="unknown" name="Custom"/>''')
+        objects = {obj.name: obj for obj in model.get_objects()}
+        attrs = {attr.name: attr for attr in objects['Owner'].get_regular_attributes()}
+        self.assertIs(attrs['target'].get_type_spec(), objects['Target'])
+        self.assertEqual(attrs['amount'].get_attr_type(), 'Float')
+        self.assertEqual(attrs['unknown'].get_attr_type(), 'String')
+        messages = [item.get_description() for item in report.get_adaptations()]
+        self.assertTrue(any("datatype 'Custom' replaced by String" in msg for msg in messages))
+        self.assertFalse(any("datatype 'Target'" in msg or "datatype 'numeric'" in msg for msg in messages))
+
+    def test_datatype_with_ambiguous_class_names_keeps_string_warning(self) -> None:
+        """Do not guess between same-named classes in different packages."""
+        model, report = self._import('''
+        <packagedElement xsi:type="uml:Package" xmi:id="p1" name="P1">
+          <packagedElement xsi:type="uml:Class" xmi:id="a" name="Target"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Package" xmi:id="p2" name="P2">
+          <packagedElement xsi:type="uml:Class" xmi:id="b" name="Target"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Class" xmi:id="owner" name="Owner">
+          <ownedAttribute xmi:id="attr" name="target" type="dt"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:DataType" xmi:id="dt" name="Target"/>''')
+        owner = next(obj for obj in model.get_objects() if obj.name == 'Owner')
+        self.assertEqual(owner.get_regular_attributes()[0].get_attr_type(), 'String')
+        self.assertTrue(any("datatype 'Target' replaced by String" in item.get_description()
+                            for item in report.get_adaptations()))
+
+    def test_numeric_datatype_prefers_same_named_class(self) -> None:
+        """Use numeric as a class when there is exactly one such class."""
+        model, _ = self._import('''
+        <packagedElement xsi:type="uml:Class" xmi:id="owner" name="Owner">
+          <ownedAttribute xmi:id="attr" name="value" type="dt"/>
+        </packagedElement>
+        <packagedElement xsi:type="uml:Class" xmi:id="number" name="numeric"/>
+        <packagedElement xsi:type="uml:DataType" xmi:id="dt" name="numeric"/>''')
+        objects = {obj.name: obj for obj in model.get_objects()}
+        self.assertIs(objects['Owner'].get_regular_attributes()[0].get_type_spec(), objects['numeric'])
+
     def test_unnamed_association_kinds(self) -> None:
         """Use the aggregation kind only when an association has no name."""
         model, _ = self._import('''

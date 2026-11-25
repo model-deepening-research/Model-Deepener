@@ -110,11 +110,11 @@ class BaseMlmAssociation(BaseMlmConnection):
         # transform of cardinalities
         multSourceToTarget = 'Seq{' + str(self.target_multiplicity.min_multiplicity) + ',' + str(
             self.target_multiplicity.max_multiplicity) + ',' + str(
-            self.target_multiplicity.is_unbounded()).lower() + ',false}'
+            (not self.target_multiplicity.is_unbounded())).lower() + ',false}'
 
         multTargetToSource = 'Seq{' + str(self.source_multiplicity.min_multiplicity) + ',' + str(
             self.source_multiplicity.max_multiplicity) + ',' + str(
-            self.source_multiplicity.is_unbounded()).lower() + ',false}'
+            (not self.source_multiplicity.is_unbounded())).lower() + ',false}'
 
 
         # adapt class names to new projectname

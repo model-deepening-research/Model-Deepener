@@ -168,6 +168,10 @@ def _run_indicator(colors: dict) -> None:
     pending = [None]
 
     def reveal(geometry, scaling):
+        # A stop already in the input queue must be handled before showing.
+        if not commands.empty():
+            pending[0] = root.after(1, reveal, geometry, scaling)
+            return
         pending[0] = None
         x, y, width, height = geometry
         size = (round(500 * scaling), round(150 * scaling))

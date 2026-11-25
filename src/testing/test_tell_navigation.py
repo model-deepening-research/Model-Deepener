@@ -21,6 +21,14 @@ class TellNavigationTests(unittest.TestCase):
         menu.pack_forget.assert_called_once()
         self.assertEqual(ui._tell_selection[False], 'Check Tell TO3')
 
+    def test_batch_action_uses_active_batch_not_open_model(self):
+        ui = SimpleNamespace(active_top_tab="batch", _tell_menu_open={True: False},
+                             _show_batch_analysis=Mock(), _open_placeholder_action=Mock())
+        ModelDeepenerApp._try_open_action(ui, 3)
+        ui._show_batch_analysis.assert_called_once()
+        ui._open_placeholder_action.assert_not_called()
+        self.assertTrue(ui._tell_menu_open[True])
+
     def test_import_navigation_remains_available_with_an_open_model(self):
         """Check import navigation remains available with an open model."""
         ui = SimpleNamespace(current_model=object(), _is_navigation_item_available=lambda action: True,

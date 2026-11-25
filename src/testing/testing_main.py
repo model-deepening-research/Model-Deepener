@@ -10,7 +10,7 @@ from src.testing.precedence_analysis_tester import PrecedenceAnalysisTester
 #                                     export_precedence_graphs_as_png=True,
 #                                     print_precedence_graph=True)
 
-model_name = (str(Path(__file__).resolve().parents[2] / "models" / "fmmlx" / "Portaview_with_Objects.xml"))
+model_name = str(Path(__file__).resolve().parents[2] / "models" / "fmmlx" / "Portaview_with_Objects.xml")
 
 
 my_model: BaseMlmModel = BaseMlmModel(model_name)
