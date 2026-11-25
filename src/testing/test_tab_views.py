@@ -164,6 +164,45 @@ class TabViewTests(unittest.TestCase):
         root._show_model_page.assert_called_once()
         self._remove_model_tab_ui(header)
 
+    def test_batch_tabs_keep_independent_state_and_numbers(self):
+        root = self.root
+        header, _ = self._model_tab_ui(width=2400)
+        root._batch_tabs = {}
+        root._active_batch_tab = None
+        root._next_batch_number = 1
+        root._tell_cache = Mock()
+        root._show_batch_page = Mock()
+        root._show_batch_analysis = Mock()
+        for name in ("_save_batch_state", "_new_batch_tab", "_close_batch_tab", "_reopen_batch_tab"):
+            setattr(root, name, MethodType(getattr(ModelDeepenerApp, name), root))
+        first, second = SimpleNamespace(model=object()), SimpleNamespace(model=object())
+        root._new_batch_tab([first])
+        root.active_top_tab = "batch"
+        root._batch_view = "inspect"
+        root.batch_search_var = ctk.StringVar(value="booking")
+        root.batch_type_filter_var = ctk.StringVar(value="XMI")
+        root.batch_min_objects_var = ctk.StringVar(value="2")
+        root.batch_min_attributes_var = ctk.StringVar(value="3")
+        root._new_batch_tab([second])
+        self.assertEqual(root._batch_tabs[1]["filters"], ("booking", "XMI", "2", "3"))
+        root._batch_view = "analysis"
+        root._tell_selection[True] = "Check Tell OC1"
+        root._tell_menu_open[True] = True
+        root._reopen_batch_tab(1)
+        self.assertEqual(root.batch_models, [first])
+        self.assertEqual(root._batch_tabs[2]["view"], "analysis")
+        self.assertEqual(root._batch_tabs[2]["tell"], "Check Tell OC1")
+        root._reopen_batch_tab(2)
+        self.assertEqual(root.batch_models, [second])
+        self.assertEqual(root._tell_selection[True], "Check Tell OC1")
+        root._close_batch_tab(1)
+        root._new_batch_tab([first])
+        self.assertEqual(list(root._batch_tabs), [2, 3])
+        self.assertEqual(root._batch_tabs[3]["name"], "Batch Process 3")
+        self._remove_model_tab_ui(header)
+        del root._batch_tabs
+        del root._tell_cache
+
     def test_tab_click_during_running_task_keeps_current_tab(self):
         """Check tab click during running task keeps current tab."""
         model = object()

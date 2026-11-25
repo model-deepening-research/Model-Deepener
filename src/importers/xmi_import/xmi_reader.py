@@ -209,6 +209,12 @@ class XmiReader:
         if identifier in self._class_names:
             return self._class_names[identifier]
         if target is not None and kind(target) == 'DataType':
+            matches = [self._class_names[xmi_id(cls)] for cls in self._classes
+                       if cls.get('name', '') == type_name]
+            if len(matches) == 1:
+                return matches[0]
+            if not matches and type_name.lower() == 'numeric':
+                return 'Float'
             category = 'DataType'
         elif not reference:
             category = 'Missing type'

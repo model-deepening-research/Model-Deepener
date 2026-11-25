@@ -20,9 +20,17 @@ class BatchMetricsTests(unittest.TestCase):
         counts, means, _headers, _rows = ModelDeepenerApp._prepare_batch_page(ui, models, lambda *_: None)
         self.assertEqual(dict(counts), {'Number of Models': 6, 'Number of FMMLx': 1, 'Number of CSV': 1,
                                         'Number of PlantUML': 1, 'Number of XMI': 2, 'Number of Ecore': 1})
-        self.assertEqual(dict(means), {'Classes': 2, 'Objects': 5})
+        self.assertEqual(dict(means), {'Classes': 1.5, 'Objects': 4.7})
         _, below_half, _headers, _rows = ModelDeepenerApp._prepare_batch_page(ui, models[:3], lambda *_: None)
-        self.assertEqual(dict(below_half)['Objects'], 4)
+        self.assertEqual(dict(below_half)['Objects'], 4.3)
+
+    def test_average_rounds_half_up_to_one_decimal(self):
+        models = [SimpleNamespace(name=str(i), file_type="XMI", model=i) for i in range(20)]
+        ui = SimpleNamespace(_batch_format=ModelDeepenerApp._batch_format,
+                             _display_file_type=ModelDeepenerApp._display_file_type,
+                             _model_metrics=lambda i: [("Classes", 5 if i < 7 else 4)])
+        _, means, _, _ = ModelDeepenerApp._prepare_batch_page(ui, models, lambda *_: None)
+        self.assertEqual(dict(means)["Classes"], 4.4)
 
     def test_empty_batch(self):
         """Check empty batch."""

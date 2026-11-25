@@ -58,9 +58,9 @@ class TellChecker:
             for assoc_end in flat_class.get_assoc_ends():
                 assoc: BaseMlmAssociation = assoc_end.get_association()
                 # Option 1: classification noun identified
-                if assoc_end.get_name().lower().endswith(self.classification_nouns):
+                if assoc_end.get_owner().get_name().lower().endswith(self.classification_nouns):
                     affected_parts.append(ModelPart(assoc.get_target_object(), assoc.get_source_object(), assoc))
-                if assoc_end.get_name().lower().endswith(self.instance_nouns):
+                if assoc_end.get_owner().get_name().lower().endswith(self.instance_nouns):
                     affected_parts.append(ModelPart(assoc.get_source_object(), assoc.get_target_object(), assoc))
         return affected_parts
 

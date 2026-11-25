@@ -34,7 +34,7 @@ from src.gui.batch_reports import (batch_problem_summary, batch_report_rows, wri
                                    visible_import_report, visible_import_notes)
 from src.gui.deepening import export_tell_table, save_deepened_models
 from src.gui.folder_dialog import choose_windows_folders
-from src.gui.tell_results import TELL_CHOICES, analyze_tells, tell_columns, tell_description
+from src.gui.tell_results import TELL_CHOICES, TellAnalysisCache, TellDecision, analyze_tells, tell_columns, tell_description
 from src.gui.view_loading import ViewLoadingIndicator, set_window_redraw
 from src.importers import CsvImporter, EcoreImporter, PlantUmlImporter, XmiImporter, XmlImporter, importer_for, supported_extensions
 from src.importers.csv_import.csv_reader import CsvReader
@@ -409,6 +409,7 @@ class ModelDeepenerApp(ctk.CTk):
         self.active_top_tab = "new"
         self._tell_menu_open = {False: False, True: False}
         self._tell_selection = {False: TELL_CHOICES[0], True: TELL_CHOICES[0]}
+        self._tell_cache = TellAnalysisCache()
         self.model_tab = None
         self._model_tab_state = None
         self._model_tabs = {}
@@ -416,6 +417,9 @@ class ModelDeepenerApp(ctk.CTk):
         self._batch_view = "inspect"
         self.batch_models = []
         self.batch_tab = None
+        self._batch_tabs = {}
+        self._active_batch_tab = None
+        self._next_batch_number = 1
         self.logo_image = None
         self.titlebar_logo_image = None
         # These values remember how the user moves and resizes the window.
@@ -1188,11 +1192,57 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _select_tell(self, selection, batch):
         self._tell_selection[batch] = selection
+        if batch:
+            state = getattr(self, "_batch_tabs", {}).get(getattr(self, "_active_batch_tab", None))
+            if state is not None:
+                state["tell"] = selection
         ModelDeepenerApp._refresh_tell_menu(self, batch)
+        if ModelDeepenerApp._show_cached_tell(self, selection, batch):
+            return
         if batch:
             self._show_batch_analysis()
         else:
             self._open_placeholder_action(3)
+
+    def _show_cached_tell(self, selection, batch):
+        panel = getattr(self, "_active_tell_panel", None)
+        cache = getattr(self, "_tell_cache", None)
+        active = "batch" if batch else "model"
+        key = getattr(self, "_active_batch_tab" if batch else "_active_model_tab", None)
+        if (panel is None or cache is None or getattr(self, "active_top_tab", None) != active
+                or getattr(panel, "_tell_owner", None) != (batch, key) or not panel.winfo_exists()):
+            return False
+        if batch:
+            models = [(loaded.name, loaded.model, self._batch_format(loaded)) for loaded in self.batch_models]
+        else:
+            model = self.current_model
+            loaded = next((item for item in self.loaded_models if item.model is model), None)
+            models = [(self._current_model_display_name(), model, self._batch_format(loaded) if loaded else "")]
+        rows = cache.get_prepared(selection, models)
+        if rows is None:
+            return False
+        ModelDeepenerApp._update_tell_panel(self, panel, selection, rows, batch)
+        return True
+
+    def _update_tell_panel(self, panel, selection, rows, batch):
+        panel._set_rows(selection, rows)
+        title, subtitle = tell_description(selection)
+        panel._tell_header.grid_slaves(row=0, column=0)[0].configure(text=title)
+        panel._tell_header.grid_slaves(row=1, column=0)[0].configure(text=subtitle)
+        if not batch:
+            state = getattr(self, "_model_tabs", {}).get(getattr(self, "_active_model_tab", None))
+            if state is not None:
+                state["tell"] = selection
+
+    def _present_tell_results(self, batch, selection, rows, render):
+        panel = getattr(self, "_active_tell_panel", None)
+        active = "batch" if batch else "model"
+        key = getattr(self, "_active_batch_tab" if batch else "_active_model_tab", None)
+        if (panel is not None and getattr(self, "active_top_tab", None) == active
+                and getattr(panel, "_tell_owner", None) == (batch, key) and panel.winfo_exists()):
+            ModelDeepenerApp._update_tell_panel(self, panel, selection, rows, batch)
+        else:
+            self._build_view_hidden(render)
 
     def _toggle_tell_menu(self, batch):
         self._tell_menu_open[batch] = not self._tell_menu_open[batch]
@@ -1216,12 +1266,24 @@ class ModelDeepenerApp(ctk.CTk):
     def _autohide_scroll(scrollbar) -> Callable[[str, str], None]:
         """Return a scroll command that shows a gridded scrollbar only while the content does not fit."""
         def update(first, last):
-            scrollbar.set(first, last)
-            if float(first) > 0.0 or float(last) < 1.0:
-                if not scrollbar.winfo_manager():
-                    scrollbar.grid()
-            elif scrollbar.winfo_manager():
-                scrollbar.grid_remove()
+            scrollbar._autohide_pending = (first, last)
+            if getattr(scrollbar, "_autohide_busy", False):
+                return
+            scrollbar._autohide_busy = True
+            try:
+                while scrollbar._autohide_pending is not None:
+                    position = scrollbar._autohide_pending
+                    scrollbar._autohide_pending = None
+                    visible = float(position[0]) > 0.0 or float(position[1]) < 1.0
+                    if visible and not scrollbar.winfo_manager():
+                        scrollbar.grid()
+                    elif not visible and scrollbar.winfo_manager():
+                        scrollbar.grid_remove()
+                    if getattr(scrollbar, "_autohide_position", None) != position:
+                        scrollbar._autohide_position = position
+                        scrollbar.set(*position)
+            finally:
+                scrollbar._autohide_busy = False
         return update
 
     def _show_workflow_sidebar(self):
@@ -1234,9 +1296,6 @@ class ModelDeepenerApp(ctk.CTk):
             self._single_tell_menu.pack(fill="both", expand=True, padx=14, pady=(0, 6), after=self.action_cards[3])
         else:
             self._single_tell_menu.pack_forget()
-        for action, card in self.action_cards.items():
-            for widget in (card, self.action_title_labels[action]):
-                widget.bind("<Button-1>", lambda _event, selected_action=action: self._try_open_action(selected_action))
 
     def _hide_workflow_sidebar(self):
         if hasattr(self, "batch_sidebar"):
@@ -1245,6 +1304,8 @@ class ModelDeepenerApp(ctk.CTk):
         self.content.grid_configure(row=0, column=0, columnspan=2, sticky="nsew", padx=18, pady=18)
 
     def _set_top_tab(self, active: str):
+        if active != getattr(self, "active_top_tab", None):
+            ModelDeepenerApp._save_model_view(self)
         self.active_top_tab = active
         for button, is_active in (
                 (self.new_model_tab, active == "new"),
@@ -1260,6 +1321,14 @@ class ModelDeepenerApp(ctk.CTk):
                 border_width=1 if is_active else 0,
                 border_color="#bfdbfe" if is_active else self.colors["surface"],
             )
+        for key, state in getattr(self, "_batch_tabs", {}).items():
+            button = state["button"]
+            selected = active == "batch" and key == self._active_batch_tab
+            button.configure(fg_color=self.colors["primary_soft"] if selected else "transparent",
+                             hover_color=self.colors["primary_soft"] if selected else self.colors["surface_alt"],
+                             text_color=self.colors["primary"] if selected else self.colors["text"],
+                             border_width=1 if selected else 0, border_color="#bfdbfe" if selected else self.colors["surface"])
+            state["close"].lift()
         for key, state in getattr(self, "_model_tabs", {}).items():
             button = state["button"]
             selected = active == "model" and key == self._active_model_tab
@@ -1268,6 +1337,8 @@ class ModelDeepenerApp(ctk.CTk):
                              text_color=self.colors["primary"] if selected else self.colors["text"],
                              border_width=1 if selected else 0, border_color="#bfdbfe" if selected else self.colors["surface"])
             state["close"].lift()
+        if getattr(self, "_batch_tabs", None):
+            self._layout_model_tabs()
         for name in ("model_tab_close", "batch_tab_close"):
             close = getattr(self, name, None)
             if close is not None:
@@ -1275,7 +1346,14 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _close_top_tab(self, tab: str) -> None:
         """Close a model-specific tab without deleting its saved models."""
+        if tab == "batch" and getattr(self, "_batch_tabs", None):
+            self._close_batch_tab(self._active_batch_tab)
+            return
         if tab == "batch":
+            cache = getattr(self, "_tell_cache", None)
+            if cache is not None:
+                for loaded in self.batch_models:
+                    cache.invalidate(loaded.model)
             self.batch_models = []
             self.batch_tab.grid_remove()
         elif tab == "model" and getattr(self, "_model_tabs", None):
@@ -1302,8 +1380,6 @@ class ModelDeepenerApp(ctk.CTk):
             self._batch_tell_menu.pack(fill="both", expand=True, padx=14, pady=(0, 6), after=self.action_cards[3])
         else:
             self._batch_tell_menu.pack_forget()
-        actions = {1: self._show_import_page, 2: self._show_batch_page,
-                   3: lambda: self._toggle_tell_menu(True)}
         for action, card in self.action_cards.items():
             selected = action == (3 if analysis else 2)
             card.configure(fg_color=self.colors["primary_soft"] if selected else self.colors["surface"],
@@ -1312,8 +1388,6 @@ class ModelDeepenerApp(ctk.CTk):
             title = self.action_title_labels[action]
             title.configure(text=self.ACTION_TITLES[action],
                             text_color=self.colors["primary"] if selected else self.colors["text"], cursor="hand2")
-            for widget in (card, title):
-                widget.bind("<Button-1>", lambda _event, command=actions[action]: command())
 
     def _refresh_actions(self):
         for action, card in self.action_cards.items():
@@ -1345,6 +1419,17 @@ class ModelDeepenerApp(ctk.CTk):
                 self.action_title_labels[action].configure(text_color="#94a3b8")
 
     def _try_open_action(self, action: int):
+        if action != 2:
+            ModelDeepenerApp._save_model_view(self)
+        if getattr(self, "active_top_tab", None) == "batch":
+            if action == 1:
+                self._show_import_page()
+            elif action == 2:
+                self._show_batch_page()
+            else:
+                self._tell_menu_open[True] = True
+                self._show_batch_analysis()
+            return
         if not self._is_navigation_item_available(action):
             return
         if action == 1:
@@ -1400,7 +1485,7 @@ class ModelDeepenerApp(ctk.CTk):
             return
         y = self.new_model_tab.winfo_y() + max(0, (self.new_model_tab.winfo_height() - 30) // 2)
         self._new_models_separator.place(x=self.new_model_tab.winfo_x() + self.new_model_tab.winfo_width() + 3, y=y)
-        if self._model_tabs or (self.batch_tab is not None and self.batch_tab.winfo_manager()):
+        if self._model_tabs or getattr(self, "_batch_tabs", {}) or (self.batch_tab is not None and self.batch_tab.winfo_manager()):
             self._models_tabs_separator.place(x=self.models_tab.winfo_x() + self.models_tab.winfo_width() + 3, y=y)
         else:
             self._models_tabs_separator.place_forget()
@@ -1410,28 +1495,34 @@ class ModelDeepenerApp(ctk.CTk):
         if not hasattr(self, "model_tabs_container"):
             return
         ModelDeepenerApp._position_header_separators(self)
-        keys = list(self._model_tabs)
+        batches = getattr(self, "_batch_tabs", {})
+        entries = [("model", key, state) for key, state in self._model_tabs.items()]
+        entries += [("batch", key, state) for key, state in batches.items()]
         gap = round(8 * ctk.ScalingTracker.get_widget_scaling(self))
-        tab_width = max((state["button"].winfo_reqwidth() for state in self._model_tabs.values()), default=0) + gap
+        tab_width = max((state["button"].winfo_reqwidth() for _, _, state in entries), default=0) + gap
         space = self._model_tab_space()
-        available = len(keys)
-        if tab_width * len(keys) > space:
+        available = len(entries)
+        if tab_width * len(entries) > space:
             more_width = self.model_tabs_more.winfo_reqwidth() + gap
             available = max(1, (space - more_width) // tab_width)
-        visible = keys[:available]
-        if self._active_model_tab in keys and self._active_model_tab not in visible:
-            visible[-1:] = [self._active_model_tab]
-        self._overflow_model_tabs = [key for key in keys if key not in visible]
-        # Widget names identify the buttons, so a new tab is packed even if its key was used before.
-        layout = (tuple(str(self._model_tabs[key]["button"]) for key in visible), bool(self._overflow_model_tabs))
+        visible = entries[:available]
+        active = (("batch", getattr(self, "_active_batch_tab", None)) if self.active_top_tab == "batch"
+                  else ("model", self._active_model_tab))
+        current = next((entry for entry in entries if entry[:2] == active), None)
+        if current is not None and current not in visible:
+            visible[-1:] = [current]
+        overflow = [entry for entry in entries if entry not in visible]
+        self._overflow_model_tabs = [key for kind, key, _ in overflow if kind == "model"]
+        self._overflow_batch_tabs = [key for kind, key, _ in overflow if kind == "batch"]
+        layout = (tuple(str(state["button"]) for _, _, state in visible), bool(overflow))
         if getattr(self, "_model_tabs_layout", None) == layout:
             return
         self._model_tabs_layout = layout
-        for key, state in self._model_tabs.items():
+        for _, _, state in entries:
             state["button"].pack_forget()
-        for key in visible:
-            self._model_tabs[key]["button"].pack(side="left", padx=(0, gap))
-        if self._overflow_model_tabs:
+        for _, _, state in visible:
+            state["button"].pack(side="left", padx=(0, gap))
+        if overflow:
             self.model_tabs_more.grid()
         else:
             self.model_tabs_more.grid_remove()
@@ -1463,12 +1554,19 @@ class ModelDeepenerApp(ctk.CTk):
                        activeforeground=self.colors["primary"])
         for key in self._overflow_model_tabs:
             menu.add_command(label=self._model_tabs[key]["name"], command=lambda tab=key: self._reopen_model_tab(tab))
+        for key in getattr(self, "_overflow_batch_tabs", []):
+            menu.add_command(label=self._batch_tabs[key]["name"], command=lambda tab=key: self._reopen_batch_tab(tab))
         menu.tk_popup(self.model_tabs_more.winfo_rootx(), self.model_tabs_more.winfo_rooty() + self.model_tabs_more.winfo_height())
 
     def _close_model_tab(self, key):
         state = self._model_tabs.pop(key, None)
         if state is None:
             return
+        cache = getattr(self, "_tell_cache", None)
+        if cache is not None and not any(loaded.model is state["model"]
+                                         for batch in getattr(self, "_batch_tabs", {}).values()
+                                         for loaded in batch["models"]):
+            cache.invalidate(state["model"])
         state["button"].destroy()
         if self._active_model_tab == key:
             self._active_model_tab = None
@@ -1480,11 +1578,37 @@ class ModelDeepenerApp(ctk.CTk):
                 self._show_models_overview_page()
         self._layout_model_tabs()
 
+    def _save_model_view(self):
+        if getattr(self, "active_top_tab", None) != "model":
+            return
+        state = getattr(self, "_model_tabs", {}).get(getattr(self, "_active_model_tab", None))
+        if state is None or state.get("view") != "inspect":
+            return
+        try:
+            state["search"] = self.model_search_var.get()
+            state["tree_scroll"] = self.model_tree.yview()[0]
+            state["detail_scroll"] = (self.detail_canvas.yview()[0], self.detail_canvas.xview()[0])
+            bar = getattr(self, "_detail_option_bar", None)
+            if bar is not None and bar.winfo_exists():
+                active = next((button for button in bar.winfo_children()
+                               if isinstance(button, ctk.CTkButton)
+                               and button.cget("fg_color") == self.colors["primary"]), None)
+                state["detail_option"] = active.cget("text") if active is not None else None
+            else:
+                state["detail_option"] = None
+            selected = self.model_tree.selection()
+            if selected:
+                state["selected_payload"] = self.tree_item_payload.get(selected[0])
+                state["selected_view"] = self.tree_item_view.get(selected[0], "")
+        except (AttributeError, tk.TclError):
+            pass
+
     def _reopen_model_tab(self, key=None) -> None:
         """Restore a model tab and its last selected view."""
         if getattr(self, "_model_task_active", False):
             return
         if hasattr(self, "_model_tabs"):
+            ModelDeepenerApp._save_model_view(self)
             key = self._active_model_tab if key is None else key
             state = self._model_tabs.get(key)
             if state is None:
@@ -1506,9 +1630,74 @@ class ModelDeepenerApp(ctk.CTk):
             self.current_selected_columns = list(columns)
             self._show_model_page()
 
-    def _reopen_batch_tab(self):
+    def _save_batch_state(self):
+        key = getattr(self, "_active_batch_tab", None)
+        state = getattr(self, "_batch_tabs", {}).get(key)
+        if state is None or self.active_top_tab != "batch":
+            return
+        state.update(models=list(self.batch_models), view=self._batch_view,
+                     tell=self._tell_selection[True], menu=self._tell_menu_open[True])
+        names = ("batch_search_var", "batch_type_filter_var", "batch_min_objects_var", "batch_min_attributes_var")
+        if self._batch_view == "inspect" and all(hasattr(self, name) for name in names):
+            state["filters"] = tuple(getattr(self, name).get() for name in names)
+
+    def _new_batch_tab(self, models, preserve_current=True):
+        if preserve_current:
+            self._save_batch_state()
+        number = self._next_batch_number
+        self._next_batch_number += 1
+        button = ctk.CTkButton(self.model_tabs_container, text=f"  Batch Process {number}", width=180,
+                               height=42, corner_radius=8, anchor="w", fg_color="transparent",
+                               text_color=self.colors["text"], font=ctk.CTkFont(size=14),
+                               command=lambda: self._reopen_batch_tab(number))
+        close = ctk.CTkButton(button, text="x", width=18, height=18, fg_color="transparent",
+                              hover_color=self.colors["border"], text_color=self.colors["muted"],
+                              font=ctk.CTkFont(size=12), command=lambda: self._close_batch_tab(number))
+        close.place(relx=1, x=-7, y=5, anchor="ne")
+        self._batch_tabs[number] = {"button": button, "close": close, "name": f"Batch Process {number}",
+                                    "models": list(models), "view": "inspect", "tell": TELL_CHOICES[0],
+                                    "menu": False, "filters": ("", "All", "", "")}
+        self._active_batch_tab = number
+        self.batch_models = list(models)
+        self._batch_view = "inspect"
+        self._tell_selection[True] = TELL_CHOICES[0]
+        self._tell_menu_open[True] = False
+        self._layout_model_tabs()
+
+    def _close_batch_tab(self, key):
+        state = self._batch_tabs.pop(key, None)
+        if state is None:
+            return
+        state["button"].destroy()
+        other_models = [loaded.model for other in self._batch_tabs.values() for loaded in other["models"]]
+        other_models += [tab["model"] for tab in self._model_tabs.values() if "model" in tab]
+        for loaded in state["models"]:
+            if not any(loaded.model is model for model in other_models):
+                self._tell_cache.invalidate(loaded.model)
+        if key == self._active_batch_tab:
+            self._active_batch_tab = None
+            self.batch_models = []
+            if self.active_top_tab == "batch":
+                self._show_models_overview_page()
+        self._layout_model_tabs()
+
+    def _reopen_batch_tab(self, key=None):
         if getattr(self, "_model_task_active", False):
             return
+        if getattr(self, "_batch_tabs", None):
+            ModelDeepenerApp._save_model_view(self)
+            key = self._active_batch_tab if key is None else key
+            state = self._batch_tabs.get(key)
+            if state is None:
+                return
+            if key != self._active_batch_tab:
+                self._save_batch_state()
+            self._active_batch_tab = key
+            self.batch_models = list(state["models"])
+            self._batch_view = state["view"]
+            self._tell_selection[True] = state["tell"]
+            self._tell_menu_open[True] = state["menu"]
+            self._layout_model_tabs()
         if self._batch_view == "analysis":
             self._tell_menu_open[True] = True
             self._show_batch_analysis()
@@ -1850,6 +2039,16 @@ class ModelDeepenerApp(ctk.CTk):
             info.bind("<Enter>", self._show_adaptation_legend)
             info.bind("<Leave>", self._hide_adapted_tooltip)
 
+        if getattr(self.current_model, "get_is_deepened", lambda: False)():
+            title_widget = header.grid_slaves(row=0, column=0)[0]
+            badge = ctk.CTkLabel(header, text="deepened", height=20, corner_radius=8,
+                                 fg_color="#DDF3EE", text_color="#08765E",
+                                 font=ctk.CTkFont(family="Segoe UI", size=10, weight="bold"), cursor="hand2")
+            badge.place(in_=title_widget, relx=1, x=34 if self.current_model.get_is_adapted() else 8,
+                        rely=0.5, anchor="w")
+            badge.bind("<Enter>", self._show_deepened_tooltip)
+            badge.bind("<Leave>", self._hide_adapted_tooltip)
+
         model = self.current_model
         self._attach_active_model_reference(model)
 
@@ -1921,7 +2120,8 @@ class ModelDeepenerApp(ctk.CTk):
             font=ctk.CTkFont(family="Segoe UI", size=12),
         ).grid(row=0, column=0, sticky="w", padx=(0, 10))
 
-        self.model_search_var = tk.StringVar()
+        model_state = getattr(self, "_model_tabs", {}).get(getattr(self, "_active_model_tab", None), {})
+        self.model_search_var = tk.StringVar(value=model_state.get("search", ""))
         self.model_search_entry = ctk.CTkEntry(
             search_row,
             textvariable=self.model_search_var,
@@ -2233,8 +2433,42 @@ class ModelDeepenerApp(ctk.CTk):
         )
 
         self._add_export_without_check_button(actions)
-        self._populate_model_tree(model)
+        self._populate_model_tree(model, query=self.model_search_var.get())
         self._show_model_overview_load_options(model)
+        saved = model_state
+        saved_tree, saved_canvas = self.model_tree, self.detail_canvas
+        def restore_model_view():
+            if self.model_tree is not saved_tree or not saved_tree.winfo_exists():
+                return
+            payload = saved.get("selected_payload")
+            view = saved.get("selected_view", "")
+            if payload is not None:
+                def same_payload(value):
+                    if value is payload:
+                        return True
+                    return (isinstance(value, tuple) and isinstance(payload, tuple) and len(value) == len(payload)
+                            and all(left is right or (isinstance(left, (str, int)) and left == right)
+                                    for left, right in zip(value, payload)))
+                item = next((key for key, value in self.tree_item_payload.items()
+                             if same_payload(value) and self.tree_item_view.get(key, "") == view), None)
+                if item is not None:
+                    self.model_tree.selection_set(item)
+            self.model_tree.yview_moveto(saved.get("tree_scroll", 0.0))
+            def restore_detail():
+                if self.detail_canvas is not saved_canvas or not saved_canvas.winfo_exists():
+                    return
+                option = saved.get("detail_option")
+                bar = getattr(self, "_detail_option_bar", None)
+                if option and bar is not None and bar.winfo_exists():
+                    button = next((item for item in bar.winfo_children() if isinstance(item, ctk.CTkButton)
+                                   and item.cget("text") == option and item.cget("state") == "normal"), None)
+                    if button is not None:
+                        button.invoke()
+                y, x = saved.get("detail_scroll", (0.0, 0.0))
+                self.detail_canvas.yview_moveto(y)
+                self.detail_canvas.xview_moveto(x)
+            self.after(1, restore_detail)
+        self.after_idle(restore_model_view)
 
     def _bind_detail_scroll_events(self, _event=None):
         """
@@ -2312,10 +2546,15 @@ class ModelDeepenerApp(ctk.CTk):
             self.detail_canvas.itemconfigure(window_id, width=width)
             self.detail_canvas.configure(scrollregion=self.detail_canvas.bbox("all"))
             self._update_detail_x_scrollbar_visibility()
+            ModelDeepenerApp._refresh_detail_sticky_header(self)
         except tk.TclError:
             pass
 
     def _reset_detail_canvas_table(self):
+        old_header = getattr(self, "_detail_sticky_header", None)
+        if old_header is not None and old_header.winfo_exists():
+            old_header.destroy()
+        self._detail_sticky_header = None
         self.detail_canvas.delete("all")
         self._detail_column_widths = []
         self._detail_width_key = None
@@ -2373,10 +2612,13 @@ class ModelDeepenerApp(ctk.CTk):
         selection = self._tell_selection[False]
         model = self.current_model
         model_name = self._current_model_display_name()
+        loaded = next((item for item in getattr(self, "loaded_models", []) if item.model is model), None) if isinstance(model, BaseMlmModel) else None
+        model_format = self._batch_format(loaded) if loaded is not None else ""
         self._run_model_task(1, "Preparing analysis...",
-                             lambda progress: analyze_tells(selection, [(model_name, model)], progress),
-                             lambda rows: self._build_view_hidden(
-                                 lambda: self._render_single_analysis(action, selection, rows)),
+                             lambda progress: analyze_tells(selection, [(model_name, model, model_format)], progress, self._tell_cache)
+                             if isinstance(model, BaseMlmModel) else analyze_tells(selection, [(model_name, model)], progress),
+                             lambda rows: ModelDeepenerApp._present_tell_results(
+                                 self, False, selection, rows, lambda: self._render_single_analysis(action, selection, rows)),
                              lambda error: self._show_error("Analysis", str(error)))
 
     def _build_view_hidden(self, build: Callable[[], None], message: str = "Preparing analysis...") -> None:
@@ -2408,13 +2650,17 @@ class ModelDeepenerApp(ctk.CTk):
         self._set_top_tab("model")
         self._refresh_actions()
         self._clear_content()
-        self._page_header(*tell_description(selection))
+        header = self._page_header(*tell_description(selection))
         body = ctk.CTkFrame(self.content, fg_color="transparent")
         body.grid(row=1, column=0, sticky="nsew")
         body.grid_columnconfigure(0, weight=1)
         body.grid_rowconfigure(0, weight=1)
 
-        self._build_tell_results(body, batch=False, row_provider=lambda _selection: rows).grid(row=0, column=0, sticky="nsew")
+        panel = self._build_tell_results(body, batch=False, row_provider=lambda _selection: rows)
+        panel._tell_owner = (False, getattr(self, "_active_model_tab", None))
+        panel._tell_header = header
+        self._active_tell_panel = panel
+        panel.grid(row=0, column=0, sticky="nsew")
 
     # The same heights as the header and rows of the detail tables in Inspect Model.
     TELL_HEADER_HEIGHT = 42
@@ -2434,6 +2680,27 @@ class ModelDeepenerApp(ctk.CTk):
         widths[wide - 1] += max(0, total - sum(widths))
         return widths
 
+    @staticmethod
+    def _bind_table_wheel(widget, canvas):
+        """Route wheel events from a table's child widgets to its canvas."""
+        def wheel(event):
+            delta = getattr(event, "delta", 0)
+            if getattr(event, "num", 0) in (4, 5):
+                delta = 120 if event.num == 4 else -120
+            accumulated = getattr(canvas, "_wheel_remainder", 0) + delta
+            steps = int(accumulated / 120)
+            canvas._wheel_remainder = accumulated - steps * 120
+            if steps:
+                canvas.yview_scroll(-steps, "units")
+            return "break"
+        for event in ("<MouseWheel>", "<Button-4>", "<Button-5>"):
+            try:
+                widget.bind(event, wheel)
+            except (tk.TclError, ValueError):
+                pass
+        for child in widget.winfo_children():
+            ModelDeepenerApp._bind_table_wheel(child, canvas)
+
     def _build_tell_results(self, parent, batch: bool, row_provider=None):
         """Display results in a resizable table and retain each displayed decision."""
         provider = row_provider or (lambda _selection: [])
@@ -2443,17 +2710,21 @@ class ModelDeepenerApp(ctk.CTk):
         card = self._card(panel)
         card.grid(row=0, column=0, sticky="nsew")
         card.grid_columnconfigure(0, weight=1)
-        card.grid_rowconfigure(0, weight=1)
+        card.grid_rowconfigure(1, weight=1)
         selected = tk.StringVar(value=self._tell_selection[batch])
         panel._tell_choice = selected
         panel._transform_choices = []
         panel._tell_rows = []
         columns = tell_columns(batch)
+        tab_state = (getattr(self, "_batch_tabs", {}).get(getattr(self, "_active_batch_tab", None)) if batch
+                     else getattr(self, "_model_tabs", {}).get(getattr(self, "_active_model_tab", None)))
+        scroll_state = tab_state.setdefault("analysis_scroll", {}) if tab_state is not None else None
+        saved_scroll = scroll_state.get(selected.get(), (0.0, 0.0)) if scroll_state is not None else (0.0, 0.0)
         scaling = ctk.ScalingTracker.get_widget_scaling(self)
         panel._tell_widths = self._balanced_tell_widths(len(columns), 1000, scaling)
         panel._tell_resized = False
         wrapper = ctk.CTkFrame(card, fg_color="#FFFFFF", corner_radius=0)
-        wrapper.grid(row=0, column=0, sticky="nsew", padx=16, pady=(14, 16))
+        wrapper.grid(row=1, column=0, sticky="nsew", padx=16, pady=(14, 16))
         wrapper.grid_columnconfigure(0, weight=1)
         wrapper.grid_rowconfigure(0, weight=1)
         canvas = tk.Canvas(wrapper, background="#FFFFFF", highlightthickness=0)
@@ -2464,21 +2735,39 @@ class ModelDeepenerApp(ctk.CTk):
         horizontal = ctk.CTkScrollbar(wrapper, orientation="horizontal", command=canvas.xview, height=14,
                                       button_color="#AFCBFF", button_hover_color=self.colors["primary"])
         horizontal.grid(row=1, column=0, sticky="ew", pady=(4, 0))
+        horizontal_scroll = ModelDeepenerApp._autohide_scroll(horizontal)
+        def on_horizontal(first, last):
+            horizontal_scroll(first, last)
+            if scroll_state is not None:
+                scroll_state[selected.get()] = (canvas.yview()[0], float(first))
         canvas.configure(yscrollcommand=ModelDeepenerApp._autohide_scroll(scrollbar),
-                         xscrollcommand=ModelDeepenerApp._autohide_scroll(horizontal))
+                         xscrollcommand=on_horizontal)
         table = tk.Frame(canvas, bg="#FFFFFF")
         table_window = canvas.create_window(0, 0, anchor="nw", window=table)
-        table.bind("<Configure>", lambda _event: canvas.configure(scrollregion=canvas.bbox("all")))
+
         panel._tell_text_labels = []
+        sticky = tk.Frame(canvas, bg="#DFE9FD")
+        sticky_window = canvas.create_window(0, 0, anchor="nw", window=sticky)
+        panel._tell_canvas = canvas
+        panel._tell_sticky = sticky
 
         def apply_widths():
             for index, width in enumerate(panel._tell_widths):
                 table.grid_columnconfigure(index, minsize=width, weight=0)
+                sticky.grid_columnconfigure(index, minsize=width, weight=0)
             # CTkLabel scales its wrap length itself, while the column widths are screen pixels.
             scaling = ctk.ScalingTracker.get_widget_scaling(self)
             for label, column in panel._tell_text_labels:
-                label.configure(wraplength=max(40, (panel._tell_widths[column] - 24) / scaling))
-            canvas.itemconfigure(table_window, width=sum(panel._tell_widths))
+                label.configure(wraplength=max(40, panel._tell_widths[column] - 24))
+            width = sum(panel._tell_widths)
+            if getattr(panel, "_tell_applied_width", None) != width:
+                panel._tell_applied_width = width
+                canvas.itemconfigure(table_window, width=width)
+                canvas.itemconfigure(sticky_window, width=width)
+            region = (0, 0, width, self.TELL_HEADER_HEIGHT + max(1, len(panel._tell_rows)) * self.TELL_ROW_HEIGHT)
+            if getattr(panel, "_tell_region", None) != region:
+                panel._tell_region = region
+                canvas.configure(scrollregion=region)
 
         def fit_to_canvas(event):
             # Until the user drags a column, the columns share the visible width.
@@ -2514,101 +2803,231 @@ class ModelDeepenerApp(ctk.CTk):
                 ctk.CTkLabel(cell, text=title, text_color="#04173D",
                              font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold")).place(
                                  relx=0.5, rely=0.5, anchor="center")
+                fixed_cell = tk.Frame(sticky, bg=header_bg, bd=0, highlightthickness=1,
+                                      highlightbackground="#AFC1D9", height=self.TELL_HEADER_HEIGHT)
+                fixed_cell.grid(row=0, column=index, sticky="nsew")
+                fixed_cell.grid_propagate(False)
+                ctk.CTkLabel(fixed_cell, text=title, text_color="#04173D",
+                             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold")).place(
+                                 relx=0.5, rely=0.5, anchor="center")
+                if index < len(columns) - 1:
+                    fixed_handle = tk.Frame(fixed_cell, bg=header_bg, width=8, cursor="sb_h_double_arrow")
+                    fixed_handle.place(relx=1, rely=0, relheight=1, anchor="ne")
+                    fixed_handle.bind("<ButtonPress-1>", lambda event, col=index: start_resize(event, col))
+                    fixed_handle.bind("<B1-Motion>", resize)
                 if index < len(columns) - 1:
                     handle = tk.Frame(cell, bg=header_bg, width=8, cursor="sb_h_double_arrow")
                     handle.place(relx=1, rely=0, relheight=1, anchor="ne")
                     handle.bind("<ButtonPress-1>", lambda event, col=index: start_resize(event, col))
                     handle.bind("<B1-Motion>", resize)
-            result_rows = provider(selection)
-            if not result_rows:
-                empty = tk.Frame(table, bg="#FFFFFF", height=self.TELL_ROW_HEIGHT, highlightthickness=1,
-                                 highlightbackground="#AFC1D9")
-                empty.grid(row=1, column=0, columnspan=len(columns), sticky="nsew")
-                empty.grid_propagate(False)
-                ctk.CTkLabel(empty, text="No affected parts found.", text_color=self.colors["muted"]).place(
-                    relx=0.5, rely=0.5, anchor="center")
-            for row_index, result in enumerate(result_rows, 1):
-                values = ([result.model_name] if batch else []) + [result.affected_parts, result.indicators]
-                color = "#FFFFFF" if row_index % 2 else "#F3F7FD"
-                for column, value in enumerate(values + [None]):
-                    cell = tk.Frame(table, bg=color, bd=0, highlightthickness=1, highlightbackground="#AFC1D9", highlightcolor="#AFC1D9", height=self.TELL_ROW_HEIGHT)
-                    cell.grid(row=row_index, column=column, sticky="nsew")
+            result_rows = []
+            cache = getattr(self, "_tell_cache", None)
+            top_space = tk.Frame(table, height=1, bg="#FFFFFF")
+            top_space.grid(row=1, column=0, columnspan=len(columns), sticky="ew")
+            bottom_space = tk.Frame(table, height=1, bg="#FFFFFF")
+            bottom_space.grid(row=2, column=0, columnspan=len(columns), sticky="ew")
+            empty = tk.Frame(table, bg="#FFFFFF", height=self.TELL_ROW_HEIGHT, highlightthickness=1,
+                             highlightbackground="#AFC1D9")
+            empty.grid_propagate(False)
+            ctk.CTkLabel(empty, text="No affected parts found.", text_color=self.colors["muted"]).place(
+                relx=0.5, rely=0.5, anchor="center")
+            warning = ctk.CTkLabel(card, text="", text_color="#B45309", anchor="w")
+            slots = []
+            panel._tell_slots = slots
+
+            def make_slot(index):
+                slot = {"cells": [], "labels": [], "decision": None, "details": ""}
+                for column in range(len(columns)):
+                    cell = tk.Frame(table, bg="#FFFFFF", bd=0, highlightthickness=1,
+                                    highlightbackground="#AFC1D9", highlightcolor="#AFC1D9",
+                                    height=self.TELL_ROW_HEIGHT)
+                    cell.grid(row=index + 2, column=column, sticky="nsew")
                     cell.grid_propagate(False)
+                    slot["cells"].append(cell)
                     if column > 0:
                         tk.Frame(cell, width=1, background="#AFC1D9").place(x=0, y=0, width=1, relheight=1)
-                    if column < len(values):
-                        label = ctk.CTkLabel(cell, text=str(value), text_color=self.colors["text"], justify="center",
-                                             font=ctk.CTkFont(family="Segoe UI", size=12))
+                    if column < len(columns) - 1:
+                        label = tk.Label(cell, foreground=self.colors["text"], background="#FFFFFF",
+                                         justify="center", font=("Segoe UI", 12), borderwidth=0)
                         label.place(relx=0.5, rely=0.5, anchor="center")
-                        if column == len(values) - 1 and result.indicator_details:
-                            label.bind("<Enter>", lambda event, text=result.indicator_details: self._show_import_note_tooltip(event, [(text, False)]))
+                        if column == len(columns) - 2:
+                            def show_details(event, current=slot):
+                                if current["details"]:
+                                    self._show_import_note_tooltip(event, [(current["details"], False)])
+                            label.bind("<Enter>", show_details)
                             label.bind("<Leave>", lambda _event: self._hide_adapted_tooltip())
-                        panel._tell_text_labels.append((label, column))
+                        slot["labels"].append(label)
+                    else:
+                        variable = tk.StringVar(value="No")
+                        def changed(*_args, current=slot, var=variable):
+                            if current["decision"] is not None:
+                                current["decision"].set(var.get())
+                        variable.trace_add("write", changed)
+                        slot["variable"] = variable
+                        choices = tk.Frame(cell, bg="#FFFFFF")
+                        slot["choices"] = choices
+                        for text in ("Yes", "No"):
+                            ctk.CTkCheckBox(choices, text=text, variable=variable, onvalue=text,
+                                            offvalue="No" if text == "Yes" else "Yes",
+                                            bg_color="#FFFFFF", width=60).pack(side="left", padx=6)
+                        dash = tk.Label(cell, text="?", foreground=self.colors["muted"],
+                                        background="#FFFFFF", borderwidth=0)
+                        slot["dash"] = dash
+                ModelDeepenerApp._bind_table_wheel(table, canvas)
+                return slot
+
+            def draw_visible():
+                if not table.winfo_exists():
+                    return
+                top = max(0, int((canvas.canvasy(0) - self.TELL_HEADER_HEIGHT) // self.TELL_ROW_HEIGHT) - 1)
+                bottom = min(len(result_rows), int((canvas.canvasy(canvas.winfo_height()) - self.TELL_HEADER_HEIGHT) // self.TELL_ROW_HEIGHT) + 3)
+                top = min(top, len(result_rows))
+                if getattr(panel, "_tell_visible", None) == (top, bottom):
+                    return
+                panel._tell_visible = (top, bottom)
+                count = max(0, bottom - top)
+                while len(slots) < count:
+                    slots.append(make_slot(len(slots)))
+                panel._tell_text_labels = []
+                panel._tell_visible_vars = []
+                canvas.coords(table_window, 0, top * self.TELL_ROW_HEIGHT)
+                bottom_space.grid_configure(row=count + 2)
+                for index, slot in enumerate(slots):
+                    if index >= count:
+                        for cell in slot["cells"]:
+                            cell.grid_remove()
                         continue
-                    decision = tk.StringVar(value="No")
-                    panel._transform_choices.append(decision)
-                    panel._tell_rows.append((result, decision))
-                    choices = tk.Frame(cell, bg=color)
-                    choices.place(relx=0.5, rely=0.5, anchor="center")
-                    for text in ("Yes", "No"):
-                        ctk.CTkCheckBox(choices, text=text, variable=decision, onvalue=text,
-                                        offvalue="No" if text == "Yes" else "Yes",
-                                        bg_color=color, width=60).pack(side="left", padx=6)
-            apply_widths()
+                    result = result_rows[top + index]
+                    color = "#FFFFFF" if (top + index) % 2 == 0 else "#F3F7FD"
+                    values = [result.model_name, result.model_format, result.affected_parts, result.indicators]
+                    color_changed = slot.get("color") != color
+                    for cell in slot["cells"]:
+                        if color_changed:
+                            cell.configure(bg=color)
+                        if not cell.winfo_manager():
+                            cell.grid()
+                    for column, (label, value) in enumerate(zip(slot["labels"], values)):
+                        text = str(value)
+                        if label.cget("text") != text or color_changed:
+                            label.configure(text=text, background=color)
+                        panel._tell_text_labels.append((label, column))
+                    slot["details"] = result.indicator_details
+                    slot["decision"] = None
+                    decision_value = panel._transform_choices[top + index].get()
+                    if slot["variable"].get() != decision_value:
+                        slot["variable"].set(decision_value)
+                    slot["decision"] = panel._transform_choices[top + index]
+                    if color_changed:
+                        slot["choices"].configure(bg=color)
+                        for checkbox in slot["choices"].winfo_children():
+                            checkbox.configure(bg_color=color)
+                        slot["dash"].configure(background=color)
+                        slot["color"] = color
+                    if result.is_placeholder:
+                        slot["choices"].place_forget()
+                        slot["dash"].place(relx=0.5, rely=0.5, anchor="center")
+                    else:
+                        slot["dash"].place_forget()
+                        slot["choices"].place(relx=0.5, rely=0.5, anchor="center")
+                        panel._tell_visible_vars.append(slot["variable"])
+                apply_widths()
+
+            vertical_scroll = ModelDeepenerApp._autohide_scroll(scrollbar)
+            def on_scroll(first, last):
+                vertical_scroll(first, last)
+                canvas.coords(sticky_window, 0, canvas.canvasy(0))
+                canvas.tag_raise(sticky_window)
+                if scroll_state is not None:
+                    scroll_state[selected.get()] = (float(first), canvas.xview()[0])
+                if not getattr(panel, "_tell_redraw_pending", False):
+                    panel._tell_redraw_pending = True
+                    def redraw():
+                        panel._tell_redraw_pending = False
+                        draw_visible()
+                    canvas.after_idle(redraw)
+            canvas.configure(yscrollcommand=on_scroll)
+            canvas.bind("<Configure>", lambda event: (fit_to_canvas(event), draw_visible()))
+            ModelDeepenerApp._bind_table_wheel(canvas, canvas)
+            ModelDeepenerApp._bind_table_wheel(sticky, canvas)
+
+            def set_rows(new_selection, new_rows):
+                nonlocal result_rows
+                position = scroll_state.get(new_selection, (0.0, 0.0)) if scroll_state is not None else (0.0, 0.0)
+                result_rows = new_rows
+                selected.set(new_selection)
+                panel._transform_choices = [TellDecision(cache, result.key) for result in result_rows]
+                panel._tell_rows = list(zip(result_rows, panel._transform_choices))
+                failures = getattr(result_rows, "failures", ())
+                if failures:
+                    warning.configure(text=f"{len(failures)} checks failed.")
+                    warning.grid(row=0, column=0, sticky="ew", padx=16, pady=(12, 0))
+                else:
+                    warning.grid_remove()
+                if result_rows:
+                    empty.grid_remove()
+                else:
+                    empty.grid(row=1, column=0, columnspan=len(columns), sticky="nsew")
+                panel._tell_visible = None
+                apply_widths()
+                if abs(canvas.yview()[0] - position[0]) > 1e-6:
+                    canvas.yview_moveto(position[0])
+                if abs(canvas.xview()[0] - position[1]) > 1e-6:
+                    canvas.xview_moveto(position[1])
+                draw_visible()
+            panel._set_rows = set_rows
+            set_rows(selection, provider(selection))
+            def restore_scroll():
+                if canvas.winfo_exists():
+                    canvas.yview_moveto(saved_scroll[0])
+                    canvas.xview_moveto(saved_scroll[1])
+                    draw_visible()
+            canvas.after_idle(restore_scroll)
 
         render(selected.get())
-        ctk.CTkButton(panel, text="Perform Deepening Transformation", height=42, corner_radius=8,
+        actions = ctk.CTkFrame(panel, fg_color="transparent")
+        actions.grid(row=1, column=0, sticky="e", pady=(14, 0))
+        ctk.CTkButton(actions, text="Transform", width=170, height=42, corner_radius=8,
                       fg_color=self.colors["primary"], hover_color=self.colors["primary_hover"], text_color="#FFFFFF",
                       font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
-                      command=lambda: self._prompt_deepening(panel, batch)).grid(
-                          row=1, column=0, sticky="e", pady=(14, 0))
+                      command=lambda: self._transform_tell_results(panel, batch)).pack(side="left", padx=(0, 10))
+        ctk.CTkButton(actions, text="Export CSV", width=170, height=42, corner_radius=8,
+                      fg_color=self.colors["primary"], hover_color=self.colors["primary_hover"], text_color="#FFFFFF",
+                      font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"),
+                      command=lambda: self._export_tell_results(panel, batch)).pack(side="left")
         return panel
 
-    def _prompt_deepening(self, panel, batch: bool) -> None:
-        """Offer to save the placeholder result and optionally export the table."""
+    def _transform_tell_results(self, panel, batch: bool) -> None:
         originals = list(self.batch_models) if batch else [item for item in self.loaded_models if item.model is self.current_model]
+        rows = [(result, choice.get()) for result, choice in panel._tell_rows]
         if not originals:
             self._show_error("Deepening", "No saved model is selected.")
             return
+        if not any(decision == "Yes" for _, decision in rows):
+            self._show_information("Deepening", "Nothing to transform: all rows are set to No.")
+            return
+        def work(progress):
+            return save_deepened_models(self._database, self.loaded_models, originals, rows, batch, LoadedModel, progress)
+        def finished(result):
+            saved, unavailable, selected_count = result
+            message = f"{unavailable} of {selected_count} changes not available yet."
+            if saved:
+                message += f" Saved {len(saved)} model(s)."
+            self._show_information("Deepening", message)
+        self._run_model_task(len(originals), "Transforming models...", work, finished,
+                             lambda error: self._show_error("Deepening failed", str(error)))
+
+    def _export_tell_results(self, panel, batch: bool) -> None:
+        path = filedialog.asksaveasfilename(parent=self, title="Export analysis table",
+                                             defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
+        if not path:
+            return
         rows = [(result, choice.get()) for result, choice in panel._tell_rows]
-        dialog = _styled_dialog(self, "Deepening Transformation")
-        _dialog_heading(dialog, "Perform Deepening Transformation", self.colors)
-        ctk.CTkLabel(dialog, text="Transformed models are saved as new models.",
-                     text_color=self.colors["text"], wraplength=520, justify="left", anchor="w").pack(fill="x", padx=18, pady=(0, 12))
-        buttons = ctk.CTkFrame(dialog, fg_color="transparent")
-        buttons.pack(fill="x", padx=18, pady=(8, 18))
-
-        def save(export):
-            path = None
-            if export:
-                path = filedialog.asksaveasfilename(parent=self, title="Export analysis table",
-                                                     defaultextension=".csv", filetypes=[("CSV files", "*.csv")])
-                if not path:
-                    return
-            def work(progress):
-                save_deepened_models(self._database, self.loaded_models, originals, rows, batch, LoadedModel, progress)
-                if path:
-                    try:
-                        export_tell_table(path, rows, batch)
-                    except Exception as error:
-                        raise RuntimeError(f"Models were saved, but CSV export failed: {error}") from error
-
-            def finished(_result):
-                dialog.destroy()
-                self._show_information("Deepening", f"Saved {len(originals)} model(s).")
-            def failed(error):
-                dialog.destroy()
-                self._show_error("Deepening failed", str(error))
-            self._run_model_task(len(originals), "Saving models...", work, finished, failed, dialog=dialog)
-
-        _dialog_primary_button(buttons, "Save and Export CSV", lambda: save(True), self.colors).pack(side="right")
-        _dialog_plain_button(buttons, "Save to Database", lambda: save(False), self.colors).pack(side="right", padx=(0, 8))
-        _dialog_plain_button(buttons, "Cancel", dialog.destroy, self.colors).pack(side="right", padx=(0, 8))
-        dialog.bind("<Return>", lambda _event: save(True))
-        dialog.bind("<Escape>", lambda _event: dialog.destroy())
-        self._overlay.cover(dialog)
-        dialog.grab_set()
-        self.wait_window(dialog)
+        try:
+            export_tell_table(path, rows, batch)
+        except (OSError, csv.Error) as error:
+            self._show_error("Export CSV", str(error))
+        else:
+            self._show_information("Export CSV", f"Table exported to:\n{path}")
 
     def _add_export_without_check_button(self, actions) -> None:
         """Add the unchecked XML export action to an action bar."""
@@ -3177,9 +3596,12 @@ class ModelDeepenerApp(ctk.CTk):
                 return
             if inspect:
                 def prepared(result):
-                    self.batch_models = selected_models
+                    if hasattr(self, "_batch_tabs"):
+                        self._new_batch_tab(selected_models)
+                    else:
+                        self.batch_models = selected_models
+                        self.batch_tab.grid()
                     close_dialog()
-                    self.batch_tab.grid()
                     self._render_batch_page(*result)
                 self._run_model_task(len(selected_models), "Preparing models...",
                                      lambda progress: self._prepare_batch_page(selected_models, progress),
@@ -3422,6 +3844,7 @@ class ModelDeepenerApp(ctk.CTk):
         self.models_canvas.configure(
             yscrollcommand=self._on_models_canvas_scroll,
         )
+        ModelDeepenerApp._bind_table_wheel(self.models_canvas, self.models_canvas)
         self.models_canvas.bind("<Destroy>", self._cancel_models_canvas_redraw, add="+")
         self.models_canvas.bind("<Enter>", self._bind_models_scroll_events)
         self.models_canvas.bind("<Leave>", self._unbind_models_scroll_events)
@@ -3806,6 +4229,7 @@ class ModelDeepenerApp(ctk.CTk):
                     disable_buttons(child)
             disable_buttons(dialog)
         events = queue.Queue()
+        worker_done = threading.Event()
         state = {"dialog": None, "count": 0, "done": False, "opening": False, "message": message, "fraction": None}
 
         def run():
@@ -3814,9 +4238,11 @@ class ModelDeepenerApp(ctk.CTk):
                 events.put(("result", result))
             except Exception as error:
                 events.put(("error", error))
+            finally:
+                worker_done.set()
 
         def show_progress():
-            if not state["done"]:
+            if not state["done"] and not worker_done.is_set():
                 state["opening"] = True
                 if dialog is None:
                     progress_window = getattr(self, "_model_progress_dialog", None)
@@ -3908,6 +4334,8 @@ class ModelDeepenerApp(ctk.CTk):
 
     def _create_batch(self, paths) -> None:
         """Read all candidates, ask once about their reports, then save them together."""
+        if hasattr(self, "_batch_tabs"):
+            self._save_batch_state()
         self._overlay.show()
         def read(progress):
             candidates = []
@@ -3958,7 +4386,10 @@ class ModelDeepenerApp(ctk.CTk):
                 return
 
             def saved(_result):
-                self.batch_tab.grid()
+                if hasattr(self, "_batch_tabs"):
+                    self._new_batch_tab(self.batch_models, preserve_current=False)
+                else:
+                    self.batch_tab.grid()
                 self._show_batch_page()
                 self._overlay.hide()
 
@@ -4128,7 +4559,7 @@ class ModelDeepenerApp(ctk.CTk):
         counts = [("Number of Models", len(models))]
         counts.extend(("Number of " + name, sum(self._batch_format(item) == name for item in models))
                       for name in ("FMMLx", "CSV", "PlantUML", "XMI", "Ecore"))
-        means = ([(label, (2 * sum(row[index][1] for row in metrics) + len(models)) // (2 * len(models)))
+        means = ([(label, ((20 * sum(row[index][1] for row in metrics) + len(models)) // (2 * len(models))) / 10)
                   for index, (label, _) in enumerate(metrics[0])] if metrics else [])
         active = [index for index in range(len(metrics[0]))
                   if any(row[index][1] > 0 for row in metrics)] if metrics else []
@@ -4149,6 +4580,9 @@ class ModelDeepenerApp(ctk.CTk):
     def _render_batch_page(self, counts, means, headers, rows) -> None:
         self._batch_view = "inspect"
         self._tell_menu_open[True] = False
+        state = getattr(self, "_batch_tabs", {}).get(getattr(self, "_active_batch_tab", None))
+        if state is not None:
+            state.update(view="inspect", menu=False)
         self._show_batch_sidebar(analysis=False)
         self._set_top_tab("batch")
         self._clear_content()
@@ -4173,7 +4607,7 @@ class ModelDeepenerApp(ctk.CTk):
         metrics.grid(row=1, column=0, sticky="ew", pady=(0, 28))
         for index, (label, value) in enumerate(means):
             metrics.grid_columnconfigure(index, weight=1, uniform="means")
-            self._metric_card_no_icon(metrics, label, value, colors.get(label, self.colors["primary"])).grid(
+            self._metric_card_no_icon(metrics, "Avg. " + label, value, colors.get(label, self.colors["primary"]), average=True).grid(
                 row=0, column=index, sticky="ew", padx=(0 if index == 0 else 5, 0 if index == len(means)-1 else 5))
         self._batch_filter_models = list(self.batch_models)
         self._batch_filter_rows = list(rows)
@@ -4199,10 +4633,12 @@ class ModelDeepenerApp(ctk.CTk):
         filters = ctk.CTkFrame(parent, fg_color="transparent")
         filters.grid(row=1, column=0, sticky="ew", padx=22, pady=(0, 18))
         filters.grid_columnconfigure(1, weight=1)
-        self.batch_search_var = tk.StringVar(master=self)
-        self.batch_type_filter_var = tk.StringVar(master=self, value="All")
-        self.batch_min_objects_var = tk.StringVar(master=self)
-        self.batch_min_attributes_var = tk.StringVar(master=self)
+        state = getattr(self, "_batch_tabs", {}).get(getattr(self, "_active_batch_tab", None), {})
+        search, kind, objects, attributes = state.get("filters", ("", "All", "", ""))
+        self.batch_search_var = tk.StringVar(master=self, value=search)
+        self.batch_type_filter_var = tk.StringVar(master=self, value=kind)
+        self.batch_min_objects_var = tk.StringVar(master=self, value=objects)
+        self.batch_min_attributes_var = tk.StringVar(master=self, value=attributes)
         ctk.CTkLabel(filters, text="Search", text_color=self.colors["text"], font=ctk.CTkFont(size=12)).grid(row=0, column=0, sticky="w", padx=(0, 14), pady=10)
         ctk.CTkEntry(filters, textvariable=self.batch_search_var, placeholder_text="Search Model or File ...",
                      placeholder_text_color="#94A3B8", height=44, corner_radius=7, border_color="#CBD8EA",
@@ -4221,6 +4657,8 @@ class ModelDeepenerApp(ctk.CTk):
                          corner_radius=7, border_color="#CBD8EA", fg_color="#FFFFFF").grid(row=0, column=5 + 2 * column, sticky="w", padx=(0, 44 if column == 0 else 0), pady=10)
         for variable in (self.batch_search_var, self.batch_type_filter_var, self.batch_min_objects_var, self.batch_min_attributes_var):
             variable.trace_add("write", lambda *_: self._refresh_batch_filter())
+        if (search, kind, objects, attributes) != ("", "All", "", ""):
+            self._refresh_batch_filter()
 
     def _refresh_batch_filter(self) -> None:
         """Update tiles and visible columns from cached data for the filtered batch."""
@@ -4229,6 +4667,10 @@ class ModelDeepenerApp(ctk.CTk):
         kind = self.batch_type_filter_var.get()
         min_objects = self._optional_int_filter(self.batch_min_objects_var.get())
         min_attributes = self._optional_int_filter(self.batch_min_attributes_var.get())
+        state = getattr(self, "_batch_tabs", {}).get(getattr(self, "_active_batch_tab", None))
+        if state is not None:
+            state["filters"] = (self.batch_search_var.get(), self.batch_type_filter_var.get(),
+                                self.batch_min_objects_var.get(), self.batch_min_attributes_var.get())
         def value(row, label):
             return row[headers.index(label)] if label in headers else 0
         selected = [(model, row) for model, row in zip(self._batch_filter_models, self._batch_filter_rows)
@@ -4243,14 +4685,14 @@ class ModelDeepenerApp(ctk.CTk):
         display_rows = [row[:2] + tuple(row[index] for index in active) for row in original_rows]
         counts = [("Number of Models", len(models))] + [("Number of " + name, sum(row[1] == name for row in original_rows))
                    for name in ("FMMLx", "CSV", "PlantUML", "XMI", "Ecore")]
-        means = [(label, (2 * sum(value(row, label) for row in original_rows) + len(models)) // (2 * len(models)) if models else 0)
+        means = [(label, ((20 * sum(value(row, label) for row in original_rows) + len(models)) // (2 * len(models))) / 10 if models else 0.0)
                  for label in self._batch_filter_mean_labels]
         for frame, entries, palette in ((self._batch_format_tiles, counts, self._batch_filter_format_colors),
                                         (self._batch_metric_tiles, means, self._batch_filter_colors)):
             for card, (label, number) in zip(frame.grid_slaves(row=0)[::-1], entries):
                 labels = [child for child in card.winfo_children() if isinstance(child, ctk.CTkLabel)]
                 title, value_label = labels
-                value_text = str(number)
+                value_text = f"{number:.1f}" if frame is self._batch_metric_tiles else str(number)
                 size = 17 if len(value_text) >= 7 else 18 if len(value_text) >= 6 else 20 if len(value_text) >= 5 else 22
                 title.configure(text_color="#A8B2C1" if number == 0 else self.colors["text"])
                 value_label.configure(text=value_text, text_color="#A8B2C1" if number == 0 else palette.get(label, self.colors["primary"]))
@@ -4277,8 +4719,15 @@ class ModelDeepenerApp(ctk.CTk):
         horizontal = ctk.CTkScrollbar(area, orientation="horizontal", command=canvas.xview,
                                       height=14, button_color="#AFCBFF", button_hover_color=self.colors["primary"])
         horizontal.grid(row=1, column=0, sticky="ew", pady=(4, 0))
-        canvas.configure(xscrollcommand=ModelDeepenerApp._autohide_scroll(horizontal))
+        horizontal_scroll = ModelDeepenerApp._autohide_scroll(horizontal)
+        def on_horizontal(first, last):
+            horizontal_scroll(first, last)
+            if batch_state is not None:
+                batch_state["inspect_scroll"] = (canvas.yview()[0], float(first))
+        canvas.configure(xscrollcommand=on_horizontal)
         vertical_scroll = ModelDeepenerApp._autohide_scroll(scrollbar)
+        batch_state = getattr(self, "_batch_tabs", {}).get(getattr(self, "_active_batch_tab", None))
+        saved_position = batch_state.get("inspect_scroll", (0.0, 0.0)) if batch_state is not None else (0.0, 0.0)
         def draw(_event=None):
             canvas.delete("all")
             minimum_widths = [220, 120] + [130] * (len(headers) - 2)
@@ -4291,9 +4740,11 @@ class ModelDeepenerApp(ctk.CTk):
                 label = canvas.create_text(x+w/2, y+height/2, text=str(text), fill=foreground,
                                            font=font, anchor="center", justify="center", width=max(20, w-18))
                 return rect, label
+            header_items = []
             x = 0
             for header, column_width in zip(headers, widths):
-                cell(x, 0, column_width, 58, header, "#DFE9FD", "#04173D", ("Segoe UI", 12, "bold"))
+                header_items.extend(cell(x, canvas.canvasy(0), column_width, 58, header,
+                                         "#DFE9FD", "#04173D", ("Segoe UI", 12, "bold")))
                 x += column_width
             first = max(0, int((canvas.canvasy(0) - 58) // 64) - 1)
             last = min(len(models), int((canvas.canvasy(canvas.winfo_height()) - 58) // 64) + 2)
@@ -4309,12 +4760,17 @@ class ModelDeepenerApp(ctk.CTk):
                         canvas.tag_bind(item, "<Leave>", lambda _event: canvas.configure(cursor=""))
                     x += column_width
             canvas.create_rectangle(0, 0, max(1, width - 1), 58 + max(1, len(models)) * 64 - 1, outline="#AFC1D9", width=1)
+            for item in header_items:
+                canvas.addtag_withtag("sticky_header", item)
+            canvas.tag_raise("sticky_header")
             region = (0, 0, width, 58 + max(1, len(models)) * 64)
             if getattr(canvas, "_last_scrollregion", None) != region:
                 canvas._last_scrollregion = region
                 canvas.configure(scrollregion=region)
         def on_scroll(first, last):
             vertical_scroll(first, last)
+            if batch_state is not None:
+                batch_state["inspect_scroll"] = (float(first), canvas.xview()[0])
             position = (first, last)
             if position == getattr(canvas, "_last_scroll_position", None):
                 return
@@ -4333,26 +4789,41 @@ class ModelDeepenerApp(ctk.CTk):
         canvas.bind("<Destroy>", cancel_redraw, add="+")
         canvas.configure(yscrollcommand=on_scroll)
         canvas.bind("<Configure>", draw)
-        canvas.bind("<MouseWheel>", lambda event: canvas.yview_scroll(int(-event.delta / 120), "units"))
+        ModelDeepenerApp._bind_table_wheel(canvas, canvas)
+        def restore_position():
+            if canvas.winfo_exists():
+                canvas.yview_moveto(saved_position[0])
+                canvas.xview_moveto(saved_position[1])
+                draw()
+        canvas.after_idle(restore_position)
+        card._batch_canvas = canvas
         return card
 
     def _show_batch_analysis(self) -> None:
         """Prepare the batch analysis before displaying it."""
         selection = self._tell_selection[True]
-        models = [(loaded.name, loaded.model) for loaded in self.batch_models]
-        self._run_model_task(len(models), "Preparing analysis...", lambda progress: analyze_tells(selection, models, progress),
-                             lambda rows: self._build_view_hidden(lambda: self._render_batch_analysis(selection, rows)),
+        models = [(loaded.name, loaded.model, self._batch_format(loaded)) for loaded in self.batch_models]
+        self._run_model_task(len(models), "Preparing analysis...", lambda progress: analyze_tells(selection, models, progress, getattr(self, "_tell_cache", None)),
+                             lambda rows: ModelDeepenerApp._present_tell_results(
+                                 self, True, selection, rows, lambda: self._render_batch_analysis(selection, rows)),
                              lambda error: self._show_error("Analysis", str(error)))
 
     @atomic_page
     def _render_batch_analysis(self, selection, rows) -> None:
         self._batch_view = "analysis"
         self._tell_menu_open[True] = True
+        state = getattr(self, "_batch_tabs", {}).get(getattr(self, "_active_batch_tab", None))
+        if state is not None:
+            state.update(view="analysis", menu=True, tell=selection)
         self._show_batch_sidebar(analysis=True)
         self._set_top_tab("batch")
         self._clear_content()
-        self._page_header(*tell_description(selection))
-        self._build_tell_results(self.content, batch=True, row_provider=lambda _selection: rows).grid(row=1, column=0, sticky="nsew")
+        header = self._page_header(*tell_description(selection))
+        panel = self._build_tell_results(self.content, batch=True, row_provider=lambda _selection: rows)
+        panel._tell_owner = (True, getattr(self, "_active_batch_tab", None))
+        panel._tell_header = header
+        self._active_tell_panel = panel
+        panel.grid(row=1, column=0, sticky="nsew")
 
     def _browse_file(self) -> None:
         """Ask for a supported model file and validate its selection.
@@ -4841,6 +5312,10 @@ class ModelDeepenerApp(ctk.CTk):
         The methods in this block draw the CSV columns, inferred types, example
         values, Include checkboxes, and Select All behavior.
         """
+        old_header = getattr(self, "_column_sticky_header", None)
+        if old_header is not None and old_header.winfo_exists():
+            old_header.destroy()
+        self._column_sticky_header = None
         if self.column_table is not None:
             self.column_table.destroy()
 
@@ -5039,6 +5514,48 @@ class ModelDeepenerApp(ctk.CTk):
                     anchor="center",
                 )
 
+    def _pin_column_table_header(self):
+        """Keep the CSV column-selection header visible while rows scroll."""
+        header = tk.Canvas(self.column_table_wrapper, background="#DFE9FD", highlightthickness=0)
+        header.place(in_=self.column_canvas, x=0, y=0, relwidth=1, height=self.TABLE_HEADER_HEIGHT)
+        self._column_sticky_header = header
+        frame = tk.Frame(header, bg="#DFE9FD")
+        window = header.create_window(0, 0, anchor="nw", window=frame)
+        widths = [self.COLUMN_WIDTH_INCLUDE, self.COLUMN_WIDTH_NAME, self.COLUMN_WIDTH_TYPE, 360]
+        for index, text in enumerate(("All", "Column Name", "Detected Data Type", "Example Slots")):
+            frame.grid_columnconfigure(index, minsize=widths[index], weight=1 if index == 3 else 0)
+            cell = tk.Frame(frame, bg="#DFE9FD", height=self.TABLE_HEADER_HEIGHT,
+                            highlightthickness=1, highlightbackground="#AFC1D9")
+            cell.grid(row=0, column=index, sticky="nsew")
+            cell.grid_propagate(False)
+            if index == 0:
+                group = tk.Frame(cell, bg="#DFE9FD")
+                group.place(relx=0.5, rely=0.5, anchor="center")
+                ctk.CTkCheckBox(group, text="", variable=self.all_columns_selected_var,
+                                width=21, height=21, checkbox_width=21, checkbox_height=21,
+                                command=self._toggle_all_columns).pack(side="left", padx=(0, 6))
+                label = ctk.CTkLabel(group, text=text, text_color="#04173D",
+                                     font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold"))
+                label.pack(side="left")
+                label.bind("<Button-1>", lambda _event: self._toggle_all_columns_from_label())
+            else:
+                ctk.CTkLabel(cell, text=text, text_color="#04173D",
+                             font=ctk.CTkFont(family="Segoe UI", size=12, weight="bold")).place(
+                                 relx=0.5, rely=0.5, anchor="center")
+        def fit(_event=None):
+            if not header.winfo_exists():
+                return
+            region = self.column_canvas.cget("scrollregion").split()
+            width = max(sum(widths), int(float(region[2])) if len(region) == 4 else 0)
+            header.itemconfigure(window, width=width)
+            header.configure(scrollregion=(0, 0, width, self.TABLE_HEADER_HEIGHT))
+            header.xview_moveto(self.column_canvas.xview()[0])
+        header.bind("<Configure>", fit)
+        self.column_canvas.configure(xscrollcommand=lambda first, _last: header.xview_moveto(float(first)) if header.winfo_exists() else None)
+        ModelDeepenerApp._bind_table_wheel(header, self.column_canvas)
+        ModelDeepenerApp._bind_table_wheel(frame, self.column_canvas)
+        fit()
+
     def _render_csv_mapping(self, preview: CsvImportPreview) -> None:
         """Build the column selection and sample rows for the validated CSV preview."""
         self.selected_csv_columns.clear()
@@ -5052,6 +5569,7 @@ class ModelDeepenerApp(ctk.CTk):
 
         self._reset_column_table(total_height)
         self._build_column_table_header()
+        self._pin_column_table_header()
 
         for column_index, column_name in enumerate(preview.header):
             values = [
@@ -5170,6 +5688,7 @@ class ModelDeepenerApp(ctk.CTk):
             scrollregion=(0, 0, fitted_width, total_height)
         )
         self.column_canvas.yview_moveto(0)
+        ModelDeepenerApp._bind_table_wheel(self.column_table, self.column_canvas)
 
     @staticmethod
     def _format_example_values(
@@ -5458,6 +5977,10 @@ class ModelDeepenerApp(ctk.CTk):
         The open model and an unfinished import are reset, because they belong to the old
         database.
         """
+        for state in getattr(self, "_batch_tabs", {}).values():
+            state["button"].destroy()
+        self._batch_tabs = {}
+        self._active_batch_tab = None
         self._database = database
         self._active_database_deleted = False
         self._database_name = name
@@ -6170,6 +6693,10 @@ class ModelDeepenerApp(ctk.CTk):
             return
 
         self._reset_detail_canvas_table()
+        previous_header = getattr(self, "_detail_sticky_header", None)
+        if previous_header is not None and previous_header.winfo_exists():
+            previous_header.destroy()
+        self._detail_sticky_header = None
         for child in self.detail_table.winfo_children():
             child.destroy()
 
@@ -7554,10 +8081,31 @@ class ModelDeepenerApp(ctk.CTk):
         self.detail_table.update_idletasks()
         self.detail_canvas.configure(scrollregion=self.detail_canvas.bbox("all"))
         self._update_detail_x_scrollbar_visibility()
+        ModelDeepenerApp._refresh_detail_sticky_header(self)
 
     def _finish_detail_column_resize(self, _event=None) -> None:
         """Keep the selected widths for subsequent tables of the same kind."""
         self._table_column_widths[self._detail_width_key] = list(self._detail_column_widths)
+
+    @staticmethod
+    def _refresh_detail_sticky_header(owner):
+        header = getattr(owner, "_detail_sticky_header", None)
+        if header is None or not header.winfo_exists():
+            return
+        header.delete("all")
+        x = 0
+        widths = owner._detail_column_widths
+        for index, (text, width) in enumerate(zip(owner._detail_sticky_labels, widths)):
+            header.create_rectangle(x, 0, x + width, 42, fill="#DFE9FD", outline="#AFC1D9")
+            header.create_text(x + width / 2, 21, text=text, fill="#04173D", font=("Segoe UI", 12, "bold"))
+            if index + 1 < len(widths):
+                handle = header.create_rectangle(x + width - 5, 0, x + width, 42, fill="#DFE9FD", outline="")
+                header.tag_bind(handle, "<ButtonPress-1>", lambda event, col=index: owner._start_detail_column_resize(event, col))
+                header.tag_bind(handle, "<B1-Motion>", owner._resize_detail_column)
+                header.tag_bind(handle, "<ButtonRelease-1>", owner._finish_detail_column_resize)
+            x += width
+        header.configure(scrollregion=(0, 0, max(1, x), 42))
+        header.xview_moveto(owner.detail_canvas.xview()[0])
 
     def _render_detail_table(
             self,
@@ -7735,6 +8283,20 @@ class ModelDeepenerApp(ctk.CTk):
         self._update_detail_x_scrollbar_visibility()
         self.detail_canvas.xview_moveto(0)
         self.detail_canvas.yview_moveto(0)
+        sticky = tk.Canvas(self.detail_table_wrapper, background="#DFE9FD", highlightthickness=0, height=42)
+        sticky.place(in_=self.detail_canvas, x=0, y=0, relwidth=1, height=42)
+        self._detail_sticky_header = sticky
+        self._detail_sticky_labels = tuple(headers)
+        ModelDeepenerApp._refresh_detail_sticky_header(self)
+        ModelDeepenerApp._bind_table_wheel(sticky, self.detail_canvas)
+        ModelDeepenerApp._bind_table_wheel(self.detail_table, self.detail_canvas)
+        def sync_x(first, last):
+            scrollbar = getattr(self, "detail_x_scrollbar", None)
+            if scrollbar is not None:
+                scrollbar.set(first, last)
+            if sticky.winfo_exists():
+                sticky.xview_moveto(float(first))
+        self.detail_canvas.configure(xscrollcommand=sync_x)
 
     def _overview_counts_for(self, loaded: LoadedModel) -> tuple[int, int, int, int]:
         """Return the prepared counts for an overview row."""
@@ -7802,9 +8364,10 @@ class ModelDeepenerApp(ctk.CTk):
             canvas._models_scrollregion = region
             canvas.configure(scrollregion=region)
         x = 0
+        header_items = []
         for _key, label, width in columns:
-            self._draw_models_table_cell(x=x, y=0, width=width, height=header_height, text=label,
-                                         background="#DFE9FD", foreground="#04173D", font=("Segoe UI", 12, "bold"))
+            header_items.extend(self._draw_models_table_cell(x=x, y=canvas.canvasy(0), width=width, height=header_height, text=label,
+                                         background="#DFE9FD", foreground="#04173D", font=("Segoe UI", 12, "bold")))
             x += width
         first = max(0, int((canvas.canvasy(0) - header_height) // row_height) - 1)
         last = min(len(filtered), int((canvas.canvasy(canvas.winfo_height()) - header_height) // row_height) + 2)
@@ -7829,6 +8392,7 @@ class ModelDeepenerApp(ctk.CTk):
             row_items = []
             delete_items = []
             badge = None
+            badges = []
             for _column_index, ((key, _label, width), value) in enumerate(zip(columns, values)):
                 if key == "delete":
                     foreground = self.colors["danger"]
@@ -7852,22 +8416,29 @@ class ModelDeepenerApp(ctk.CTk):
                     foreground=foreground,
                     font=font,
                 )
-                if key == "name" and model.get_is_adapted():
+                if key == "name" and (model.get_is_adapted() or getattr(model, "get_is_deepened", lambda: False)()):
                     self.models_canvas.move(items[1], 0, -10)
-                    badge = self.models_canvas.create_text(
-                        x + width / 2, y + row_height / 2 + 13, text="adapted",
-                        fill="#A34D00", font=("Segoe UI", 9, "bold"))
-                    self.models_canvas.tag_bind(badge, "<Button-1>",
-                        lambda _event, target=loaded: self._open_loaded_model(target))
-                    self.models_canvas.tag_bind(badge, "<Enter>", self._show_adapted_tooltip)
-                    self.models_canvas.tag_bind(badge, "<Leave>", self._hide_adapted_tooltip)
-                    row_items.append(badge)
+                    both = model.get_is_adapted() and getattr(model, "get_is_deepened", lambda: False)()
+                    for text, present, color, tooltip, offset in (
+                            ("adapted", model.get_is_adapted(), "#A34D00", self._show_adapted_tooltip, -31 if both else 0),
+                            ("deepened", getattr(model, "get_is_deepened", lambda: False)(), "#08765E", getattr(self, "_show_deepened_tooltip", lambda _event: None), 31 if both else 0)):
+                        if not present:
+                            continue
+                        badge = self.models_canvas.create_text(
+                            x + width / 2 + offset, y + row_height / 2 + 13, text=text,
+                            fill=color, font=("Segoe UI", 9, "bold"))
+                        self.models_canvas.tag_bind(badge, "<Button-1>",
+                            lambda _event, target=loaded: self._open_loaded_model(target))
+                        self.models_canvas.tag_bind(badge, "<Enter>", tooltip)
+                        self.models_canvas.tag_bind(badge, "<Leave>", self._hide_adapted_tooltip)
+                        row_items.append(badge)
+                        badges.append(badge)
                 if key == "delete":
                     delete_items.extend(items)
                 row_items.extend(items)
                 x += width
             for item in row_items:
-                if item == badge:
+                if item in badges:
                     continue
                 if item in delete_items:
                     command = lambda _event, target=loaded: self._delete_loaded_model(target)
@@ -7878,6 +8449,9 @@ class ModelDeepenerApp(ctk.CTk):
                 self.models_canvas.tag_bind(item, "<Leave>", lambda _event: self.models_canvas.configure(cursor=""))
             self._models_canvas_rows[model_index] = row_items
         canvas.create_rectangle(0, 0, max(1, table_width - 1), max(1, total_height - 1), outline="#AFC1D9", width=1)
+        for item in header_items:
+            canvas.addtag_withtag("sticky_header", item)
+        canvas.tag_raise("sticky_header")
 
 
     def _model_matches_overview_filters(self, loaded: LoadedModel) -> bool:
@@ -8121,6 +8695,7 @@ class ModelDeepenerApp(ctk.CTk):
             label: str,
             value: int,
             value_color: str,
+            average: bool = False,
     ) -> ctk.CTkFrame:
         """
         Creates one metric card used in the app.
@@ -8138,7 +8713,7 @@ class ModelDeepenerApp(ctk.CTk):
         label_color = muted_color if is_zero else self.colors["text"]
         number_color = muted_color if is_zero else value_color
 
-        value_text = str(value)
+        value_text = f"{value:.1f}" if average else str(value)
         if len(value_text) >= 7:
             value_size = 17
         elif len(value_text) >= 6:
@@ -8286,6 +8861,16 @@ class ModelDeepenerApp(ctk.CTk):
         window.geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
         tk.Label(window, text="Adapted during import. Orange cells show what was changed \u2013 hover over them for details.",
                  background="#FFF0DF", foreground="#7A3F00", relief="solid",
+                 borderwidth=1, padx=6, pady=4).pack()
+        self._adapted_tooltip = window
+
+    def _show_deepened_tooltip(self, event) -> None:
+        self._hide_adapted_tooltip()
+        window = tk.Toplevel(self)
+        window.overrideredirect(True)
+        window.geometry(f"+{event.x_root + 12}+{event.y_root + 18}")
+        tk.Label(window, text="Created by a deepening transformation.",
+                 background="#DDF3EE", foreground="#08765E", relief="solid",
                  borderwidth=1, padx=6, pady=4).pack()
         self._adapted_tooltip = window
 
@@ -9118,7 +9703,7 @@ class ModelProgressDialog(ctk.CTkToplevel):
         """Reset the message and bar for a new operation."""
         self.bar.stop()
         self.message.configure(text=message)
-        self._indeterminate = total <= 1
+        self._indeterminate = total <= 1 and message != "Preparing analysis..."
         self.bar.configure(mode="indeterminate" if self._indeterminate else "determinate")
         self.bar.set(0)
         self.count.configure(text=f"0 / {total} models")

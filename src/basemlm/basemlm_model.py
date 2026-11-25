@@ -60,6 +60,12 @@ class BaseMlmModel:
     def get_is_adapted(self) -> bool:
         return getattr(self, "is_adapted", False)
 
+    def get_is_deepened(self) -> bool:
+        return getattr(self, "is_deepened", False)
+
+    def set_is_deepened(self, is_deepened: bool) -> None:
+        self.is_deepened = is_deepened
+
     def set_is_adapted(self, is_adapted: bool) -> None:
         self.is_adapted = is_adapted
 
