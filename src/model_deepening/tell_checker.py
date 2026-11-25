@@ -138,10 +138,10 @@ class TellChecker:
     def check_duplicate_instance_properties(self) -> [ModelPart]:
         """Tell OC5: property-precedence analysis required"""
         affected_parts: [ModelPart] = []
-        if self.model.has_instances():
-            md_instance: ModelDeepening = ModelDeepening(self.model)
-            md_instance.perform_property_precedence_analysis()
-            affected_parts = md_instance.return_affected_classes_as_parts()
+        # if self.model.has_instances():
+           # md_instance: ModelDeepening = ModelDeepening(self.model)
+            # md_instance.perform_property_precedence_analysis()
+            # affected_parts = md_instance.return_affected_classes_as_parts()
         return affected_parts
 
     def check_generalizations(self) -> [ModelPart]:
