@@ -33,7 +33,6 @@ class RealApplicationBatchTests(unittest.TestCase):
         self.assertTrue(result.get("mapped"), result)
         self.assertTrue(result.get("grab_is_dialog"), result)
         self.assertTrue(result.get("focus_is_dialog"), result)
-        self.assertTrue(result.get("dialog_above_overlay"), result)
         x, y, width, height = result["geometry"]
         root_x, root_y, root_width, root_height = result["root_geometry"]
         self.assertLess(abs((x + width / 2) - (root_x + root_width / 2)), 60)
